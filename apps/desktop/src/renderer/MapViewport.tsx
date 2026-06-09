@@ -1,17 +1,46 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
+import type { PointDataset } from "../../../../packages/data/src";
 import "maplibre-gl/dist/maplibre-gl.css";
+
+const FOOTPRINT_SOURCE_ID = "footprint-points";
+const FOOTPRINT_LAYER_ID = "footprint-points-circle";
+const PHOTO_SOURCE_ID = "photo-points";
+const PHOTO_LAYER_ID = "photo-points-circle";
+
+const toMultiPoint = (flatCoordinates: readonly number[]) => {
+  const coordinates: [number, number][] = [];
+
+  for (let index = 0; index < flatCoordinates.length; index += 2) {
+    coordinates.push([
+      flatCoordinates[index],
+      flatCoordinates[index + 1],
+    ]);
+  }
+
+  return {
+    type: "Feature" as const,
+    properties: {},
+    geometry: {
+      type: "MultiPoint" as const,
+      coordinates,
+    },
+  };
+};
 
 interface MapViewportProps {
   apiKey: string;
   onClearKey: () => void;
+  pointDataset: PointDataset | null;
 }
 
 export function MapViewport({
   apiKey,
   onClearKey,
+  pointDataset,
 }: MapViewportProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<maplibregl.Map | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
     "loading",
   );
@@ -34,6 +63,7 @@ export function MapViewport({
       localIdeographFontFamily:
         '"Microsoft YaHei UI", "Microsoft YaHei", sans-serif',
     });
+    mapRef.current = map;
 
     map.addControl(
       new maplibregl.NavigationControl({
@@ -62,9 +92,105 @@ export function MapViewport({
     });
 
     return () => {
+      mapRef.current = null;
       map.remove();
     };
   }, [apiKey]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+
+    if (!map || status !== "ready" || !pointDataset) {
+      return;
+    }
+
+    const footprintGeoJson = toMultiPoint(
+      pointDataset.footprintCoordinates,
+    );
+    const photoGeoJson = toMultiPoint(pointDataset.photoCoordinates);
+    const footprintSource = map.getSource(FOOTPRINT_SOURCE_ID);
+    const photoSource = map.getSource(PHOTO_SOURCE_ID);
+
+    if (footprintSource) {
+      (footprintSource as maplibregl.GeoJSONSource).setData(footprintGeoJson);
+    } else {
+      map.addSource(FOOTPRINT_SOURCE_ID, {
+        type: "geojson",
+        data: footprintGeoJson,
+      });
+      map.addLayer({
+        id: FOOTPRINT_LAYER_ID,
+        type: "circle",
+        source: FOOTPRINT_SOURCE_ID,
+        paint: {
+          "circle-color": "#b9f5c5",
+          "circle-opacity": 0.34,
+          "circle-radius": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            1,
+            1.2,
+            8,
+            2.2,
+            14,
+            4,
+          ],
+          "circle-blur": 0.15,
+        },
+      });
+    }
+
+    if (photoSource) {
+      (photoSource as maplibregl.GeoJSONSource).setData(photoGeoJson);
+    } else {
+      map.addSource(PHOTO_SOURCE_ID, {
+        type: "geojson",
+        data: photoGeoJson,
+      });
+      map.addLayer({
+        id: PHOTO_LAYER_ID,
+        type: "circle",
+        source: PHOTO_SOURCE_ID,
+        paint: {
+          "circle-color": "#ffe36e",
+          "circle-opacity": 0.92,
+          "circle-radius": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            1,
+            2,
+            8,
+            3.4,
+            14,
+            5.6,
+          ],
+          "circle-blur": 0.06,
+          "circle-stroke-color": "#fff6bd",
+          "circle-stroke-opacity": 0.82,
+          "circle-stroke-width": 0.8,
+        },
+      });
+    }
+
+    map.fitBounds(
+      [
+        [pointDataset.bounds[0], pointDataset.bounds[1]],
+        [pointDataset.bounds[2], pointDataset.bounds[3]],
+      ],
+      {
+        padding: {
+          top: 84,
+          right: 290,
+          bottom: 250,
+          left: 320,
+        },
+        duration: 900,
+        maxZoom: 13,
+      },
+    );
+  }, [pointDataset, status]);
 
   return (
     <section className="viewport map-viewport">
@@ -90,8 +216,26 @@ export function MapViewport({
       {status === "ready" && (
         <>
           <div className="map-data-state">
-            <strong>尚未载入轨迹</strong>
-            <span>底图已连接，可以开始导入 CSV 数据。</span>
+            <strong>
+              {pointDataset
+                ? pointDataset.sourceName
+                : "尚未载入位置数据"}
+            </strong>
+            {pointDataset ? (
+              <span className="point-legend">
+                <span className="point-legend-item">
+                  <i className="footprint-swatch" />
+                  足迹{" "}
+                  {pointDataset.footprintPointCount.toLocaleString("zh-CN")}
+                </span>
+                <span className="point-legend-item">
+                  <i className="photo-swatch" />
+                  照片 {pointDataset.photoPointCount.toLocaleString("zh-CN")}
+                </span>
+              </span>
+            ) : (
+              <span>底图已连接，可以开始导入 CSV 数据。</span>
+            )}
           </div>
           <div className="viewport-badge">MAPTILER　在线</div>
         </>

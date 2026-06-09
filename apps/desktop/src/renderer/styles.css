@@ -269,6 +269,11 @@ button:focus-visible {
   margin: 11px;
 }
 
+.primary-action:disabled {
+  color: #777;
+  background: #292929;
+}
+
 .primary-action:hover,
 .empty-canvas button:hover {
   color: var(--white);
@@ -492,6 +497,32 @@ button:focus-visible {
 .map-data-state span {
   margin-top: 6px;
   font-size: 10px;
+}
+
+.map-data-state .point-legend {
+  display: flex;
+  gap: 14px;
+}
+
+.map-data-state .point-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 0;
+}
+
+.point-legend-item i {
+  width: 7px;
+  height: 7px;
+}
+
+.footprint-swatch {
+  background: rgb(185 245 197 / 48%);
+}
+
+.photo-swatch {
+  background: #ffe36e;
+  box-shadow: 0 0 5px rgb(255 227 110 / 72%);
 }
 
 .map-error {
@@ -986,6 +1017,36 @@ button:focus-visible {
 .empty-list {
   color: var(--level-3);
   font-size: 12px;
+}
+
+.data-source-item {
+  display: flex;
+  flex-direction: column;
+  padding: 11px 18px 15px;
+  background: rgb(92 92 92 / 30%);
+}
+
+.data-source-item strong {
+  overflow: hidden;
+  color: var(--level-1);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-source-item span {
+  margin-top: 5px;
+  color: var(--level-3);
+  font-size: 11px;
+}
+
+.data-error {
+  margin: 0 11px 11px;
+  padding: 9px 10px;
+  color: #ddd;
+  background: rgb(92 20 20 / 64%);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .primary-action {

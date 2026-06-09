@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { PointDataset } from "../../../../packages/data/src";
 import { MapTokenSetup, MapViewport } from "./MapViewport";
 
 const MAPTILER_KEY_STORAGE_KEY = "replaymod.maptiler.api-key";
@@ -12,14 +13,21 @@ const Icon = ({ children }: { children: string }) => (
 const PanelHeader = ({
   title,
   action,
+  onAction,
 }: {
   title: string;
   action?: string;
+  onAction?: () => void;
 }) => (
   <header className="panel-header">
     <span>{title}</span>
     {action && (
-      <button className="icon-button" type="button" aria-label={action}>
+      <button
+        className="icon-button"
+        type="button"
+        aria-label={action}
+        onClick={onAction}
+      >
         {action}
       </button>
     )}
@@ -27,6 +35,9 @@ const PanelHeader = ({
 );
 
 export function App() {
+  const [pointDataset, setPointDataset] = useState<PointDataset | null>(null);
+  const [isLoadingData, setIsLoadingData] = useState(false);
+  const [dataError, setDataError] = useState("");
   const [maptilerKey, setMaptilerKey] = useState(() => {
     const environmentKey = import.meta.env.VITE_MAPTILER_API_KEY?.trim();
     return (
@@ -46,6 +57,29 @@ export function App() {
     setMaptilerKey("");
   };
 
+  const openLocationCsv = async () => {
+    if (!window.replaymod || isLoadingData) {
+      return;
+    }
+
+    setIsLoadingData(true);
+    setDataError("");
+
+    try {
+      const dataset = await window.replaymod.openLocationCsv();
+
+      if (dataset) {
+        setPointDataset(dataset);
+      }
+    } catch (error) {
+      setDataError(
+        error instanceof Error ? error.message : "载入 CSV 数据时发生未知错误。",
+      );
+    } finally {
+      setIsLoadingData(false);
+    }
+  };
+
   return (
     <main className="app-shell">
       <div className="map-background">
@@ -53,6 +87,7 @@ export function App() {
           <MapViewport
             apiKey={maptilerKey}
             onClearKey={clearMaptilerKey}
+            pointDataset={pointDataset}
           />
         ) : (
           <MapTokenSetup onSave={saveMaptilerKey} />
@@ -75,7 +110,7 @@ export function App() {
         </nav>
         <div className="project-state">
           <span className="status-dot" />
-          未载入工程
+          {pointDataset?.sourceName ?? "未载入工程"}
         </div>
       </header>
 
@@ -108,12 +143,30 @@ export function App() {
         </aside>
 
         <aside className="library-panel">
-          <PanelHeader title="工程工作区" action="+" />
+          <PanelHeader
+            title="工程工作区"
+            action="+"
+            onAction={() => void openLocationCsv()}
+          />
           <section className="library-section">
             <button className="section-label" type="button">
               <span>▼</span> 数据源
             </button>
-            <div className="empty-list">尚未载入数据</div>
+            <div className={pointDataset ? "data-source-item" : "empty-list"}>
+              {pointDataset ? (
+                <>
+                  <strong>{pointDataset.sourceName}</strong>
+                  <span>
+                    足迹{" "}
+                    {pointDataset.footprintPointCount.toLocaleString("zh-CN")}
+                    {" · "}照片{" "}
+                    {pointDataset.photoPointCount.toLocaleString("zh-CN")}
+                  </span>
+                </>
+              ) : (
+                "尚未载入数据"
+              )}
+            </div>
           </section>
           <section className="library-section">
             <button className="section-label" type="button">
@@ -127,9 +180,15 @@ export function App() {
             </button>
             <div className="empty-list">尚未创建输出任务</div>
           </section>
-          <button className="primary-action" type="button">
-            载入数据源
+          <button
+            className="primary-action"
+            type="button"
+            disabled={isLoadingData}
+            onClick={() => void openLocationCsv()}
+          >
+            {isLoadingData ? "正在读取 CSV..." : "载入数据源"}
           </button>
+          {dataError && <div className="data-error">{dataError}</div>}
         </aside>
 
         <section className="stage-column">
@@ -223,9 +282,17 @@ export function App() {
       </section>
 
       <footer className="statusbar">
-        <span className="ready-state">系统就绪</span>
+        <span className="ready-state">
+          {dataError
+            ? "数据载入失败"
+            : isLoadingData
+              ? "正在解析数据"
+              : "系统就绪"}
+        </span>
         <span className="status-spacer" />
-        <span>数据点 0</span>
+        <span>
+          数据点 {pointDataset?.pointCount.toLocaleString("zh-CN") ?? "0"}
+        </span>
         <span>处理节点 0</span>
         <span>{window.replaymod?.platform ?? "web-preview"}</span>
       </footer>
