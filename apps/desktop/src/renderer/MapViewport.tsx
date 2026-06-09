@@ -7,6 +7,15 @@ const FOOTPRINT_SOURCE_ID = "footprint-points";
 const FOOTPRINT_LAYER_ID = "footprint-points-circle";
 const PHOTO_SOURCE_ID = "photo-points";
 const PHOTO_LAYER_ID = "photo-points-circle";
+const CURRENT_POSITION_SOURCE_ID = "current-position";
+const CURRENT_POSITION_LAYER_ID = "current-position-circle";
+const KEYBOARD_PAN_DISTANCE = 120;
+
+const isEditableTarget = (target: EventTarget | null) =>
+  target instanceof HTMLInputElement ||
+  target instanceof HTMLTextAreaElement ||
+  target instanceof HTMLSelectElement ||
+  (target instanceof HTMLElement && target.isContentEditable);
 
 const toMultiPoint = (flatCoordinates: readonly number[]) => {
   const coordinates: [number, number][] = [];
@@ -28,16 +37,79 @@ const toMultiPoint = (flatCoordinates: readonly number[]) => {
   };
 };
 
+const lowerBound = (values: readonly number[], target: number) => {
+  let low = 0;
+  let high = values.length;
+
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+
+    if (values[middle] < target) {
+      low = middle + 1;
+    } else {
+      high = middle;
+    }
+  }
+
+  return low;
+};
+
+const interpolatePosition = (
+  timestamps: readonly number[],
+  coordinates: readonly number[],
+  currentTime: number,
+): [number, number] | null => {
+  if (timestamps.length === 0 || coordinates.length < timestamps.length * 2) {
+    return null;
+  }
+
+  const rightIndex = lowerBound(timestamps, currentTime);
+
+  if (rightIndex === 0) {
+    return [coordinates[0], coordinates[1]];
+  }
+
+  if (rightIndex >= timestamps.length) {
+    const lastCoordinateIndex = (timestamps.length - 1) * 2;
+    return [
+      coordinates[lastCoordinateIndex],
+      coordinates[lastCoordinateIndex + 1],
+    ];
+  }
+
+  const leftIndex = rightIndex - 1;
+  const leftTime = timestamps[leftIndex];
+  const rightTime = timestamps[rightIndex];
+  const duration = rightTime - leftTime;
+  const ratio =
+    duration <= 0 ? 1 : (currentTime - leftTime) / duration;
+  const leftCoordinateIndex = leftIndex * 2;
+  const rightCoordinateIndex = rightIndex * 2;
+
+  return [
+    coordinates[leftCoordinateIndex] +
+      (coordinates[rightCoordinateIndex] -
+        coordinates[leftCoordinateIndex]) *
+        ratio,
+    coordinates[leftCoordinateIndex + 1] +
+      (coordinates[rightCoordinateIndex + 1] -
+        coordinates[leftCoordinateIndex + 1]) *
+        ratio,
+  ];
+};
+
 interface MapViewportProps {
   apiKey: string;
   onClearKey: () => void;
   pointDataset: PointDataset | null;
+  currentTime: number | null;
 }
 
 export function MapViewport({
   apiKey,
   onClearKey,
   pointDataset,
+  currentTime,
 }: MapViewportProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -183,7 +255,7 @@ export function MapViewport({
         padding: {
           top: 84,
           right: 290,
-          bottom: 250,
+          bottom: 150,
           left: 320,
         },
         duration: 900,
@@ -191,6 +263,112 @@ export function MapViewport({
       },
     );
   }, [pointDataset, status]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+
+    if (
+      !map ||
+      status !== "ready" ||
+      !pointDataset ||
+      currentTime === null
+    ) {
+      return;
+    }
+
+    const position = interpolatePosition(
+      pointDataset.timelineTimestamps,
+      pointDataset.timelineCoordinates,
+      currentTime,
+    );
+
+    if (!position) {
+      return;
+    }
+
+    const geoJson = {
+      type: "Feature" as const,
+      properties: {
+        timestamp: currentTime,
+      },
+      geometry: {
+        type: "Point" as const,
+        coordinates: position,
+      },
+    };
+    const source = map.getSource(CURRENT_POSITION_SOURCE_ID);
+
+    if (source) {
+      (source as maplibregl.GeoJSONSource).setData(geoJson);
+      return;
+    }
+
+    map.addSource(CURRENT_POSITION_SOURCE_ID, {
+      type: "geojson",
+      data: geoJson,
+    });
+    map.addLayer({
+      id: CURRENT_POSITION_LAYER_ID,
+      type: "circle",
+      source: CURRENT_POSITION_SOURCE_ID,
+      paint: {
+        "circle-color": "#ff3030",
+        "circle-opacity": 1,
+        "circle-radius": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          1,
+          5,
+          8,
+          7,
+          14,
+          10,
+        ],
+        "circle-stroke-color": "#fff",
+        "circle-stroke-opacity": 0.95,
+        "circle-stroke-width": 2,
+      },
+    });
+  }, [currentTime, pointDataset, status]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const map = mapRef.current;
+
+      if (
+        !map ||
+        status !== "ready" ||
+        isEditableTarget(event.target) ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey
+      ) {
+        return;
+      }
+
+      const offsets: Record<string, [number, number]> = {
+        w: [0, -KEYBOARD_PAN_DISTANCE],
+        a: [-KEYBOARD_PAN_DISTANCE, 0],
+        s: [0, KEYBOARD_PAN_DISTANCE],
+        d: [KEYBOARD_PAN_DISTANCE, 0],
+      };
+      const offset = offsets[event.key.toLowerCase()];
+
+      if (!offset) {
+        return;
+      }
+
+      event.preventDefault();
+      map.panBy(offset, {
+        duration: event.repeat ? 0 : 110,
+        easing: (value) => value,
+      });
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [status]);
 
   return (
     <section className="viewport map-viewport">
@@ -236,6 +414,7 @@ export function MapViewport({
             ) : (
               <span>底图已连接，可以开始导入 CSV 数据。</span>
             )}
+            <span className="map-control-hint">WASD 移动 · 滚轮缩放</span>
           </div>
           <div className="viewport-badge">MAPTILER　在线</div>
         </>

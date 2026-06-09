@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { PointDataset } from "../../../../packages/data/src";
 import { MapTokenSetup, MapViewport } from "./MapViewport";
+import { Timeline } from "./Timeline";
 
 const MAPTILER_KEY_STORAGE_KEY = "replaymod.maptiler.api-key";
 
@@ -36,6 +37,7 @@ const PanelHeader = ({
 
 export function App() {
   const [pointDataset, setPointDataset] = useState<PointDataset | null>(null);
+  const [currentTime, setCurrentTime] = useState<number | null>(null);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [dataError, setDataError] = useState("");
   const [maptilerKey, setMaptilerKey] = useState(() => {
@@ -57,6 +59,44 @@ export function App() {
     setMaptilerKey("");
   };
 
+  useEffect(() => {
+    let isActive = true;
+
+    if (!window.replaymod) {
+      return;
+    }
+
+    setIsLoadingData(true);
+    window.replaymod
+      .loadDefaultLocationCsv()
+      .then((dataset) => {
+        if (!isActive || !dataset) {
+          return;
+        }
+
+        setPointDataset(dataset);
+        setCurrentTime(dataset.timeBounds[0]);
+      })
+      .catch((error: unknown) => {
+        if (isActive) {
+          setDataError(
+            error instanceof Error
+              ? error.message
+              : "自动载入 RawData 时发生未知错误。",
+          );
+        }
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsLoadingData(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
   const openLocationCsv = async () => {
     if (!window.replaymod || isLoadingData) {
       return;
@@ -70,6 +110,7 @@ export function App() {
 
       if (dataset) {
         setPointDataset(dataset);
+        setCurrentTime(dataset.timeBounds[0]);
       }
     } catch (error) {
       setDataError(
@@ -88,6 +129,7 @@ export function App() {
             apiKey={maptilerKey}
             onClearKey={clearMaptilerKey}
             pointDataset={pointDataset}
+            currentTime={currentTime}
           />
         ) : (
           <MapTokenSetup onSave={saveMaptilerKey} />
@@ -216,43 +258,11 @@ export function App() {
 
           <div className="map-interaction-area" aria-label="地图视图" />
 
-          <section className="timeline">
-            <header className="timeline-toolbar">
-              <div className="playback-controls">
-                <button type="button" aria-label="上一帧">
-                  |&lt;
-                </button>
-                <button className="play-button" type="button" aria-label="播放">
-                  &gt;
-                </button>
-                <button type="button" aria-label="下一帧">
-                  &gt;|
-                </button>
-              </div>
-              <span className="timecode">00:00:00.000</span>
-              <span className="timeline-title">回放时间线</span>
-              <div className="timeline-options">
-                <span>30 帧/秒</span>
-                <button type="button">适配</button>
-              </div>
-            </header>
-            <div className="timeline-body">
-              <div className="track-labels">
-                <span>轨迹层</span>
-                <span>处理层</span>
-              </div>
-              <div className="timeline-ruler">
-                <div className="ruler-labels">
-                  <span>00:00</span>
-                  <span>00:10</span>
-                  <span>00:20</span>
-                  <span>00:30</span>
-                </div>
-                <div className="playhead" />
-                <p>没有活动的回放序列</p>
-              </div>
-            </div>
-          </section>
+          <Timeline
+            dataset={pointDataset}
+            currentTime={currentTime}
+            onCurrentTimeChange={setCurrentTime}
+          />
         </section>
 
         <aside className="inspector-panel">
