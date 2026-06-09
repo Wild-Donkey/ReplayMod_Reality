@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, shell } from "electron";
 import path from "node:path";
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
@@ -18,6 +18,18 @@ const createWindow = (): void => {
       nodeIntegration: false,
       sandbox: true,
     },
+  });
+
+  mainWindow.webContents.setUserAgent(
+    `ReplayModReality/${app.getVersion()} (${process.platform}; Electron)`,
+  );
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith("https://")) {
+      void shell.openExternal(url);
+    }
+
+    return { action: "deny" };
   });
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {

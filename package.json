@@ -14,6 +14,7 @@
   "author": "",
   "license": "UNLICENSED",
   "dependencies": {
+    "maplibre-gl": "^5.24.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },

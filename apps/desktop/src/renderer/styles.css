@@ -443,6 +443,7 @@ button:focus-visible {
 
 .viewport-badge {
   position: absolute;
+  z-index: 3;
   right: 10px;
   bottom: 9px;
   padding: 4px 7px;
@@ -450,6 +451,195 @@ button:focus-visible {
   background: rgb(0 0 0 / 68%);
   font-family: Consolas, monospace;
   font-size: 9px;
+}
+
+.map-viewport,
+.token-setup {
+  display: block;
+}
+
+.map-container {
+  position: absolute;
+  inset: 0;
+}
+
+.map-message,
+.map-data-state {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  color: #aaa;
+  background: rgb(5 5 5 / 82%);
+}
+
+.map-message {
+  top: 50%;
+  left: 50%;
+  min-width: 260px;
+  padding: 19px 22px;
+  border-left: 2px solid #eee;
+  transform: translate(-50%, -50%);
+}
+
+.map-message strong,
+.map-data-state strong {
+  color: #eee;
+  font-size: 12px;
+}
+
+.map-message span,
+.map-data-state span {
+  margin-top: 6px;
+  font-size: 10px;
+}
+
+.map-error {
+  border-left-color: #d93232;
+}
+
+.map-message button {
+  align-self: flex-start;
+  height: 29px;
+  margin-top: 14px;
+  padding: 0 12px;
+  color: #111;
+  background: #eee;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.map-data-state {
+  top: 12px;
+  left: 12px;
+  padding: 10px 12px;
+  border-left: 2px solid #eee;
+  pointer-events: none;
+}
+
+.token-setup {
+  background:
+    linear-gradient(rgb(255 255 255 / 3%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 3%) 1px, transparent 1px),
+    #202020;
+  background-size: 64px 64px;
+}
+
+.token-panel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  width: min(430px, calc(100% - 48px));
+  flex-direction: column;
+  padding: 25px 27px 23px;
+  border-top: 2px solid #eee;
+  background: rgb(5 5 5 / 88%);
+  transform: translate(-50%, -50%);
+}
+
+.token-kicker {
+  color: #777;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+.token-panel h1 {
+  margin: 7px 0 8px;
+  color: #f4f4f4;
+  font-size: 20px;
+}
+
+.token-panel p {
+  margin: 0 0 18px;
+  color: #8d8d8d;
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.token-panel code {
+  color: #ddd;
+  font-family: Consolas, monospace;
+}
+
+.token-panel label {
+  margin-bottom: 6px;
+  color: #777;
+  font-family: Consolas, monospace;
+  font-size: 9px;
+}
+
+.token-panel input {
+  height: 35px;
+  padding: 0 10px;
+  border: 1px solid #4a4a4a;
+  outline: 0;
+  color: #eee;
+  background: #111;
+  font-family: Consolas, monospace;
+  font-size: 11px;
+}
+
+.token-panel input:focus {
+  border-color: #eee;
+}
+
+.token-panel button {
+  height: 34px;
+  margin-top: 10px;
+  color: #111;
+  background: #eee;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.token-panel button:disabled {
+  color: #666;
+  background: #292929;
+}
+
+.token-panel a {
+  align-self: flex-start;
+  margin-top: 14px;
+  color: #888;
+  font-size: 10px;
+  text-decoration: none;
+}
+
+.token-panel a:hover {
+  color: #eee;
+}
+
+.maplibregl-ctrl-group {
+  border: 1px solid rgb(255 255 255 / 22%);
+  box-shadow: none;
+  background: rgb(8 8 8 / 82%);
+}
+
+.maplibregl-ctrl-group button + button {
+  border-top-color: rgb(255 255 255 / 16%);
+}
+
+.maplibregl-ctrl-group button:hover {
+  background-color: #eee;
+}
+
+.maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  filter: invert(1);
+}
+
+.maplibregl-ctrl-group button:hover .maplibregl-ctrl-icon {
+  filter: none;
+}
+
+.maplibregl-ctrl-attrib {
+  color: #aaa;
+  background: rgb(8 8 8 / 74%);
+}
+
+.maplibregl-ctrl-attrib a {
+  color: #ddd;
 }
 
 .timeline {

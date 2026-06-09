@@ -1,3 +1,8 @@
+import { useState } from "react";
+import { MapTokenSetup, MapViewport } from "./MapViewport";
+
+const MAPTILER_KEY_STORAGE_KEY = "replaymod.maptiler.api-key";
+
 const Icon = ({ children }: { children: string }) => (
   <span className="icon" aria-hidden="true">
     {children}
@@ -22,6 +27,25 @@ const PanelHeader = ({
 );
 
 export function App() {
+  const [maptilerKey, setMaptilerKey] = useState(() => {
+    const environmentKey = import.meta.env.VITE_MAPTILER_API_KEY?.trim();
+    return (
+      environmentKey ??
+      window.localStorage.getItem(MAPTILER_KEY_STORAGE_KEY) ??
+      ""
+    );
+  });
+
+  const saveMaptilerKey = (key: string) => {
+    window.localStorage.setItem(MAPTILER_KEY_STORAGE_KEY, key);
+    setMaptilerKey(key);
+  };
+
+  const clearMaptilerKey = () => {
+    window.localStorage.removeItem(MAPTILER_KEY_STORAGE_KEY);
+    setMaptilerKey("");
+  };
+
   return (
     <main className="app-shell">
       <header className="titlebar">
@@ -120,20 +144,14 @@ export function App() {
             <div className="zoom-readout">100%</div>
           </header>
 
-          <section className="viewport">
-            <div className="viewport-grid" />
-            <div className="empty-canvas">
-              <div className="empty-symbol">
-                <span />
-                <span />
-                <span />
-              </div>
-              <h1>当前没有可显示的数据</h1>
-              <p>载入 CSV 数据源，开始构建轨迹处理管线。</p>
-              <button type="button">载入数据源</button>
-            </div>
-            <div className="viewport-badge">视界 IR　待机</div>
-          </section>
+          {maptilerKey ? (
+            <MapViewport
+              apiKey={maptilerKey}
+              onClearKey={clearMaptilerKey}
+            />
+          ) : (
+            <MapTokenSetup onSave={saveMaptilerKey} />
+          )}
 
           <section className="timeline">
             <header className="timeline-toolbar">
