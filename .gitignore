@@ -1,0 +1,11 @@
+RawData/*
+!RawData/.gitkeep
+node_modules/
+.vite/
+out/
+dist/
+*.log
+.DS_Store
+Thumbs.db
+*/build/*
+*/tmp/*
