@@ -48,6 +48,17 @@ export function App() {
 
   return (
     <main className="app-shell">
+      <div className="map-background">
+        {maptilerKey ? (
+          <MapViewport
+            apiKey={maptilerKey}
+            onClearKey={clearMaptilerKey}
+          />
+        ) : (
+          <MapTokenSetup onSave={saveMaptilerKey} />
+        )}
+      </div>
+
       <header className="titlebar">
         <div className="brand">
           <span className="brand-mark">R</span>
@@ -144,14 +155,7 @@ export function App() {
             <div className="zoom-readout">100%</div>
           </header>
 
-          {maptilerKey ? (
-            <MapViewport
-              apiKey={maptilerKey}
-              onClearKey={clearMaptilerKey}
-            />
-          ) : (
-            <MapTokenSetup onSave={saveMaptilerKey} />
-          )}
+          <div className="map-interaction-area" aria-label="地图视图" />
 
           <section className="timeline">
             <header className="timeline-toolbar">
