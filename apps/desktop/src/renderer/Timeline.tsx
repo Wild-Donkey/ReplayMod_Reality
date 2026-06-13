@@ -450,12 +450,19 @@ interface TimelineProps {
   dataset: PointDataset | null;
   currentTime: number | null;
   onCurrentTimeChange: (timestamp: number) => void;
+  focusRequest: TimelineFocusRequest | null;
+}
+
+export interface TimelineFocusRequest {
+  readonly timestamp: number;
+  readonly sequence: number;
 }
 
 export function Timeline({
   dataset,
   currentTime,
   onCurrentTimeChange,
+  focusRequest,
 }: TimelineProps) {
   const timelineRef = useRef<HTMLElement>(null);
   const pressedPanKeysRef = useRef(new Set<"q" | "e">());
@@ -467,6 +474,24 @@ export function Timeline({
   useEffect(() => {
     setViewRange(dataset?.timeBounds ?? null);
   }, [dataset]);
+
+  useEffect(() => {
+    if (!dataset || !focusRequest) {
+      return;
+    }
+
+    setViewRange((currentRange) => {
+      const span = currentRange
+        ? currentRange[1] - currentRange[0]
+        : dataset.timeBounds[1] - dataset.timeBounds[0];
+
+      return clampRange(
+        focusRequest.timestamp - span / 2,
+        span,
+        dataset.timeBounds,
+      );
+    });
+  }, [dataset, focusRequest]);
 
   useEffect(() => {
     const stopPanAnimation = () => {

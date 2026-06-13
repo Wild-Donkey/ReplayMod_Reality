@@ -468,6 +468,10 @@ button:focus-visible {
   inset: 0;
 }
 
+.map-container .maplibregl-canvas {
+  cursor: default;
+}
+
 .map-message,
 .map-data-state {
   position: absolute;

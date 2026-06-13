@@ -9,7 +9,8 @@ const PHOTO_SOURCE_ID = "photo-points";
 const PHOTO_LAYER_ID = "photo-points-circle";
 const CURRENT_POSITION_SOURCE_ID = "current-position";
 const CURRENT_POSITION_LAYER_ID = "current-position-circle";
-const KEYBOARD_PAN_DISTANCE = 120;
+const KEYBOARD_PAN_SPEED = 680;
+const POINT_HIT_RADIUS = 12;
 
 const isEditableTarget = (target: EventTarget | null) =>
   target instanceof HTMLInputElement ||
@@ -98,9 +99,94 @@ const interpolatePosition = (
   ];
 };
 
+const normalizeLongitudeDelta = (longitude: number, reference: number) =>
+  ((longitude - reference + 540) % 360) - 180;
+
+const findNearestPointTimestamp = (
+  map: maplibregl.Map,
+  point: maplibregl.Point,
+  pointDataset: PointDataset,
+) => {
+  const clickLocation = map.unproject(point);
+  const topLeft = map.unproject([
+    point.x - POINT_HIT_RADIUS,
+    point.y - POINT_HIT_RADIUS,
+  ]);
+  const bottomRight = map.unproject([
+    point.x + POINT_HIT_RADIUS,
+    point.y + POINT_HIT_RADIUS,
+  ]);
+  const maximumLongitudeDelta = Math.max(
+    Math.abs(normalizeLongitudeDelta(topLeft.lng, clickLocation.lng)),
+    Math.abs(normalizeLongitudeDelta(bottomRight.lng, clickLocation.lng)),
+  );
+  const minimumLatitude = Math.min(topLeft.lat, bottomRight.lat);
+  const maximumLatitude = Math.max(topLeft.lat, bottomRight.lat);
+  let nearestTimestamp: number | null = null;
+  let nearestDistanceSquared = POINT_HIT_RADIUS * POINT_HIT_RADIUS;
+  let nearestPriority = -1;
+
+  const inspectPoints = (
+    coordinates: readonly number[],
+    timestamps: readonly number[],
+    priority: number,
+  ) => {
+    const pointCount = Math.min(
+      timestamps.length,
+      Math.floor(coordinates.length / 2),
+    );
+
+    for (let index = 0; index < pointCount; index += 1) {
+      const coordinateIndex = index * 2;
+      const longitude = coordinates[coordinateIndex];
+      const latitude = coordinates[coordinateIndex + 1];
+
+      if (
+        latitude < minimumLatitude ||
+        latitude > maximumLatitude ||
+        Math.abs(normalizeLongitudeDelta(longitude, clickLocation.lng)) >
+          maximumLongitudeDelta
+      ) {
+        continue;
+      }
+
+      const projectedPoint = map.project([longitude, latitude]);
+      const horizontalDistance = projectedPoint.x - point.x;
+      const verticalDistance = projectedPoint.y - point.y;
+      const distanceSquared =
+        horizontalDistance * horizontalDistance +
+        verticalDistance * verticalDistance;
+
+      if (
+        distanceSquared < nearestDistanceSquared ||
+        (distanceSquared === nearestDistanceSquared &&
+          priority > nearestPriority)
+      ) {
+        nearestTimestamp = timestamps[index];
+        nearestDistanceSquared = distanceSquared;
+        nearestPriority = priority;
+      }
+    }
+  };
+
+  inspectPoints(
+    pointDataset.footprintCoordinates,
+    pointDataset.footprintTimestamps,
+    0,
+  );
+  inspectPoints(
+    pointDataset.photoCoordinates,
+    pointDataset.photoTimestamps,
+    1,
+  );
+
+  return nearestTimestamp;
+};
+
 interface MapViewportProps {
   apiKey: string;
   onClearKey: () => void;
+  onPointSelect: (timestamp: number) => void;
   pointDataset: PointDataset | null;
   currentTime: number | null;
 }
@@ -108,6 +194,7 @@ interface MapViewportProps {
 export function MapViewport({
   apiKey,
   onClearKey,
+  onPointSelect,
   pointDataset,
   currentTime,
 }: MapViewportProps) {
@@ -136,6 +223,10 @@ export function MapViewport({
         '"Microsoft YaHei UI", "Microsoft YaHei", sans-serif',
     });
     mapRef.current = map;
+    map.dragPan.disable();
+    map.dragRotate.disable();
+    map.boxZoom.disable();
+    map.doubleClickZoom.disable();
 
     map.addControl(
       new maplibregl.NavigationControl({
@@ -333,11 +424,91 @@ export function MapViewport({
   }, [currentTime, pointDataset, status]);
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
+    const map = mapRef.current;
+
+    if (!map || status !== "ready" || !pointDataset) {
+      return;
+    }
+
+    const handleClick = (event: maplibregl.MapMouseEvent) => {
+      const timestamp = findNearestPointTimestamp(
+        map,
+        event.point,
+        pointDataset,
+      );
+
+      if (timestamp !== null) {
+        onPointSelect(timestamp);
+      }
+    };
+
+    map.on("click", handleClick);
+    return () => {
+      map.off("click", handleClick);
+    };
+  }, [onPointSelect, pointDataset, status]);
+
+  useEffect(() => {
+    const pressedKeys = new Set<"w" | "a" | "s" | "d">();
+    let animationFrame: number | null = null;
+    let previousFrameTime: number | null = null;
+
+    const stopAnimation = () => {
+      if (animationFrame !== null) {
+        cancelAnimationFrame(animationFrame);
+        animationFrame = null;
+      }
+
+      previousFrameTime = null;
+    };
+
+    const runPanFrame = (frameTime: number) => {
       const map = mapRef.current;
 
+      if (!map || status !== "ready" || pressedKeys.size === 0) {
+        stopAnimation();
+        return;
+      }
+
+      const previousTime = previousFrameTime ?? frameTime;
+      const deltaSeconds = Math.min(
+        Math.max((frameTime - previousTime) / 1000, 0),
+        0.05,
+      );
+      previousFrameTime = frameTime;
+
+      const horizontal =
+        (pressedKeys.has("d") ? 1 : 0) - (pressedKeys.has("a") ? 1 : 0);
+      const vertical =
+        (pressedKeys.has("s") ? 1 : 0) - (pressedKeys.has("w") ? 1 : 0);
+      const length = Math.hypot(horizontal, vertical);
+
+      if (length > 0 && deltaSeconds > 0) {
+        const distance = KEYBOARD_PAN_SPEED * deltaSeconds;
+        map.panBy(
+          [
+            (horizontal / length) * distance,
+            (vertical / length) * distance,
+          ],
+          {
+            duration: 0,
+          },
+        );
+      }
+
+      animationFrame = requestAnimationFrame(runPanFrame);
+    };
+
+    const startAnimation = () => {
+      if (animationFrame === null) {
+        previousFrameTime = null;
+        animationFrame = requestAnimationFrame(runPanFrame);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
       if (
-        !map ||
+        !mapRef.current ||
         status !== "ready" ||
         isEditableTarget(event.target) ||
         event.ctrlKey ||
@@ -347,27 +518,47 @@ export function MapViewport({
         return;
       }
 
-      const offsets: Record<string, [number, number]> = {
-        w: [0, -KEYBOARD_PAN_DISTANCE],
-        a: [-KEYBOARD_PAN_DISTANCE, 0],
-        s: [0, KEYBOARD_PAN_DISTANCE],
-        d: [KEYBOARD_PAN_DISTANCE, 0],
-      };
-      const offset = offsets[event.key.toLowerCase()];
+      const key = event.key.toLowerCase();
 
-      if (!offset) {
+      if (key !== "w" && key !== "a" && key !== "s" && key !== "d") {
         return;
       }
 
       event.preventDefault();
-      map.panBy(offset, {
-        duration: event.repeat ? 0 : 110,
-        easing: (value) => value,
-      });
+      pressedKeys.add(key);
+      startAnimation();
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase();
+
+      if (key !== "w" && key !== "a" && key !== "s" && key !== "d") {
+        return;
+      }
+
+      pressedKeys.delete(key);
+
+      if (pressedKeys.size === 0) {
+        stopAnimation();
+      }
+    };
+
+    const handleBlur = () => {
+      pressedKeys.clear();
+      stopAnimation();
     };
 
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleBlur);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleBlur);
+      pressedKeys.clear();
+      stopAnimation();
+    };
   }, [status]);
 
   return (
@@ -414,7 +605,9 @@ export function MapViewport({
             ) : (
               <span>底图已连接，可以开始导入 CSV 数据。</span>
             )}
-            <span className="map-control-hint">WASD 移动 · 滚轮缩放</span>
+            <span className="map-control-hint">
+              点击数据点定位 · 按住 WASD 移动 · 滚轮缩放
+            </span>
           </div>
           <div className="viewport-badge">MAPTILER　在线</div>
         </>

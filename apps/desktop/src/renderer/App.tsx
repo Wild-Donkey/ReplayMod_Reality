@@ -1,7 +1,10 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { PointDataset } from "../../../../packages/data/src";
 import { MapTokenSetup, MapViewport } from "./MapViewport";
-import { Timeline } from "./Timeline";
+import {
+  Timeline,
+  type TimelineFocusRequest,
+} from "./Timeline";
 
 const MAPTILER_KEY_STORAGE_KEY = "replaymod.maptiler.api-key";
 
@@ -38,6 +41,9 @@ const PanelHeader = ({
 export function App() {
   const [pointDataset, setPointDataset] = useState<PointDataset | null>(null);
   const [currentTime, setCurrentTime] = useState<number | null>(null);
+  const [timelineFocusRequest, setTimelineFocusRequest] =
+    useState<TimelineFocusRequest | null>(null);
+  const timelineFocusSequenceRef = useRef(0);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [dataError, setDataError] = useState("");
   const [maptilerKey, setMaptilerKey] = useState(() => {
@@ -59,6 +65,15 @@ export function App() {
     setMaptilerKey("");
   };
 
+  const selectMapPoint = useCallback((timestamp: number) => {
+    timelineFocusSequenceRef.current += 1;
+    setCurrentTime(timestamp);
+    setTimelineFocusRequest({
+      timestamp,
+      sequence: timelineFocusSequenceRef.current,
+    });
+  }, []);
+
   useEffect(() => {
     let isActive = true;
 
@@ -76,6 +91,7 @@ export function App() {
 
         setPointDataset(dataset);
         setCurrentTime(dataset.timeBounds[0]);
+        setTimelineFocusRequest(null);
       })
       .catch((error: unknown) => {
         if (isActive) {
@@ -111,6 +127,7 @@ export function App() {
       if (dataset) {
         setPointDataset(dataset);
         setCurrentTime(dataset.timeBounds[0]);
+        setTimelineFocusRequest(null);
       }
     } catch (error) {
       setDataError(
@@ -128,6 +145,7 @@ export function App() {
           <MapViewport
             apiKey={maptilerKey}
             onClearKey={clearMaptilerKey}
+            onPointSelect={selectMapPoint}
             pointDataset={pointDataset}
             currentTime={currentTime}
           />
@@ -262,6 +280,7 @@ export function App() {
             dataset={pointDataset}
             currentTime={currentTime}
             onCurrentTimeChange={setCurrentTime}
+            focusRequest={timelineFocusRequest}
           />
         </section>
 
