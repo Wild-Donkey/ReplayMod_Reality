@@ -12,6 +12,40 @@ const PAN_SPEED_PER_SECOND = 0.55;
 const PAN_ACCELERATION = 11;
 const PAN_DECELERATION = 8;
 const PAN_STOP_THRESHOLD = 0.001;
+const TARGET_TICK_SPACING = 105;
+
+type TickUnit = "minute" | "hour" | "day" | "month" | "year";
+
+interface TickScale {
+  readonly unit: TickUnit;
+  readonly step: number;
+  readonly approximateMilliseconds: number;
+}
+
+const TICK_SCALES: readonly TickScale[] = [
+  { unit: "minute", step: 1, approximateMilliseconds: 60_000 },
+  { unit: "minute", step: 2, approximateMilliseconds: 120_000 },
+  { unit: "minute", step: 5, approximateMilliseconds: 300_000 },
+  { unit: "minute", step: 10, approximateMilliseconds: 600_000 },
+  { unit: "minute", step: 15, approximateMilliseconds: 900_000 },
+  { unit: "minute", step: 30, approximateMilliseconds: 1_800_000 },
+  { unit: "hour", step: 1, approximateMilliseconds: 3_600_000 },
+  { unit: "hour", step: 2, approximateMilliseconds: 7_200_000 },
+  { unit: "hour", step: 3, approximateMilliseconds: 10_800_000 },
+  { unit: "hour", step: 6, approximateMilliseconds: 21_600_000 },
+  { unit: "hour", step: 12, approximateMilliseconds: 43_200_000 },
+  { unit: "day", step: 1, approximateMilliseconds: 86_400_000 },
+  { unit: "day", step: 2, approximateMilliseconds: 172_800_000 },
+  { unit: "day", step: 7, approximateMilliseconds: 604_800_000 },
+  { unit: "day", step: 14, approximateMilliseconds: 1_209_600_000 },
+  { unit: "month", step: 1, approximateMilliseconds: 2_629_746_000 },
+  { unit: "month", step: 2, approximateMilliseconds: 5_259_492_000 },
+  { unit: "month", step: 3, approximateMilliseconds: 7_889_238_000 },
+  { unit: "month", step: 6, approximateMilliseconds: 15_778_476_000 },
+  { unit: "year", step: 1, approximateMilliseconds: 31_556_952_000 },
+  { unit: "year", step: 2, approximateMilliseconds: 63_113_904_000 },
+  { unit: "year", step: 5, approximateMilliseconds: 157_784_760_000 },
+];
 
 const isEditableTarget = (target: EventTarget | null) =>
   target instanceof HTMLInputElement ||
@@ -52,6 +86,116 @@ const formatTimelineDate = (timestamp: number, span: number) => {
   return date.toLocaleString("zh-CN", {
     month: "2-digit",
     day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+};
+
+const chooseTickScale = (span: number, width: number) => {
+  const desiredTickCount = Math.max(
+    2,
+    Math.floor(width / TARGET_TICK_SPACING),
+  );
+  const desiredInterval = span / desiredTickCount;
+
+  return (
+    TICK_SCALES.find(
+      (scale) => scale.approximateMilliseconds >= desiredInterval,
+    ) ?? TICK_SCALES[TICK_SCALES.length - 1]
+  );
+};
+
+const floorTick = (timestamp: number, scale: TickScale) => {
+  const date = new Date(timestamp);
+
+  if (scale.unit === "minute") {
+    date.setSeconds(0, 0);
+    date.setMinutes(
+      Math.floor(date.getMinutes() / scale.step) * scale.step,
+    );
+  } else if (scale.unit === "hour") {
+    date.setMinutes(0, 0, 0);
+    date.setHours(Math.floor(date.getHours() / scale.step) * scale.step);
+  } else if (scale.unit === "day") {
+    const localDayIndex = Math.floor(
+      Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) /
+        86_400_000,
+    );
+    const alignedDayIndex =
+      Math.floor(localDayIndex / scale.step) * scale.step;
+    const alignedDate = new Date(alignedDayIndex * 86_400_000);
+    date.setFullYear(
+      alignedDate.getUTCFullYear(),
+      alignedDate.getUTCMonth(),
+      alignedDate.getUTCDate(),
+    );
+    date.setHours(0, 0, 0, 0);
+  } else if (scale.unit === "month") {
+    date.setHours(0, 0, 0, 0);
+    date.setDate(1);
+    date.setMonth(Math.floor(date.getMonth() / scale.step) * scale.step);
+  } else {
+    date.setHours(0, 0, 0, 0);
+    date.setMonth(0, 1);
+    date.setFullYear(
+      Math.floor(date.getFullYear() / scale.step) * scale.step,
+    );
+  }
+
+  return date.getTime();
+};
+
+const advanceTick = (timestamp: number, scale: TickScale) => {
+  const date = new Date(timestamp);
+
+  if (scale.unit === "minute") {
+    date.setMinutes(date.getMinutes() + scale.step);
+  } else if (scale.unit === "hour") {
+    date.setHours(date.getHours() + scale.step);
+  } else if (scale.unit === "day") {
+    date.setDate(date.getDate() + scale.step);
+  } else if (scale.unit === "month") {
+    date.setMonth(date.getMonth() + scale.step);
+  } else {
+    date.setFullYear(date.getFullYear() + scale.step);
+  }
+
+  return date.getTime();
+};
+
+const formatTickLabel = (timestamp: number, scale: TickScale) => {
+  const date = new Date(timestamp);
+
+  if (scale.unit === "year") {
+    return `${date.getFullYear()}`;
+  }
+
+  if (scale.unit === "month") {
+    return date.toLocaleDateString("zh-CN", {
+      year: "2-digit",
+      month: "2-digit",
+    });
+  }
+
+  if (scale.unit === "day") {
+    return date.toLocaleDateString("zh-CN", {
+      month: "2-digit",
+      day: "2-digit",
+    });
+  }
+
+  if (scale.unit === "hour") {
+    return date.toLocaleString("zh-CN", {
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+  }
+
+  return date.toLocaleTimeString("zh-CN", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
@@ -112,7 +256,7 @@ const drawPointTrack = (
 
   for (let x = 0; x < occupiedPixels.length; x += 1) {
     if (occupiedPixels[x] === 1) {
-    context.fillRect(x, centerY - 8, pointWidth, 16);
+      context.fillRect(x, centerY - 8, pointWidth, 16);
     }
   }
 };
@@ -176,16 +320,6 @@ function TimelineCanvas({
 
     const rulerHeight = 18;
     const trackHeight = (size.height - rulerHeight) / 2;
-    context.strokeStyle = "rgb(255 255 255 / 10%)";
-    context.lineWidth = 1;
-
-    for (let index = 0; index <= 6; index += 1) {
-      const x = (index / 6) * size.width;
-      context.beginPath();
-      context.moveTo(x, rulerHeight);
-      context.lineTo(x, size.height);
-      context.stroke();
-    }
 
     context.fillStyle = "rgb(255 255 255 / 4%)";
     context.fillRect(0, rulerHeight, size.width, trackHeight);
@@ -206,16 +340,34 @@ function TimelineCanvas({
 
     const [start, end] = viewRange;
     const span = end - start;
+    const tickScale = chooseTickScale(span, size.width);
+    let tick = floorTick(start, tickScale);
+
+    if (tick < start) {
+      tick = advanceTick(tick, tickScale);
+    }
+
+    context.strokeStyle = "rgb(255 255 255 / 13%)";
+    context.lineWidth = 1;
     context.fillStyle = "#888";
     context.font = '10px Consolas, "Microsoft YaHei UI", monospace';
 
-    for (let index = 0; index <= 6; index += 1) {
-      const ratio = index / 6;
-      const timestamp = start + span * ratio;
-      const x = ratio * size.width;
-      context.textAlign =
-        index === 0 ? "left" : index === 6 ? "right" : "center";
-      context.fillText(formatTimelineDate(timestamp, span), x, 13);
+    while (tick <= end) {
+      const x = ((tick - start) / span) * size.width;
+      context.beginPath();
+      context.moveTo(Math.round(x) + 0.5, rulerHeight);
+      context.lineTo(Math.round(x) + 0.5, size.height);
+      context.stroke();
+      context.textAlign = "center";
+      context.fillText(formatTickLabel(tick, tickScale), x, 13);
+
+      const nextTick = advanceTick(tick, tickScale);
+
+      if (nextTick <= tick) {
+        break;
+      }
+
+      tick = nextTick;
     }
 
     drawPointTrack(
