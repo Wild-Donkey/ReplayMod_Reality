@@ -125,19 +125,14 @@ export interface OrientationSample extends TimedSample {
 export interface PlaybackRateOptions {
   readonly minimumRate: number;
   readonly maximumRate: number;
-  readonly angularSpeedPivot: number;
-  readonly curvePower: number;
+  readonly angularSpeedForMaximumRate: number;
+  readonly angularSpeedForMinimumRate: number;
   readonly windowSeconds: number;
   readonly ignoredRotationAmplitudeDegrees: number;
   readonly fullRotationAmplitudeDegrees: number;
   readonly sampleIntervalSeconds: number;
-  readonly stableAngularSpeedThreshold: number;
-  readonly fullRotationAngularSpeedThreshold: number;
-  readonly stableHoldSeconds: number;
-  readonly minimumAcceleratedStableRunSeconds: number;
-  readonly transientMaximumRate: number;
   readonly speedUpTimeSeconds: number;
-  readonly slowDownTimeSeconds: number;
+  readonly slowDownLookAheadSeconds: number;
 }
 
 export interface DynamicRenderOptions {

@@ -7,20 +7,15 @@ import type {
 
 export const defaultPlaybackRateOptions: PlaybackRateOptions = {
   minimumRate: 1,
-  maximumRate: 8,
-  angularSpeedPivot: 18,
-  curvePower: 2.4,
+  maximumRate: 5,
+  angularSpeedForMaximumRate: 30,
+  angularSpeedForMinimumRate: 150,
   windowSeconds: 0.6,
-  ignoredRotationAmplitudeDegrees: 4,
-  fullRotationAmplitudeDegrees: 10,
+  ignoredRotationAmplitudeDegrees: 10,
+  fullRotationAmplitudeDegrees: 20,
   sampleIntervalSeconds: 0.25,
-  stableAngularSpeedThreshold: 16,
-  fullRotationAngularSpeedThreshold: 30,
-  stableHoldSeconds: 4,
-  minimumAcceleratedStableRunSeconds: 8,
-  transientMaximumRate: 1.5,
-  speedUpTimeSeconds: 0.75,
-  slowDownTimeSeconds: 0.04,
+  speedUpTimeSeconds: 0.5,
+  slowDownLookAheadSeconds: 0.2,
 };
 
 const quaternionAngle = (
@@ -43,22 +38,32 @@ const quaternionAngularSpeed = (
   return elapsed > 0 ? quaternionAngle(left, right) / elapsed : 0;
 };
 
-const smoothRates = (
+const prioritizeLowerRates = (
   samples: PlaybackRateSample[],
   speedUpTimeSeconds: number,
-  slowDownTimeSeconds: number,
+  slowDownLookAheadSeconds: number,
 ) => {
   if (samples.length < 2) return samples;
   const interval = samples[1].timeSeconds - samples[0].timeSeconds;
-  const forward = samples.map((sample) => ({ ...sample }));
+  const lookAheadSamples = Math.ceil(slowDownLookAheadSeconds / interval);
+  const anticipated = samples.map((sample, index) => ({
+    ...sample,
+    rate: Math.min(
+      ...samples
+        .slice(index, index + lookAheadSamples + 1)
+        .map((candidate) => candidate.rate),
+    ),
+  }));
+  const forward = anticipated.map((sample) => ({ ...sample }));
+  const fullRange = Math.max(0, Math.max(...samples.map((sample) => sample.rate)) - 1);
+  const maximumRisePerSample = speedUpTimeSeconds <= 0
+    ? Number.POSITIVE_INFINITY
+    : fullRange * interval / speedUpTimeSeconds;
   for (let index = 1; index < forward.length; index += 1) {
-    const isSpeedingUp = forward[index].rate > forward[index - 1].rate;
-    const timeConstant = isSpeedingUp ? speedUpTimeSeconds : slowDownTimeSeconds;
-    const alpha = timeConstant <= 0 ? 1 : 1 - Math.exp(-interval / timeConstant);
-    forward[index] = {
-      ...forward[index],
-      rate: forward[index - 1].rate + alpha * (forward[index].rate - forward[index - 1].rate),
-    };
+    forward[index].rate = Math.min(
+      forward[index].rate,
+      forward[index - 1].rate + maximumRisePerSample,
+    );
   }
   return forward;
 };
@@ -103,59 +108,34 @@ export const buildPlaybackRateTrack = (
     metrics.push({ timeSeconds: time, rms, amplitude, effectiveRms });
   }
 
-  const stableRunDurations = Array<number>(metrics.length).fill(0);
-  for (let start = 0; start < metrics.length;) {
-    if (metrics[start].effectiveRms > options.stableAngularSpeedThreshold) {
-      start += 1;
-      continue;
-    }
-    let end = start + 1;
-    while (
-      end < metrics.length &&
-      metrics[end].effectiveRms <= options.stableAngularSpeedThreshold
-    ) end += 1;
-    const duration = (end - start) * options.sampleIntervalSeconds;
-    for (let index = start; index < end; index += 1) stableRunDurations[index] = duration;
-    start = end;
+  const angularSpeedRange =
+    options.angularSpeedForMinimumRate - options.angularSpeedForMaximumRate;
+  if (angularSpeedRange <= 0) {
+    throw new Error("最低倍率的角速度阈值必须高于最高倍率的阈值。");
   }
-
-  const samples: PlaybackRateSample[] = [];
-  let stableDuration = 0;
-  metrics.forEach((metric, index) => {
+  const samples: PlaybackRateSample[] = metrics.map((metric) => {
     const { timeSeconds, amplitude, effectiveRms } = metric;
-    const normalized = Math.pow(
-      effectiveRms / options.angularSpeedPivot,
-      options.curvePower,
-    );
-    const unconstrainedRate = options.minimumRate +
-      (options.maximumRate - options.minimumRate) / (1 + normalized);
-    stableDuration = effectiveRms <= options.stableAngularSpeedThreshold
-      ? stableDuration + options.sampleIntervalSeconds
-      : 0;
-    const sustainedStableSeconds = Math.max(0, stableDuration - options.stableHoldSeconds);
-    const stableBlend = stableRunDurations[index] >= options.minimumAcceleratedStableRunSeconds
-      ? 1 - Math.exp(-sustainedStableSeconds / options.speedUpTimeSeconds)
-      : 0;
-    const transientRate = Math.min(unconstrainedRate, options.transientMaximumRate);
-    const rate = effectiveRms >= options.fullRotationAngularSpeedThreshold
-      ? options.minimumRate
-      : transientRate + stableBlend * (unconstrainedRate - transientRate);
-    samples.push({
+    const rotationBlend = Math.min(1, Math.max(0,
+      (effectiveRms - options.angularSpeedForMaximumRate) / angularSpeedRange,
+    ));
+    const rate = options.maximumRate -
+      rotationBlend * (options.maximumRate - options.minimumRate);
+    return {
       timeSeconds,
       rate,
       angularSpeedDegreesPerSecond: effectiveRms,
       rotationAmplitudeDegrees: amplitude,
-    });
+    };
   });
 
   return {
     id: "playback-rate",
     name: "播放倍率",
     timeBase: "source",
-    samples: smoothRates(
+    samples: prioritizeLowerRates(
       samples,
       options.speedUpTimeSeconds,
-      options.slowDownTimeSeconds,
+      options.slowDownLookAheadSeconds,
     ),
   };
 };
