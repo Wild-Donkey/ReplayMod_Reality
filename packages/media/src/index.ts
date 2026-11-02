@@ -4,7 +4,8 @@ export { extractDjiOrientation } from "./dji";
 export { buildPlaybackRateTrack, defaultPlaybackRateOptions } from "./playback-rate";
 export { renderDynamicVideo } from "./render";
 export { alignToProjectTime } from "./alignment";
-export { serializeSrt, serializeWebVtt } from "./subtitles";
+export { parseSrt, serializeSrt, serializeWebVtt } from "./subtitles";
+export { transcribeMedia } from "./transcription";
 export type {
   AccelerationBackend,
   ClockAnchor,
@@ -22,6 +23,8 @@ export type {
   OrientationSample,
   PlaybackRateOptions,
   PlaybackRateSample,
+  SavedSubtitleTrack,
+  SpeechTranscriptionOptions,
   SubtitleTrack,
   TimedSample,
   TimelineMetadataTrack,

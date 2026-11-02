@@ -15,6 +15,29 @@ const orderedCues = (cues: readonly TimedTextCue[]) =>
     .filter((cue) => cue.text.trim() && cue.endTimeSeconds > cue.startTimeSeconds)
     .sort((left, right) => left.startTimeSeconds - right.startTimeSeconds);
 
+const parseTimestamp = (value: string): number | null => {
+  const match = /^(\d+):(\d{2}):(\d{2})[,.](\d{3})$/.exec(value.trim());
+  if (!match) return null;
+  return Number(match[1]) * 3600 + Number(match[2]) * 60 +
+    Number(match[3]) + Number(match[4]) / 1000;
+};
+
+export const parseSrt = (text: string): TimedTextCue[] =>
+  text.replace(/\r/g, "").trim().split(/\n{2,}/).flatMap((block) => {
+    const lines = block.split("\n");
+    if (/^\d+$/.test(lines[0]?.trim() ?? "")) lines.shift();
+    const timing = lines.shift()?.match(
+      /^(\d+:\d{2}:\d{2}[,.]\d{3})\s*-->\s*(\d+:\d{2}:\d{2}[,.]\d{3})/,
+    );
+    if (!timing) return [];
+    const startTimeSeconds = parseTimestamp(timing[1]);
+    const endTimeSeconds = parseTimestamp(timing[2]);
+    const cueText = lines.join("\n").trim();
+    return startTimeSeconds !== null && endTimeSeconds !== null && cueText
+      ? [{ startTimeSeconds, endTimeSeconds, text: cueText }]
+      : [];
+  });
+
 export const serializeSrt = (cues: readonly TimedTextCue[]): string =>
   orderedCues(cues)
     .map(

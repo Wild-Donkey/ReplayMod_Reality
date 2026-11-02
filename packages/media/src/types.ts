@@ -64,6 +64,19 @@ export interface SubtitleTrack {
   readonly cues: readonly TimedTextCue[];
 }
 
+export interface SpeechTranscriptionOptions {
+  readonly whisperPath: string;
+  readonly modelPath: string;
+  readonly vadModelPath?: string;
+  readonly ffmpegPath?: string;
+  readonly language?: string;
+}
+
+export interface SavedSubtitleTrack {
+  readonly jsonPath: string;
+  readonly srtPath: string;
+}
+
 export interface ClockAnchor {
   readonly sourceTimeSeconds: number;
   readonly projectTimeSeconds: number;

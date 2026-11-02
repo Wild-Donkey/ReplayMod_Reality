@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { readdir, stat } from "node:fs/promises";
+import { access, readdir, stat, writeFile } from "node:fs/promises";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import path from "node:path";
 import { parse } from "csv-parse";
@@ -8,8 +8,16 @@ import type {
   PointDataset,
   TimeBounds,
 } from "../../../../packages/data/src";
-import { probeMediaFile } from "../../../../packages/media/src";
-import type { MediaSource } from "../../../../packages/media/src";
+import {
+  probeMediaFile,
+  serializeSrt,
+  transcribeMedia,
+} from "../../../../packages/media/src";
+import type {
+  MediaSource,
+  SavedSubtitleTrack,
+  SubtitleTrack,
+} from "../../../../packages/media/src";
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
@@ -17,6 +25,40 @@ declare const MAIN_WINDOW_VITE_NAME: string;
 const OPEN_LOCATION_CSV_CHANNEL = "data:open-location-csv";
 const LOAD_DEFAULT_LOCATION_CSV_CHANNEL = "data:load-default-location-csv";
 const OPEN_MEDIA_CHANNEL = "media:open";
+const TRANSCRIBE_MEDIA_CHANNEL = "media:transcribe";
+const SAVE_SUBTITLES_CHANNEL = "media:save-subtitles";
+
+const openedMediaPaths = new Set<string>();
+
+const firstExistingPath = async (candidates: readonly string[]) => {
+  for (const candidate of candidates) {
+    try {
+      await access(candidate);
+      return candidate;
+    } catch {
+      // Continue through platform and development/install locations.
+    }
+  }
+  return null;
+};
+
+const resolveSpeechResources = async () => {
+  const roots = [process.cwd(), app.getAppPath(), path.dirname(app.getPath("exe"))];
+  const whisperPath = await firstExistingPath(roots.flatMap((root) => [
+    path.join(root, ".tools/whisper.cpp/build/bin/whisper-cli"),
+    path.join(root, ".tools/whisper.cpp/build/bin/Release/whisper-cli.exe"),
+  ]));
+  const modelPath = await firstExistingPath(roots.flatMap((root) => [
+    path.join(root, ".tools/whisper.cpp/models/ggml-small.bin"),
+    path.join(root, ".tools/whisper.cpp/models/ggml-base.bin"),
+  ]));
+  const vadModelPath = await firstExistingPath(roots.map((root) =>
+    path.join(root, ".tools/whisper.cpp/models/ggml-silero-v6.2.0.bin")));
+  if (!whisperPath || !modelPath) {
+    throw new Error("未找到本地 Whisper 识别器或模型，请先完成语音识别环境安装。");
+  }
+  return { whisperPath, modelPath, vadModelPath: vadModelPath ?? undefined };
+};
 
 interface TimedCoordinate {
   readonly timestamp: number;
@@ -289,8 +331,35 @@ ipcMain.handle(OPEN_MEDIA_CHANNEL, async (): Promise<MediaSource | null> => {
   const selectedFilePath = result.filePaths[0];
 
   if (result.canceled || !selectedFilePath) return null;
+  openedMediaPaths.add(selectedFilePath);
   return probeMediaFile(selectedFilePath);
 });
+
+ipcMain.handle(
+  TRANSCRIBE_MEDIA_CHANNEL,
+  async (_event, sourcePath: string): Promise<SubtitleTrack> => {
+    if (!openedMediaPaths.has(sourcePath)) throw new Error("请先在当前工程中载入该视频。");
+    const resources = await resolveSpeechResources();
+    return transcribeMedia(sourcePath, { ...resources, language: "auto" });
+  },
+);
+
+ipcMain.handle(
+  SAVE_SUBTITLES_CHANNEL,
+  async (
+    _event,
+    sourcePath: string,
+    track: SubtitleTrack,
+  ): Promise<SavedSubtitleTrack> => {
+    if (!openedMediaPaths.has(sourcePath)) throw new Error("请先在当前工程中载入该视频。");
+    const basePath = sourcePath.replace(/\.[^.]+$/, "");
+    const jsonPath = `${basePath}.subtitles.json`;
+    const srtPath = `${basePath}.subtitles.srt`;
+    await writeFile(jsonPath, JSON.stringify(track, null, 2));
+    await writeFile(srtPath, serializeSrt(track.cues));
+    return { jsonPath, srtPath };
+  },
+);
 
 const createWindow = (): void => {
   const mainWindow = new BrowserWindow({

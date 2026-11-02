@@ -256,6 +256,195 @@ button:focus-visible {
   font-size: 11px;
 }
 
+.time-compression-list {
+  display: grid;
+  gap: 6px;
+  padding: 9px 11px 13px;
+  color: #888;
+  font-size: 10px;
+}
+
+.time-compression-list span,
+.time-compression-list button {
+  padding: 8px;
+  border-left: 2px solid #666;
+  background: #191919;
+  text-align: left;
+}
+
+.time-compression-list button:hover:not(:disabled) {
+  color: #111;
+  background: #eee;
+}
+
+.time-compression-list button:disabled {
+  color: #555;
+}
+
+.subtitle-editor-backdrop {
+  position: fixed;
+  z-index: 200;
+  inset: 0;
+  display: grid;
+  padding: 34px;
+  place-items: center;
+  background: rgb(0 0 0 / 72%);
+}
+
+.subtitle-editor {
+  display: grid;
+  width: min(980px, 100%);
+  max-height: 100%;
+  grid-template-rows: auto auto auto minmax(180px, 1fr) auto;
+  border: 1px solid #555;
+  border-top: 2px solid #eee;
+  background: #111;
+  box-shadow: 0 24px 90px #000;
+}
+
+.subtitle-editor > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px 13px;
+  border-bottom: 1px solid var(--line);
+}
+
+.subtitle-editor > header span {
+  color: #777;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.subtitle-editor > header h1 {
+  margin: 4px 0 0;
+  font-size: 17px;
+}
+
+.subtitle-editor > header button {
+  width: 34px;
+  height: 34px;
+  color: #888;
+  background: transparent;
+  font-size: 24px;
+}
+
+.subtitle-editor-toolbar {
+  display: flex;
+  min-height: 50px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.subtitle-editor-toolbar button,
+.subtitle-add {
+  min-height: 30px;
+  padding: 0 12px;
+  color: #111;
+  background: #eee;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.subtitle-editor-toolbar button:disabled {
+  color: #666;
+  background: #292929;
+}
+
+.subtitle-editor-toolbar span {
+  margin-left: auto;
+  overflow: hidden;
+  color: #888;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subtitle-cue-header,
+.subtitle-cue {
+  display: grid;
+  grid-template-columns: 34px 150px minmax(280px, 1fr) 50px;
+  gap: 9px;
+  align-items: center;
+}
+
+.subtitle-cue-header {
+  padding: 8px 18px;
+  color: #666;
+  font-size: 9px;
+}
+
+.subtitle-cues {
+  overflow: auto;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.subtitle-cue {
+  padding: 8px 18px;
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+  color: #777;
+  font-family: Consolas, monospace;
+  font-size: 10px;
+}
+
+.subtitle-times {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+
+.subtitle-cue input,
+.subtitle-cue textarea {
+  width: 100%;
+  border: 1px solid #3d3d3d;
+  outline: 0;
+  color: #eee;
+  background: #181818;
+  font: 11px Consolas, monospace;
+}
+
+.subtitle-cue input {
+  height: 31px;
+  padding: 0 6px;
+}
+
+.subtitle-cue textarea {
+  min-height: 42px;
+  padding: 7px 8px;
+  resize: vertical;
+}
+
+.subtitle-cue input:focus,
+.subtitle-cue textarea:focus {
+  border-color: #eee;
+}
+
+.subtitle-delete {
+  color: #888;
+  background: transparent;
+  font-size: 9px;
+}
+
+.subtitle-delete:hover {
+  color: #fff;
+}
+
+.subtitle-empty {
+  padding: 54px;
+  color: #666;
+  font-size: 11px;
+  text-align: center;
+}
+
+.subtitle-add {
+  justify-self: start;
+  margin: 10px 18px 14px;
+}
+
 .primary-action,
 .empty-canvas button {
   height: 33px;

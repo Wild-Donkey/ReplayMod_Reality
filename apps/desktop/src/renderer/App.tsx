@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PointDataset, TimeBounds } from "../../../../packages/data/src";
-import type { MediaSource } from "../../../../packages/media/src";
+import type { MediaSource, SubtitleTrack } from "../../../../packages/media/src";
 import { MapTokenSetup, MapViewport } from "./MapViewport";
 import { OverlayExport } from "./OverlayExport";
+import { SubtitleEditor } from "./SubtitleEditor";
 import {
   Timeline,
   type TimelineFocusRequest,
@@ -51,6 +52,10 @@ export function App() {
   const [dataError, setDataError] = useState("");
   const [mediaSource, setMediaSource] = useState<MediaSource | null>(null);
   const [isLoadingMedia, setIsLoadingMedia] = useState(false);
+  const [subtitleTrack, setSubtitleTrack] = useState<SubtitleTrack | null>(null);
+  const [isSubtitleEditorOpen, setIsSubtitleEditorOpen] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [subtitleStatus, setSubtitleStatus] = useState("");
   const [maptilerKey, setMaptilerKey] = useState(() => {
     const environmentKey = import.meta.env.VITE_MAPTILER_API_KEY?.trim();
     return (
@@ -183,11 +188,44 @@ export function App() {
 
     try {
       const source = await window.replaymod.openMedia();
-      if (source) setMediaSource(source);
+      if (source) {
+        setMediaSource(source);
+        setSubtitleTrack(null);
+        setSubtitleStatus("");
+      }
     } catch (error) {
       setDataError(error instanceof Error ? error.message : "载入视频时发生未知错误。");
     } finally {
       setIsLoadingMedia(false);
+    }
+  };
+
+  const generateSubtitles = async () => {
+    if (!window.replaymod || !mediaSource || isTranscribing) return;
+    setIsTranscribing(true);
+    setSubtitleStatus("正在提取音频并识别人声…");
+    try {
+      const track = await window.replaymod.transcribeMedia(mediaSource.sourcePath);
+      setSubtitleTrack(track);
+      setSubtitleStatus(`已生成 ${track.cues.length} 条字幕，可直接修改。`);
+    } catch (error) {
+      setSubtitleStatus(error instanceof Error ? error.message : "生成字幕失败。");
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  const saveSubtitles = async () => {
+    if (!window.replaymod || !mediaSource || !subtitleTrack) return;
+    setSubtitleStatus("正在保存字幕轨…");
+    try {
+      const saved = await window.replaymod.saveSubtitles(
+        mediaSource.sourcePath,
+        subtitleTrack,
+      );
+      setSubtitleStatus(`已保存：${saved.srtPath}`);
+    } catch (error) {
+      setSubtitleStatus(error instanceof Error ? error.message : "保存字幕失败。");
     }
   };
 
@@ -279,6 +317,19 @@ export function App() {
               ) : (
                 "尚未载入数据"
               )}
+            </div>
+          </section>
+          <section className="library-section">
+            <button className="section-label" type="button">
+              <span>▼</span> 时间压缩
+            </button>
+            <div className="time-compression-list">
+              <span>骑行类 · 姿态旋转</span>
+              <button
+                type="button"
+                disabled={!mediaSource}
+                onClick={() => setIsSubtitleEditorOpen(true)}
+              >谈话类 · 字幕轨</button>
             </div>
           </section>
           <section className="library-section">
@@ -400,6 +451,18 @@ export function App() {
           </section>
         </aside>
       </section>
+
+      {isSubtitleEditorOpen && (
+        <SubtitleEditor
+          track={subtitleTrack}
+          busy={isTranscribing}
+          status={subtitleStatus}
+          onChange={setSubtitleTrack}
+          onClose={() => setIsSubtitleEditorOpen(false)}
+          onGenerate={() => void generateSubtitles()}
+          onSave={() => void saveSubtitles()}
+        />
+      )}
 
       <footer className="statusbar">
         <span className="ready-state">
