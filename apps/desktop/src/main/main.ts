@@ -8,12 +8,15 @@ import type {
   PointDataset,
   TimeBounds,
 } from "../../../../packages/data/src";
+import { probeMediaFile } from "../../../../packages/media/src";
+import type { MediaSource } from "../../../../packages/media/src";
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
 
 const OPEN_LOCATION_CSV_CHANNEL = "data:open-location-csv";
 const LOAD_DEFAULT_LOCATION_CSV_CHANNEL = "data:load-default-location-csv";
+const OPEN_MEDIA_CHANNEL = "media:open";
 
 interface TimedCoordinate {
   readonly timestamp: number;
@@ -276,6 +279,18 @@ ipcMain.handle(
     return readLocationCsv(pair.mainFilePath, pair.photoFilePath);
   },
 );
+
+ipcMain.handle(OPEN_MEDIA_CHANNEL, async (): Promise<MediaSource | null> => {
+  const result = await dialog.showOpenDialog({
+    title: "载入 DJI 视频",
+    properties: ["openFile"],
+    filters: [{ name: "视频", extensions: ["mp4", "mov"] }],
+  });
+  const selectedFilePath = result.filePaths[0];
+
+  if (result.canceled || !selectedFilePath) return null;
+  return probeMediaFile(selectedFilePath);
+});
 
 const createWindow = (): void => {
   const mainWindow = new BrowserWindow({

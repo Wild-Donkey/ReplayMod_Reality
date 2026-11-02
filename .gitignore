@@ -1,6 +1,7 @@
 RawData/*
 !RawData/.gitkeep
 node_modules/
+.tools/
 .vite/
 out/
 dist/
