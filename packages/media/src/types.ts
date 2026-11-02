@@ -81,6 +81,7 @@ export interface TimedSample {
 export interface PlaybackRateSample extends TimedSample {
   readonly rate: number;
   readonly angularSpeedDegreesPerSecond?: number;
+  readonly rotationAmplitudeDegrees?: number;
 }
 
 export interface TimelineMetadataTrack<TSample extends TimedSample> {
@@ -127,10 +128,13 @@ export interface PlaybackRateOptions {
   readonly angularSpeedPivot: number;
   readonly curvePower: number;
   readonly windowSeconds: number;
+  readonly ignoredRotationAmplitudeDegrees: number;
+  readonly fullRotationAmplitudeDegrees: number;
   readonly sampleIntervalSeconds: number;
   readonly stableAngularSpeedThreshold: number;
   readonly fullRotationAngularSpeedThreshold: number;
   readonly stableHoldSeconds: number;
+  readonly minimumAcceleratedStableRunSeconds: number;
   readonly transientMaximumRate: number;
   readonly speedUpTimeSeconds: number;
   readonly slowDownTimeSeconds: number;
