@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { PointDataset } from "../../../../packages/data/src";
+import type { MediaSource } from "../../../../packages/media/src";
 import { MapTokenSetup, MapViewport } from "./MapViewport";
 import { Timeline } from "./Timeline";
 
@@ -40,6 +41,8 @@ export function App() {
   const [currentTime, setCurrentTime] = useState<number | null>(null);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [dataError, setDataError] = useState("");
+  const [mediaSource, setMediaSource] = useState<MediaSource | null>(null);
+  const [isLoadingMedia, setIsLoadingMedia] = useState(false);
   const [maptilerKey, setMaptilerKey] = useState(() => {
     const environmentKey = import.meta.env.VITE_MAPTILER_API_KEY?.trim();
     return (
@@ -118,6 +121,21 @@ export function App() {
       );
     } finally {
       setIsLoadingData(false);
+    }
+  };
+
+  const openMedia = async () => {
+    if (!window.replaymod || isLoadingMedia) return;
+    setIsLoadingMedia(true);
+    setDataError("");
+
+    try {
+      const source = await window.replaymod.openMedia();
+      if (source) setMediaSource(source);
+    } catch (error) {
+      setDataError(error instanceof Error ? error.message : "载入视频时发生未知错误。");
+    } finally {
+      setIsLoadingMedia(false);
     }
   };
 
@@ -212,6 +230,22 @@ export function App() {
           </section>
           <section className="library-section">
             <button className="section-label" type="button">
+              <span>▼</span> 视频源
+            </button>
+            <div className={mediaSource ? "data-source-item" : "empty-list"}>
+              {mediaSource ? (
+                <>
+                  <strong>{mediaSource.sourceName}</strong>
+                  <span>
+                    {mediaSource.isLikelyDji ? "DJI · " : ""}
+                    {mediaSource.tracks.length} 轨 · {mediaSource.capabilities.encoders.filter((encoder) => encoder.hardwareAccelerated).length} 个硬件编码器
+                  </span>
+                </>
+              ) : "尚未载入视频"}
+            </div>
+          </section>
+          <section className="library-section">
+            <button className="section-label" type="button">
               <span>▼</span> 处理管线
             </button>
             <div className="empty-list">尚未配置处理节点</div>
@@ -229,6 +263,14 @@ export function App() {
             onClick={() => void openLocationCsv()}
           >
             {isLoadingData ? "正在读取 CSV..." : "载入数据源"}
+          </button>
+          <button
+            className="primary-action"
+            type="button"
+            disabled={isLoadingMedia}
+            onClick={() => void openMedia()}
+          >
+            {isLoadingMedia ? "正在检查视频..." : "载入 DJI 视频"}
           </button>
           {dataError && <div className="data-error">{dataError}</div>}
         </aside>
