@@ -127,9 +127,12 @@ export interface PlaybackRateOptions {
   readonly maximumRate: number;
   readonly angularSpeedForMaximumRate: number;
   readonly angularSpeedForMinimumRate: number;
-  readonly windowSeconds: number;
-  readonly ignoredRotationAmplitudeDegrees: number;
-  readonly fullRotationAmplitudeDegrees: number;
+  readonly featureMinimumDurationSeconds: number;
+  readonly analysisWindowSeconds: readonly number[];
+  readonly minimumRotationDegrees: number;
+  readonly minimumAverageAngularSpeedAtOneSecond: number;
+  readonly shortWindowThresholdPower: number;
+  readonly minimumDirectionCoherence: number;
   readonly sampleIntervalSeconds: number;
   readonly speedUpTimeSeconds: number;
   readonly slowDownLookAheadSeconds: number;
