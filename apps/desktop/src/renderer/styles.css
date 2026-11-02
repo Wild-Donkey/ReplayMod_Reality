@@ -819,6 +819,49 @@ button:focus-visible {
   padding: 12px;
 }
 
+.range-editor,
+.overlay-export {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+  color: #aaa;
+  font-size: 11px;
+}
+
+.range-editor p { margin: 0; }
+.range-editor div { display: flex; gap: 6px; }
+.range-editor button,
+.overlay-export button,
+.overlay-export select {
+  min-height: 28px;
+  border: 1px solid #555;
+  color: #ddd;
+  background: #222;
+}
+.range-editor button { flex: 1; }
+.range-editor code { color: #bbb; line-height: 1.6; }
+.overlay-export canvas {
+  width: 100%;
+  height: auto;
+  border: 1px solid #444;
+  background-image: conic-gradient(#333 25%, #222 0 50%, #333 0 75%, #222 0);
+  background-size: 12px 12px;
+}
+.overlay-export label { display: flex; align-items: center; justify-content: space-between; }
+.overlay-export button { color: #111; background: #eee; font-weight: 700; }
+.navigation-map-renderer { position: fixed; left: -10000px; top: 0; width: 410px; height: 302px; pointer-events: none; }
+.export-dialog-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; box-sizing: border-box; padding: 16px; place-items: center; overflow: auto; background: rgb(0 0 0 / 65%); }
+.export-dialog { box-sizing: border-box; width: min(420px, 100%); max-height: calc(100vh - 32px); padding: 20px; overflow: auto; border: 1px solid #666; background: #181818; box-shadow: 0 18px 70px #000; }
+.export-dialog h2 { margin: 0 0 18px; color: #eee; font-size: 16px; }
+.export-dialog label { display: flex; min-height: 38px; align-items: center; justify-content: space-between; color: #bbb; }
+.export-dialog select { width: 190px; }
+.export-dialog .check-row { justify-content: flex-start; gap: 9px; }
+.export-dialog .check-row input { accent-color: #fff; }
+.dialog-actions { display: flex; justify-content: flex-end; margin-top: 16px; }
+.dialog-actions button { min-width: 88px; }
+
 .inspector-section h2 {
   margin: 0 0 8px;
   color: #888;
@@ -1319,6 +1362,40 @@ button:focus-visible {
   position: absolute;
   inset: 0;
   display: block;
+}
+
+.timeline-playhead {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  pointer-events: none;
+  background: #ff3434;
+  transform: translateX(-1px);
+  will-change: left;
+}
+
+.timeline-selection {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  border: 1px solid #5abeff;
+  background: rgb(90 190 255 / 13%);
+}
+
+.timeline-playhead::before {
+  position: absolute;
+  top: 0;
+  left: -4px;
+  width: 0;
+  height: 0;
+  border-top: 7px solid #ff3434;
+  border-right: 5px solid transparent;
+  border-left: 5px solid transparent;
+  content: "";
 }
 
 .timecode {

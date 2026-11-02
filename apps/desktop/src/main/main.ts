@@ -19,6 +19,7 @@ interface TimedCoordinate {
   readonly timestamp: number;
   readonly longitude: number;
   readonly latitude: number;
+  readonly altitude: number;
 }
 
 interface CsvPair {
@@ -77,7 +78,18 @@ const readLocationCsv = async (
         continue;
       }
 
-      const point = { timestamp, longitude, latitude };
+      const rawAltitude =
+        record.altitude ?? record.elevation ?? record.height ?? record.alt ?? "";
+      const parsedAltitude = Number(rawAltitude);
+      const point = {
+        timestamp,
+        longitude,
+        latitude,
+        altitude:
+          rawAltitude.trim() !== "" && Number.isFinite(parsedAltitude)
+            ? parsedAltitude
+            : Number.NaN,
+      };
 
       if (forcePhoto || stepType === 1) {
         photoPointsByKey.set(pointKey(point), point);
@@ -130,6 +142,7 @@ const readLocationCsv = async (
     point.latitude,
   ]);
   const timelineTimestamps = timelinePoints.map((point) => point.timestamp);
+  const timelineAltitudes = timelinePoints.map((point) => point.altitude);
 
   return {
     sourceName: photoFilePath
@@ -141,6 +154,7 @@ const readLocationCsv = async (
     photoTimestamps,
     timelineCoordinates,
     timelineTimestamps,
+    timelineAltitudes,
     pointCount,
     footprintPointCount: footprintPoints.length,
     photoPointCount: photoPoints.length,

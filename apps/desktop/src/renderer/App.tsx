@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PointDataset } from "../../../../packages/data/src";
+import type { PointDataset, TimeBounds } from "../../../../packages/data/src";
 import { MapTokenSetup, MapViewport } from "./MapViewport";
+import { OverlayExport } from "./OverlayExport";
 import {
   Timeline,
   type TimelineFocusRequest,
@@ -41,6 +42,7 @@ const PanelHeader = ({
 export function App() {
   const [pointDataset, setPointDataset] = useState<PointDataset | null>(null);
   const [currentTime, setCurrentTime] = useState<number | null>(null);
+  const [exportRange, setExportRange] = useState<TimeBounds | null>(null);
   const [timelineFocusRequest, setTimelineFocusRequest] =
     useState<TimelineFocusRequest | null>(null);
   const timelineFocusSequenceRef = useRef(0);
@@ -64,6 +66,37 @@ export function App() {
     window.localStorage.removeItem(MAPTILER_KEY_STORAGE_KEY);
     setMaptilerKey("");
   };
+
+  useEffect(() => {
+    const handleRangeShortcut = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (
+        currentTime === null ||
+        !exportRange ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey ||
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (key === "i") {
+        event.preventDefault();
+        setExportRange([Math.min(currentTime, exportRange[1]), exportRange[1]]);
+      } else if (key === "o") {
+        event.preventDefault();
+        setExportRange([exportRange[0], Math.max(currentTime, exportRange[0])]);
+      }
+    };
+
+    window.addEventListener("keydown", handleRangeShortcut);
+    return () => window.removeEventListener("keydown", handleRangeShortcut);
+  }, [currentTime, exportRange]);
 
   const selectMapPoint = useCallback((timestamp: number) => {
     timelineFocusSequenceRef.current += 1;
@@ -91,6 +124,7 @@ export function App() {
 
         setPointDataset(dataset);
         setCurrentTime(dataset.timeBounds[0]);
+        setExportRange(dataset.timeBounds);
         setTimelineFocusRequest(null);
       })
       .catch((error: unknown) => {
@@ -127,6 +161,7 @@ export function App() {
       if (dataset) {
         setPointDataset(dataset);
         setCurrentTime(dataset.timeBounds[0]);
+        setExportRange(dataset.timeBounds);
         setTimelineFocusRequest(null);
       }
     } catch (error) {
@@ -281,15 +316,29 @@ export function App() {
             currentTime={currentTime}
             onCurrentTimeChange={setCurrentTime}
             focusRequest={timelineFocusRequest}
+            selectionRange={exportRange}
           />
         </section>
 
         <aside className="inspector-panel">
-          <PanelHeader title="属性检查器" />
-          <div className="inspector-empty">
-            <div className="inspector-icon">i</div>
-            <p>选择一个项目，查看它的 IR 信息与处理参数。</p>
-          </div>
+          <PanelHeader title="透明叠加视频" />
+          <section className="range-editor">
+            <p>移动红色播放头，再设置导出区间。</p>
+            <div>
+              <button type="button" disabled={currentTime === null || !exportRange} onClick={() => {
+                if (currentTime !== null && exportRange) setExportRange([Math.min(currentTime, exportRange[1]), exportRange[1]]);
+              }}>设为入点 (I)</button>
+              <button type="button" disabled={currentTime === null || !exportRange} onClick={() => {
+                if (currentTime !== null && exportRange) setExportRange([exportRange[0], Math.max(currentTime, exportRange[0])]);
+              }}>设为出点 (O)</button>
+            </div>
+            {exportRange && <code>{new Date(exportRange[0]).toLocaleString("zh-CN")}<br />— {new Date(exportRange[1]).toLocaleString("zh-CN")}</code>}
+          </section>
+          {pointDataset && exportRange ? (
+            <OverlayExport dataset={pointDataset} range={exportRange} apiKey={maptilerKey} />
+          ) : (
+            <div className="inspector-empty"><div className="inspector-icon">i</div><p>载入轨迹后可输出透明视频。</p></div>
+          )}
           <section className="inspector-section">
             <h2>数据管线</h2>
             <dl>

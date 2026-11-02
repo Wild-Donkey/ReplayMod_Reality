@@ -266,6 +266,7 @@ interface TimelineCanvasProps {
   viewRange: TimeBounds | null;
   currentTime: number | null;
   onCurrentTimeChange: (timestamp: number) => void;
+  selectionRange: TimeBounds | null;
 }
 
 function TimelineCanvas({
@@ -273,6 +274,7 @@ function TimelineCanvas({
   viewRange,
   currentTime,
   onCurrentTimeChange,
+  selectionRange,
 }: TimelineCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -391,23 +393,22 @@ function TimelineCanvas({
       2,
     );
 
-    if (currentTime !== null && currentTime >= start && currentTime <= end) {
-      const x = ((currentTime - start) / span) * size.width;
-      context.strokeStyle = "#ff3434";
-      context.lineWidth = 2;
-      context.beginPath();
-      context.moveTo(x, 0);
-      context.lineTo(x, size.height);
-      context.stroke();
-      context.fillStyle = "#ff3434";
-      context.beginPath();
-      context.moveTo(x - 5, 0);
-      context.lineTo(x + 5, 0);
-      context.lineTo(x, 7);
-      context.closePath();
-      context.fill();
-    }
-  }, [currentTime, dataset, size, viewRange]);
+  }, [dataset, size, viewRange]);
+
+  const selectionStyle = selectionRange && viewRange
+    ? {
+        left: `${Math.max(0, (selectionRange[0] - viewRange[0]) / (viewRange[1] - viewRange[0]) * 100)}%`,
+        right: `${Math.max(0, (viewRange[1] - selectionRange[1]) / (viewRange[1] - viewRange[0]) * 100)}%`,
+      }
+    : null;
+
+  const playheadPosition =
+    currentTime !== null &&
+    viewRange &&
+    currentTime >= viewRange[0] &&
+    currentTime <= viewRange[1]
+      ? ((currentTime - viewRange[0]) / (viewRange[1] - viewRange[0])) * 100
+      : null;
 
   const updateCurrentTime = (event: PointerEvent<HTMLDivElement>) => {
     if (!dataset || !viewRange) {
@@ -442,6 +443,13 @@ function TimelineCanvas({
       }}
     >
       <canvas ref={canvasRef} className="timeline-canvas" />
+      {selectionStyle && <div className="timeline-selection" style={selectionStyle} />}
+      {playheadPosition !== null && (
+        <div
+          className="timeline-playhead"
+          style={{ left: `${playheadPosition}%` }}
+        />
+      )}
     </div>
   );
 }
@@ -451,6 +459,7 @@ interface TimelineProps {
   currentTime: number | null;
   onCurrentTimeChange: (timestamp: number) => void;
   focusRequest: TimelineFocusRequest | null;
+  selectionRange: TimeBounds | null;
 }
 
 export interface TimelineFocusRequest {
@@ -463,6 +472,7 @@ export function Timeline({
   currentTime,
   onCurrentTimeChange,
   focusRequest,
+  selectionRange,
 }: TimelineProps) {
   const timelineRef = useRef<HTMLElement>(null);
   const pressedPanKeysRef = useRef(new Set<"q" | "e">());
@@ -715,6 +725,7 @@ export function Timeline({
           viewRange={viewRange}
           currentTime={currentTime}
           onCurrentTimeChange={onCurrentTimeChange}
+          selectionRange={selectionRange}
         />
       </div>
     </section>

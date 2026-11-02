@@ -15,6 +15,8 @@ export interface PointDataset {
   readonly photoTimestamps: readonly number[];
   readonly timelineCoordinates: readonly number[];
   readonly timelineTimestamps: readonly number[];
+  /** Elevation in metres, aligned with timelineTimestamps. NaN means unavailable. */
+  readonly timelineAltitudes: readonly number[];
   readonly pointCount: number;
   readonly footprintPointCount: number;
   readonly photoPointCount: number;
