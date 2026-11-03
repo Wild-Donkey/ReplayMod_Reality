@@ -11,24 +11,16 @@ const xml = (text: string) => {
   if (doc.getElementsByTagName("parsererror").length) throw new Error("KML XML 格式无效。");
   return doc;
 };
-const editableKmlFields = new Set(["name", "description", "visibility", "open", "Point", "LineString", "Folder", "Placemark"]);
-const extraKmlXml = (element: Element) => {
-  const retained = element.cloneNode(false) as Element;
-  for (const c of Array.from(element.children)) if (!editableKmlFields.has(c.localName)) retained.appendChild(c.cloneNode(true));
-  return new XMLSerializer().serializeToString(retained);
-};
-const documentMetadata = (text: string) => {
-  const document = xml(text);
-  const root = Array.from(document.getElementsByTagName("*")).find(el => el.localName === "Document");
-  return root ? extraKmlXml(root) : undefined;
-};
-/** Migrate legacy triple storage without changing user geometry or folder structure. */
+/** Strip legacy XML payloads when reading an existing JSON project. */
 export function compactAnnotationProject(project: AnnotationProject): AnnotationProject {
-  const { sourceKml, ...rest } = project;
   return {
-    ...rest,
-    kmlDocumentXml: project.kmlDocumentXml ?? (sourceKml ? documentMetadata(sourceKml) : undefined),
-    nodes: project.nodes.map(node => ({...node, sourceXml: node.sourceXml ? extraKmlXml(xml(node.sourceXml).documentElement) : undefined})),
+    format: project.format, version: project.version, name: project.name,
+    nodes: project.nodes.map(node => ({
+      id: node.id, parentId: node.parentId, kind: node.kind,
+      name: node.name, description: node.description, visible: node.visible,
+      open: node.open, coordinates: node.coordinates,
+      altitudeMode: node.altitudeMode, style: node.style,
+    })),
   };
 }
 export function importKml(text: string, fileName = "导入地图"): AnnotationProject {
@@ -83,24 +75,22 @@ export function importKml(text: string, fileName = "导入地图"): AnnotationPr
     const kind = folder ? "folder" : geometry!.localName === "Point" ? "point" : "route";
     if ((kind === "point" && coordinates.length !== 1) || (kind === "route" && coordinates.length < 2)) throw new Error("点或路线的坐标数量无效。");
 
-    nodes.push({id, parentId, kind, name: value(el,"name") || (folder ? "未命名分组" : "未命名地标"), description: value(el,"description"), visible: value(el,"visibility") !== "0", open: value(el,"open") === "1", coordinates, altitudeMode: geometry ? value(geometry,"altitudeMode") || "clampToGround" : "clampToGround", style: resolveStyle(el), sourceXml: extraKmlXml(el)});
+    nodes.push({id, parentId, kind, name: value(el,"name") || (folder ? "未命名分组" : "未命名地标"), description: value(el,"description"), visible: value(el,"visibility") !== "0", open: value(el,"open") === "1", coordinates, altitudeMode: geometry ? value(geometry,"altitudeMode") || "clampToGround" : "clampToGround", style: resolveStyle(el)});
     if (folder) for (const c of Array.from(el.children)) walk(c, id);
   };
   walk(doc.documentElement, null);
   const documentEl = elements.find(el => el.localName === "Document");
-  return {format:"replaymod.annotations", version:1, name: documentEl ? value(documentEl,"name") || fileName : fileName, nodes, kmlDocumentXml: documentMetadata(text)};
+  return {format:"replaymod.annotations", version:1, name: documentEl ? value(documentEl,"name") || fileName : fileName, nodes};
 }
 export function parseAnnotationProject(text: string, name?: string): AnnotationProject {
   if (text.trimStart().startsWith("<")) return importKml(text, name);
   const p = JSON.parse(text) as AnnotationProject;
   if (p.format !== "replaymod.annotations" || p.version !== 1 || typeof p.name !== "string" || !Array.isArray(p.nodes)) throw new Error("不支持的地图项目格式或版本。");
-  if ((p.kmlDocumentXml !== undefined && typeof p.kmlDocumentXml !== "string") || (p.sourceKml !== undefined && typeof p.sourceKml !== "string")) throw new Error("KML 扩展信息无效。");
   const ids = new Map<string, AnnotationNode>();
   for (const n of p.nodes) {
     if (!n || typeof n.id !== "string" || ids.has(n.id) || !["folder","point","route"].includes(n.kind) || typeof n.name !== "string" || typeof n.description !== "string" || typeof n.visible !== "boolean" || typeof n.open !== "boolean" || typeof n.altitudeMode !== "string" || !(n.parentId === null || typeof n.parentId === "string") || !Array.isArray(n.coordinates) || !n.style || !/^#[0-9a-f]{6}$/i.test(n.style.color) || !Number.isFinite(n.style.width) || n.style.width <= 0 || !Number.isFinite(n.style.opacity) || n.style.opacity < 0 || n.style.opacity > 1) throw new Error("地图项目包含无效属性。");
     for (const c of n.coordinates) if (!Array.isArray(c) || c.length < 2 || c.length > 3 || c.some(v => typeof v !== "number" || !Number.isFinite(v)) || Math.abs(c[0]) > 180 || Math.abs(c[1]) > 90) throw new Error("地图项目包含无效坐标。");
     if ((n.kind === "point" && n.coordinates.length !== 1) || (n.kind === "route" && n.coordinates.length < 2) || (n.kind === "folder" && n.coordinates.length)) throw new Error("地图几何无效。");
-    if(n.sourceXml !== undefined && typeof n.sourceXml !== "string") throw new Error("节点 KML 扩展信息无效。");
     ids.set(n.id,n);
   }
   for (const n of p.nodes) {
@@ -125,29 +115,21 @@ export function exportKml(project: AnnotationProject): string {
   const root = doc.documentElement.children[0];
   const add = (parent: Element, tag: string, text: string) => { const e = doc.createElementNS(root.namespaceURI,tag); e.textContent=text; parent.appendChild(e); return e; };
   add(root,"name",project.name);
-  // Preserve Google-managed style definitions and opaque document metadata.
-  const metadata = project.kmlDocumentXml ?? (project.sourceKml ? documentMetadata(project.sourceKml) : undefined);
-  if (metadata) {
-    const sourceDoc = xml(metadata).documentElement;
-    if (sourceDoc) for (const e of Array.from(sourceDoc.children)) if (["Style", "StyleMap", "CascadingStyle", "extension"].includes(e.localName)) root.appendChild(doc.importNode(e,true));
-  }
   const write = (parentId: string | null, parent: Element) => {
     for (const n of project.nodes.filter(n => n.parentId === parentId)) {
-      const el = n.sourceXml ? doc.importNode(xml(n.sourceXml).documentElement,true) : doc.createElementNS(root.namespaceURI,n.kind === "folder" ? "Folder" : "Placemark");
+      const el = doc.createElementNS(root.namespaceURI,n.kind === "folder" ? "Folder" : "Placemark");
       el.setAttribute("id",n.id);
-      for (const c of Array.from(el.children)) if (["name","description","visibility","open","Point","LineString"].includes(c.localName)) el.removeChild(c);
       add(el,"name",n.name);
       if(n.description) add(el,"description",n.description);
       if(!n.visible) add(el,"visibility","0");
       if(n.kind === "folder" && n.open) add(el,"open","1");
+      const style=doc.createElementNS(root.namespaceURI,"Style"); el.appendChild(style);
+      const line=doc.createElementNS(root.namespaceURI,"LineStyle"); style.appendChild(line);
+      const color=n.style.color.slice(1); const kmlColor=Math.round(n.style.opacity*255).toString(16).padStart(2,"0")+color.slice(4,6)+color.slice(2,4)+color.slice(0,2);
+      add(line,"color",kmlColor); add(line,"width",String(n.style.width));
+      const icon=doc.createElementNS(root.namespaceURI,"IconStyle"); style.appendChild(icon); add(icon,"color",kmlColor);
+      if(n.style.iconHref){const iconUrl=doc.createElementNS(root.namespaceURI,"Icon");icon.appendChild(iconUrl);add(iconUrl,"href",n.style.iconHref);}
       if (n.kind !== "folder") {
-        const style=child(el,"Style") ?? doc.createElementNS(root.namespaceURI,"Style"); if(!style.parentNode)el.appendChild(style);
-        for(const c of Array.from(style.children))if(["LineStyle","IconStyle"].includes(c.localName))style.removeChild(c);
-        const line=doc.createElementNS(root.namespaceURI,"LineStyle"); style.appendChild(line);
-        const color=n.style.color.slice(1); const kmlColor=Math.round(n.style.opacity*255).toString(16).padStart(2,"0")+color.slice(4,6)+color.slice(2,4)+color.slice(0,2);
-        add(line,"color",kmlColor); add(line,"width",String(n.style.width));
-        const icon=doc.createElementNS(root.namespaceURI,"IconStyle"); style.appendChild(icon); add(icon,"color",kmlColor);
-        if(n.style.iconHref){const iconUrl=doc.createElementNS(root.namespaceURI,"Icon");icon.appendChild(iconUrl);add(iconUrl,"href",n.style.iconHref);}
         const geom=doc.createElementNS(root.namespaceURI,n.kind === "point" ? "Point" : "LineString"); el.appendChild(geom);
         if(n.altitudeMode !== "clampToGround") add(geom,"altitudeMode",n.altitudeMode);
         add(geom,"coordinates",n.coordinates.map(c=>c.join(",")).join(" "));

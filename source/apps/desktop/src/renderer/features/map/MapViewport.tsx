@@ -8,6 +8,9 @@ import maplibregl from "maplibre-gl";
 import type { PointDataset } from "../../../../../../packages/data/src";
 import "maplibre-gl/dist/maplibre-gl.css";
 
+import { addElevationGlass } from "./elevation";
+import { restoreWaterLayers } from "./water";
+
 const FOOTPRINT_SOURCE_ID = "footprint-points";
 const FOOTPRINT_LAYER_ID = "footprint-points-circle";
 const PHOTO_SOURCE_ID = "photo-points";
@@ -216,6 +219,7 @@ export function MapViewport({
   currentTime,
 }: MapViewportProps) {
   const restoreCameraRef = useRef(Boolean(readCached("map-camera", null)));
+  const [elevationUnavailable, setElevationUnavailable] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
@@ -231,8 +235,11 @@ export function MapViewport({
 
     setStatus("loading");
     setErrorMessage("");
+    let baseStyleReady = false;
 
     const camera = readCached<{center: [number, number]; zoom: number; bearing: number; pitch: number} | null>("map-camera", null);
+    setElevationUnavailable(false);
+    const elevationController = new AbortController();
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: `https://api.maptiler.com/maps/dataviz-dark/style.json?key=${encodeURIComponent(apiKey)}`,
@@ -245,6 +252,30 @@ export function MapViewport({
         '"Microsoft YaHei UI", "Microsoft YaHei", sans-serif',
     });
     mapRef.current = map;
+    const basemap = map;
+    basemap.once("load", () => {
+      baseStyleReady = true;
+      // Terrain supplies the surface color/alpha. Keep cartographic details
+      // above it at their original opacity, including all map text.
+      const surfaceLayers = (basemap.getStyle().layers ?? []).filter(layer =>
+        ["background", "fill", "fill-extrusion", "raster", "hillshade", "color-relief"].includes(layer.type));
+      for (const layer of surfaceLayers) {
+        basemap.setLayoutProperty(layer.id, "visibility", "none");
+      }
+      restoreWaterLayers(basemap);
+      setStatus("ready");
+      void addElevationGlass(basemap, apiKey, elevationController.signal).catch(() => {
+        if (!elevationController.signal.aborted) {
+          setElevationUnavailable(true);
+          for (const layer of surfaceLayers) {
+            basemap.setLayoutProperty(layer.id, "visibility", layer.layout?.visibility ?? "visible");
+          }
+        }
+      });
+    });
+    basemap.on("error", event => {
+      if ("sourceId" in event && (event.sourceId === "elevation-glass" || event.sourceId === "ocean-elevation-glass")) setElevationUnavailable(true);
+    });
     const saveCamera = () => {
       const center = map.getCenter();
       writeCached("map-camera", { center: [center.lng, center.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch() });
@@ -296,12 +327,8 @@ export function MapViewport({
       "bottom-right",
     );
 
-    map.once("load", () => {
-      setStatus("ready");
-    });
-
-    map.on("error", (event) => {
-      if (!map.loaded()) {
+    basemap.on("error", (event) => {
+      if (!baseStyleReady) {
         setStatus("error");
         setErrorMessage(event.error?.message ?? "地图服务连接失败");
       }
@@ -309,6 +336,7 @@ export function MapViewport({
 
     return () => {
       canvasContainer.removeEventListener("wheel", handleWheel, true);
+      elevationController.abort();
       mapRef.current = null;
       map.remove();
     };
@@ -733,7 +761,7 @@ export function MapViewport({
               {drawMode==="point"?"点击地图放置地标 · Esc 取消":drawMode==="route"?"逐点点击绘制路线 · Enter 完成 · Esc 取消":"点击标注编辑 · 双指滑动 / 鼠标拖拽平移 · 双指捏合缩放 · WASD 移动"}
             </span>
           </div>
-          <div className="viewport-badge">MAPTILER　在线</div>
+          <div className="viewport-badge">{elevationUnavailable ? "MAPTILER　在线 · 海拔暂不可用" : "MAPTILER　在线 · 海拔渐变"}</div>
         </>
       )}
     </section>

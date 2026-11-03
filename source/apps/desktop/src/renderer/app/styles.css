@@ -1105,6 +1105,15 @@ button:focus-visible {
   }
 }
 
+/* Fixed paper substrate: map alpha never samples the desktop. */
+:root { --map-paper: #1e1e1e; }
+:root,
+body,
+#root,
+.map-viewport {
+  background: var(--map-paper);
+}
+
 /* Full-map composition */
 :root {
   --glass-black: rgb(7 7 7 / 70%);
@@ -1118,7 +1127,7 @@ button:focus-visible {
 .app-shell {
   position: relative;
   isolation: isolate;
-  background: #111;
+  background: var(--map-paper);
 }
 
 .map-background {

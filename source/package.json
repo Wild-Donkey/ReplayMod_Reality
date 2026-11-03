@@ -13,8 +13,9 @@
     "check:cache": "node tests/cache/check-cache.cjs",
     "check:annotations": "node tests/annotations/check-annotations.cjs",
     "check:annotation-labels": "node tests/annotations/check-annotation-labels.cjs",
-    "check": "npm run typecheck && npm run check:storage && npm run check:cache && npm run check:annotation-labels",
-    "check:storage": "node tests/cache/check-storage.cjs"
+    "check": "npm run typecheck && npm run check:storage && npm run check:cache && npm run check:annotation-labels && npm run check:backdrop",
+    "check:storage": "node tests/cache/check-storage.cjs",
+    "check:backdrop": "node tests/backdrop/check-backdrop.cjs"
   },
   "author": "",
   "license": "UNLICENSED",

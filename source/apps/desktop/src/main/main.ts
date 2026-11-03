@@ -1,4 +1,5 @@
 import { AppStorage } from "./storage";
+import { windowBackgroundOptions } from "./windowBackground";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { access, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
@@ -326,7 +327,7 @@ const findLatestRawDataCsvPair = async (): Promise<CsvPair | null> => {
     path.resolve(app.getAppPath(), "RawData"),
     path.resolve(path.dirname(app.getPath("exe")), "RawData"),
   ];
-  const uniqueDirectories = [...new Set(candidateDirectories)];
+  const uniqueDirectories = [...new Set(candidateDirectories.map(directory => path.join(directory, "footprint")))];
   const pairs: {
     pair: CsvPair;
     mainModifiedAt: number;
@@ -449,14 +450,14 @@ ipcMain.handle(
   },
 );
 
-// Annotation documents remain local; the source KML is never overwritten.
+// Annotation documents are stored as JSON; KML is only an import/export format.
 ipcMain.handle("annotations:load", async () => {
   const saved = storage.paths.annotations;
   try { return { name: "我的地图", content: await readFile(saved, "utf8") }; }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   const source = app.isPackaged
-    ? path.resolve(app.getAppPath(), "RawData/annotations.kml")
-    : path.resolve(app.getAppPath(), "../RawData/annotations.kml");
+    ? path.resolve(app.getAppPath(), "RawData/annotations/annotations.json")
+    : path.resolve(app.getAppPath(), "../RawData/annotations/annotations.json");
   try { return { name: "摩旅/自驾", content: await readFile(source, "utf8") }; }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   return null;
@@ -551,7 +552,7 @@ const createWindow = (): void => {
     height: 900,
     minWidth: 1024,
     minHeight: 680,
-    backgroundColor: "#111318",
+    ...windowBackgroundOptions(),
     title: "ReplayMod Reality",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),

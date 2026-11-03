@@ -42,8 +42,12 @@ export function AnnotationLabels({map, points, selectedId, drawing, onSelect}: P
   const pointById = new Map(points.map(point => [point.id, point]));
   return <div className={`annotation-label-overlay ${drawing ? "drawing" : ""}`} aria-label="地图地名">
     {groups.map(group => {
+      // Props change before the layout effect replaces last frame's groups.
+      // Hidden/deleted places must not be dereferenced during that render.
+      if (group.items.some(item => !pointById.has(item.id))) return null;
       const single = group.items.length === 1;
-      const node = pointById.get(group.items[0].id)!;
+      const node = pointById.get(group.items[0].id);
+      if (!node) return null;
       const key = group.items.map(item => item.id).sort().join("|");
       if (!single) return <div key={key} className="annotation-map-group" role="group"
         aria-label={`${group.items.length} 个重叠地点`}

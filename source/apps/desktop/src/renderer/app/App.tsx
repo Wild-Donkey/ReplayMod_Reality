@@ -56,7 +56,9 @@ export function App() {
     if(!window.replaymod){setAnnotationStatus("请在桌面应用中打开地图标注");return;}
     window.replaymod.loadAnnotations().then(file=>{
       if(!active)return;
-      if(file && !readCached<AnnotationProject | null>("annotations", null))setAnnotations(parseAnnotationProject(file.content,file.name));
+      const cached = readCached<AnnotationProject | null>("annotations", null);
+      if(cached)setAnnotations(parseAnnotationProject(JSON.stringify(cached)));
+      else if(file)setAnnotations(parseAnnotationProject(file.content,file.name));
       setAnnotationsReady(true);setAnnotationStatus("地图标注已载入");
     }).catch((e:unknown)=>{if(active)setAnnotationStatus(`载入失败：${e instanceof Error?e.message:String(e)}`);});
     return()=>{active=false;};

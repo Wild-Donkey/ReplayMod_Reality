@@ -73,3 +73,17 @@ assert.equal(systemCacheDirectory('linux', '/home/test', '/home/test/.config', {
   assert.equal(renderer.exports.cachedMapRequest('https://example.com/a').url, 'https://example.com/a');
   console.log('Map protocol checks passed: JSON styles, binary tiles, URL scope.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
+
+// Renderer alpha must reveal a fixed substrate, never a desktop material.
+{
+  const module = {exports: {}};
+  vm.runInNewContext(ts.transpileModule(fs.readFileSync('apps/desktop/src/main/windowBackground.ts', 'utf8'), {
+    compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022},
+  }).outputText, {exports: module.exports});
+  const options = module.exports.windowBackgroundOptions();
+  assert.equal(options.backgroundColor, '#1e1e1e');
+  assert.equal(options.transparent, false);
+  assert.equal(options.vibrancy, undefined);
+  assert.equal(options.backgroundMaterial, undefined);
+  console.log('Window background passed: fixed RGB(30,30,30), opaque window, no native backdrop.');
+}

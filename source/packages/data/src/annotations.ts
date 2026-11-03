@@ -17,15 +17,10 @@ export interface AnnotationNode {
   coordinates: MapCoordinate[];
   altitudeMode: string;
   style: AnnotationStyle;
-  /** Only extra KML metadata; coordinates and editable fields live above, once. */
-  sourceXml?: string;
 }
 export interface AnnotationProject {
   format: "replaymod.annotations";
   version: 1;
   name: string;
   nodes: AnnotationNode[];
-  kmlDocumentXml?: string;
-  /** Legacy full source; read and compact on migration. */
-  sourceKml?: string;
 }
