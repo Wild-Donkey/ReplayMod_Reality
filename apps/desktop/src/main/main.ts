@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { access, readdir, stat, writeFile } from "node:fs/promises";
+import { access, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import path from "node:path";
 import { parse } from "csv-parse";
@@ -360,6 +360,45 @@ ipcMain.handle(
     return { jsonPath, srtPath };
   },
 );
+
+// Annotation documents remain local; the source KML is never overwritten.
+ipcMain.handle("annotations:load", async () => {
+  const saved = path.join(app.getPath("userData"), "annotations.json");
+  try { return { name: "我的地图", content: await readFile(saved, "utf8") }; }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  const source = path.resolve(app.getAppPath(), "RawData/annotations.kml");
+  try { return { name: "摩旅/自驾", content: await readFile(source, "utf8") }; }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  return null;
+});
+ipcMain.handle("annotations:open", async () => {
+  const result = await dialog.showOpenDialog({title:"导入地图标注", properties:["openFile"], filters:[{name:"KML / 地图项目", extensions:["kml","json"]}]});
+  if(result.canceled || !result.filePaths[0]) return null;
+  const filePath = result.filePaths[0];
+  if ((await stat(filePath)).size > 40 * 1024 * 1024) throw new Error("地图文件超过 40 MB。");
+  return {name:path.basename(filePath),content:await readFile(filePath,"utf8")};
+});
+let annotationSaveQueue: Promise<void> = Promise.resolve();
+ipcMain.handle("annotations:save", async (_event, content: string) => {
+  if(typeof content !== "string" || Buffer.byteLength(content) > 40 * 1024 * 1024) throw new Error("地图项目过大或无效。");
+  const parsed = JSON.parse(content);
+  if(parsed.format !== "replaymod.annotations" || parsed.version !== 1 || !Array.isArray(parsed.nodes)) throw new Error("地图项目格式无效。");
+  const target = path.join(app.getPath("userData"), "annotations.json");
+  const save = annotationSaveQueue.catch(() => {}).then(async () => {
+    const temporary = `${target}.tmp`;
+    await writeFile(temporary, content, "utf8");
+    await rename(temporary, target);
+  });
+  annotationSaveQueue = save;
+  await save;
+});
+ipcMain.handle("annotations:export", async (_event, content: string, format: string) => {
+  if(typeof content !== "string" || Buffer.byteLength(content) > 40 * 1024 * 1024 || !["kml","json"].includes(format)) throw new Error("导出内容无效。");
+  const result = await dialog.showSaveDialog({title:"导出地图标注",defaultPath:`我的地图.${format}`,filters:[{name:format.toUpperCase(),extensions:[format]}]});
+  if(result.canceled || !result.filePath) return null;
+  await writeFile(result.filePath,content,"utf8");
+  return result.filePath;
+});
 
 const createWindow = (): void => {
   const mainWindow = new BrowserWindow({

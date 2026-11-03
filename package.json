@@ -9,7 +9,8 @@
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check:annotations": "node scripts/check-annotations.cjs"
   },
   "author": "",
   "license": "UNLICENSED",
@@ -31,6 +32,7 @@
     "@vitejs/plugin-react": "^6.0.2",
     "electron": "^42.3.3",
     "typescript": "^6.0.3",
-    "vite": "^8.0.16"
+    "vite": "^8.0.16",
+    "@xmldom/xmldom": "0.9.10"
   }
 }

@@ -1,3 +1,6 @@
+import type { AnnotationProject, MapCoordinate } from "../../../../packages/data/src";
+import { AnnotationPanel } from "./AnnotationPanel";
+import { emptyAnnotations, parseAnnotationProject } from "./annotations";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PointDataset, TimeBounds } from "../../../../packages/data/src";
 import type { MediaSource, SubtitleTrack } from "../../../../packages/media/src";
@@ -42,6 +45,42 @@ const PanelHeader = ({
 );
 
 export function App() {
+  const [annotations, setAnnotations] = useState<AnnotationProject>(emptyAnnotations);
+  const [annotationsReady,setAnnotationsReady] = useState(false);
+  const [annotationStatus,setAnnotationStatus] = useState("正在载入地图标注…");
+  const [annotationSelectedId,setAnnotationSelectedId] = useState<string|null>(null);
+  const [annotationFocus,setAnnotationFocus] = useState<{id:string;sequence:number}|null>(null);
+  const [drawMode,setDrawMode] = useState<"select"|"point"|"route">("select");
+  const [draftCoordinates,setDraftCoordinates] = useState<MapCoordinate[]>([]);
+  useEffect(()=>{
+    let active=true;
+    if(!window.replaymod){setAnnotationStatus("请在桌面应用中打开地图标注");return;}
+    window.replaymod.loadAnnotations().then(file=>{
+      if(!active)return;
+      if(file)setAnnotations(parseAnnotationProject(file.content,file.name));
+      setAnnotationsReady(true);setAnnotationStatus("地图标注已载入");
+    }).catch((e:unknown)=>{if(active)setAnnotationStatus(`载入失败：${e instanceof Error?e.message:String(e)}`);});
+    return()=>{active=false;};
+  },[]);
+  useEffect(()=>{
+    if(!annotationsReady)return;
+    let active=true;setAnnotationStatus("有更改，等待保存…");
+    const timer=window.setTimeout(()=>{
+      window.replaymod!.saveAnnotations(JSON.stringify(annotations)).then(()=>{if(active)setAnnotationStatus("已自动保存到本机");}).catch((e:unknown)=>{if(active)setAnnotationStatus(`保存失败：${e instanceof Error?e.message:String(e)}`);});
+    },600);
+    return()=>{active=false;window.clearTimeout(timer);};
+  },[annotations,annotationsReady]);
+  const selectAnnotation = (id:string) => {
+    setAnnotationSelectedId(id);setAnnotationFocus({id,sequence:Date.now()});
+  };
+  const addAnnotation = (coordinates:MapCoordinate[],kind:"point"|"route") => {
+    if(!annotationsReady)return;
+    const selected=annotations.nodes.find(n=>n.id===annotationSelectedId);
+    const id=crypto.randomUUID();
+    setAnnotations(p=>({...p,nodes:[...p.nodes,{id,parentId:selected?.kind==="folder"?selected.id:selected?.parentId??null,kind,name:kind==="point"?"新建地标":"新建路线",description:"",visible:true,open:true,coordinates,altitudeMode:"clampToGround",style:{color:"#55cfff",opacity:1,width:3}}]}));
+    setAnnotationSelectedId(id);setDraftCoordinates([]);setDrawMode("select");
+  };
+  const finishRoute = () => {if(draftCoordinates.length>=2)addAnnotation(draftCoordinates,"route");};
   const [pointDataset, setPointDataset] = useState<PointDataset | null>(null);
   const [currentTime, setCurrentTime] = useState<number | null>(null);
   const [exportRange, setExportRange] = useState<TimeBounds | null>(null);
@@ -239,6 +278,16 @@ export function App() {
             onPointSelect={selectMapPoint}
             pointDataset={pointDataset}
             currentTime={currentTime}
+            onMoveAnnotationCoordinate={(id,index,coordinate)=>setAnnotations(p=>({...p,nodes:p.nodes.map(n=>n.id===id?{...n,coordinates:n.coordinates.map((c,i)=>i===index?coordinate:c)}:n)}))}
+            annotations={annotations}
+            annotationSelectedId={annotationSelectedId}
+            annotationFocus={annotationFocus}
+            onAnnotationSelect={setAnnotationSelectedId}
+            drawMode={drawMode}
+            draftCoordinates={draftCoordinates}
+            onDrawCoordinate={coordinate=>drawMode==="point"?addAnnotation([coordinate],"point"):setDraftCoordinates(p=>[...p,coordinate])}
+            onFinishRoute={finishRoute}
+            onCancelDrawing={()=>{setDrawMode("select");setDraftCoordinates([]);}}
           />
         ) : (
           <MapTokenSetup onSave={saveMaptilerKey} />
@@ -299,6 +348,7 @@ export function App() {
             action="+"
             onAction={() => void openLocationCsv()}
           />
+          <AnnotationPanel project={annotations} onChange={setAnnotations} selectedId={annotationSelectedId} onSelect={selectAnnotation} status={annotationStatus} ready={annotationsReady}/>
           <section className="library-section">
             <button className="section-label" type="button">
               <span>▼</span> 数据源
@@ -382,15 +432,13 @@ export function App() {
         <section className="stage-column">
           <header className="stage-toolbar">
             <div className="tool-group">
-              <button className="tool-button active" type="button">
-                选择
-              </button>
-              <button className="tool-button" type="button">
-                移动
-              </button>
-              <button className="tool-button" type="button">
-                切分
-              </button>
+              <button className={`tool-button ${drawMode==="select"?"active":""}`} type="button" onClick={()=>{setDrawMode("select");setDraftCoordinates([]);}}>选择</button>
+              <button className={`tool-button ${drawMode==="point"?"active":""}`} type="button" disabled={!annotationsReady} onClick={()=>{setDrawMode("point");setDraftCoordinates([]);}}>标点</button>
+              <button className={`tool-button ${drawMode==="route"?"active":""}`} type="button" disabled={!annotationsReady} onClick={()=>{setDrawMode("route");setDraftCoordinates([]);}}>画路线</button>
+              {drawMode==="route" && <>
+                <button className="tool-button" type="button" disabled={draftCoordinates.length<2} onClick={finishRoute}>完成 ({draftCoordinates.length})</button>
+                <button className="tool-button" type="button" disabled={!draftCoordinates.length} onClick={()=>setDraftCoordinates(p=>p.slice(0,-1))}>撤回一点</button>
+              </>}
             </div>
             <div className="view-switch">
               <button className="active" type="button">

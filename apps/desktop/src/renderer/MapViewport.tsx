@@ -1,4 +1,8 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { AnnotationLabels } from "./AnnotationLabels";
+import type { AnnotationProject, MapCoordinate } from "../../../../packages/data/src";
+import type { FeatureCollection, Geometry } from "geojson";
+import { visibleAnnotations } from "./annotations";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import type { PointDataset } from "../../../../packages/data/src";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -184,6 +188,16 @@ const findNearestPointTimestamp = (
 };
 
 interface MapViewportProps {
+  annotations: AnnotationProject;
+  annotationSelectedId: string | null;
+  annotationFocus: {id:string;sequence:number}|null;
+  onAnnotationSelect: (id:string)=>void;
+  drawMode: "select"|"point"|"route";
+  draftCoordinates: MapCoordinate[];
+  onDrawCoordinate: (coordinate:MapCoordinate)=>void;
+  onFinishRoute: ()=>void;
+  onCancelDrawing: ()=>void;
+  onMoveAnnotationCoordinate: (id:string,index:number,coordinate:MapCoordinate)=>void;
   apiKey: string;
   onClearKey: () => void;
   onPointSelect: (timestamp: number) => void;
@@ -192,6 +206,8 @@ interface MapViewportProps {
 }
 
 export function MapViewport({
+  annotations, annotationSelectedId, annotationFocus, onAnnotationSelect,
+  drawMode, draftCoordinates, onDrawCoordinate, onFinishRoute, onCancelDrawing, onMoveAnnotationCoordinate,
   apiKey,
   onClearKey,
   onPointSelect,
@@ -204,6 +220,7 @@ export function MapViewport({
     "loading",
   );
   const [errorMessage, setErrorMessage] = useState("");
+  const annotationPoints = useMemo(() => visibleAnnotations(annotations).filter(node => node.kind === "point"), [annotations]);
 
   useEffect(() => {
     if (!containerRef.current) {
@@ -259,6 +276,65 @@ export function MapViewport({
       map.remove();
     };
   }, [apiKey]);
+
+  useEffect(()=>{
+    const map=mapRef.current;
+    if(!map || status!=="ready")return;
+    const features: FeatureCollection<Geometry> = {type:"FeatureCollection",features:visibleAnnotations(annotations).filter(n=>n.kind==="route").map(n=>({type:"Feature",id:n.id,properties:{id:n.id,name:n.name,color:n.style.color,opacity:n.style.opacity,width:n.style.width,selected:n.id===annotationSelectedId},geometry:n.kind==="point"?{type:"Point",coordinates:n.coordinates[0]}:{type:"LineString",coordinates:n.coordinates}}))};
+    if(draftCoordinates.length)features.features.push({type:"Feature",properties:{id:"draft",color:"#ffe36e",opacity:1,width:3},geometry:draftCoordinates.length>1?{type:"LineString",coordinates:draftCoordinates}:{type:"Point",coordinates:draftCoordinates[0]}});
+    const source=map.getSource("annotations") as maplibregl.GeoJSONSource|undefined;
+    if(source)source.setData(features);
+    else {
+      map.addSource("annotations",{type:"geojson",data:features});
+      map.addLayer({id:"annotation-routes",type:"line",source:"annotations",filter:["==",["geometry-type"],"LineString"],paint:{"line-color":["get","color"],"line-width":["+",["get","width"],["case",["==",["get","selected"],true],2,0]],"line-opacity":["get","opacity"]}});
+      map.addLayer({id:"annotation-points",type:"circle",source:"annotations",filter:["==",["geometry-type"],"Point"],paint:{"circle-color":["get","color"],"circle-radius":["case",["==",["get","selected"],true],4,2.5],"circle-stroke-width":0.75,"circle-stroke-color":"#fff","circle-opacity":["get","opacity"]}});
+    }
+  },[annotations,annotationSelectedId,draftCoordinates,status]);
+
+  useEffect(()=>{
+    const map=mapRef.current;
+    if(!map || status!=="ready" || !annotationFocus)return;
+    const selected=annotations.nodes.find(n=>n.id===annotationFocus.id);
+    if(!selected)return;
+    const descendants=new Set([selected.id]);
+    if(selected.kind==="folder") {let changed=true;while(changed){changed=false;for(const n of annotations.nodes)if(n.parentId&&descendants.has(n.parentId)&&!descendants.has(n.id)){descendants.add(n.id);changed=true;}}}
+    const bounds=new maplibregl.LngLatBounds();
+    for(const n of annotations.nodes)if(descendants.has(n.id))for(const c of n.coordinates)bounds.extend([c[0],c[1]]);
+    if(!bounds.isEmpty())map.fitBounds(bounds,{padding:{top:120,bottom:180,left:350,right:310},maxZoom:14,duration:700});
+  },[annotationFocus,status]);
+
+  useEffect(()=>{
+    const map=mapRef.current;
+    if(!map || status!=="ready")return;
+    map.getCanvas().style.cursor=drawMode==="select"?"":"crosshair";
+    const click=(e:maplibregl.MapMouseEvent)=>{
+      if(drawMode!=="select"){onDrawCoordinate([((e.lngLat.lng+180)%360+360)%360-180,e.lngLat.lat,0]);return;}
+      const layers=["annotation-points","annotation-routes"].filter(id=>map.getLayer(id));
+      if(!layers.length)return;
+      const feature=map.queryRenderedFeatures([[e.point.x-5,e.point.y-5],[e.point.x+5,e.point.y+5]],{layers})[0];
+      if(feature?.properties?.id && feature.properties.id!=="draft")onAnnotationSelect(String(feature.properties.id));
+    };
+    const key=(e:KeyboardEvent)=>{
+      if(isEditableTarget(e.target))return;
+      if(e.key==="Escape")onCancelDrawing();
+      if(e.key==="Enter"&&drawMode==="route"){e.preventDefault();onFinishRoute();}
+    };
+    map.on("click",click);window.addEventListener("keydown",key);
+    return()=>{map.off("click",click);window.removeEventListener("keydown",key);};
+  },[drawMode,status,onDrawCoordinate,onAnnotationSelect,onFinishRoute,onCancelDrawing]);
+
+  useEffect(()=>{
+    const map=mapRef.current;
+    const node=visibleAnnotations(annotations).find(n=>n.id===annotationSelectedId);
+    if(!map||status!=="ready"||drawMode!=="select"||!node||node.coordinates.length>200)return;
+    const markers=node.coordinates.map((c,index)=>{
+      const element=document.createElement("div");element.className="annotation-handle";element.title="拖动调整坐标";
+      const marker=new maplibregl.Marker({element,draggable:true}).setLngLat([c[0],c[1]]).addTo(map);
+      marker.on("dragend",()=>{const pos=marker.getLngLat();onMoveAnnotationCoordinate(node.id,index,[((pos.lng+180)%360+360)%360-180,pos.lat,c[2]??0]);});
+      return marker;
+    });
+    return()=>markers.forEach(m=>m.remove());
+  },[annotations,annotationSelectedId,drawMode,status,onMoveAnnotationCoordinate]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -431,6 +507,9 @@ export function MapViewport({
     }
 
     const handleClick = (event: maplibregl.MapMouseEvent) => {
+      if(drawMode!=="select")return;
+      const annotationLayers=["annotation-points","annotation-routes"].filter(id=>map.getLayer(id));
+      if(annotationLayers.length && map.queryRenderedFeatures([[event.point.x-5,event.point.y-5],[event.point.x+5,event.point.y+5]],{layers:annotationLayers}).length)return;
       const timestamp = findNearestPointTimestamp(
         map,
         event.point,
@@ -446,7 +525,7 @@ export function MapViewport({
     return () => {
       map.off("click", handleClick);
     };
-  }, [onPointSelect, pointDataset, status]);
+  }, [onPointSelect, pointDataset, status, drawMode]);
 
   useEffect(() => {
     const pressedKeys = new Set<"w" | "a" | "s" | "d">();
@@ -564,6 +643,13 @@ export function MapViewport({
   return (
     <section className="viewport map-viewport">
       <div ref={containerRef} className="map-container" />
+      {status === "ready" && mapRef.current && <AnnotationLabels
+        map={mapRef.current}
+        points={annotationPoints}
+        selectedId={annotationSelectedId}
+        drawing={drawMode !== "select"}
+        onSelect={onAnnotationSelect}
+      />}
 
       {status === "loading" && (
         <div className="map-message">
@@ -606,7 +692,7 @@ export function MapViewport({
               <span>底图已连接，可以开始导入 CSV 数据。</span>
             )}
             <span className="map-control-hint">
-              点击数据点定位 · 按住 WASD 移动 · 滚轮缩放
+              {drawMode==="point"?"点击地图放置地标 · Esc 取消":drawMode==="route"?"逐点点击绘制路线 · Enter 完成 · Esc 取消":"点击标注编辑 · WASD 移动 · 滚轮缩放"}
             </span>
           </div>
           <div className="viewport-badge">MAPTILER　在线</div>

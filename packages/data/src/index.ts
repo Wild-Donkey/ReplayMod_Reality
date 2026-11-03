@@ -6,3 +6,4 @@ export type {
   PassDiagnostic,
   PassResult,
 } from "./pass";
+export type { AnnotationProject, AnnotationNode, AnnotationStyle, MapCoordinate } from "./annotations";

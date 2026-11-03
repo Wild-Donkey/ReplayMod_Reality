@@ -1622,3 +1622,44 @@ button:focus-visible {
     display: none;
   }
 }
+
+.annotation-panel { padding: 12px; border-bottom: 1px solid #ffffff20; }
+.annotation-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+.annotation-actions button, .annotation-editor button { padding: 5px 7px; background: #ffffff10; border: 1px solid #ffffff25; color: #dce5ed; font-size: 11px; cursor: pointer; }
+.annotation-panel small { color: #99a9b9; font-size: 10px; }
+.annotation-tree { max-height: 240px; overflow: auto; margin-top: 8px; }
+.annotation-row { display: flex; align-items: center; gap: 4px; min-height: 25px; }
+.annotation-row.selected { background: #55cfff25; }
+.annotation-row input { flex: 0 0 auto; }
+.annotation-row button { background: transparent; border: 0; color: #cdd8e2; cursor: pointer; }
+.annotation-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-size: 11px; flex: 1; }
+.annotation-editor { display: grid; gap: 7px; margin-top: 10px; font-size: 11px; }
+.annotation-editor label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.annotation-editor input, .annotation-editor textarea, .annotation-editor select { width: 155px; min-width: 0; color: #dce5ed; background: #171d26; border: 1px solid #ffffff25; padding: 4px; }
+.annotation-editor textarea { min-height: 60px; resize: vertical; }
+.annotation-editor input[type=color] { width: 55px; height: 27px; }
+.annotation-handle { width: 7px; height: 7px; border: 1px solid #fff; background: #29abdf; border-radius: 50%; cursor: grab; }
+.library-panel { overflow-y: auto; }
+
+.annotation-label-overlay { position: absolute; inset: 0; pointer-events: none; }
+.annotation-map-label {
+  position: absolute; height: 16px; display: flex; align-items: center; gap: 4px;
+  padding: 0; border: 0; border-radius: 0; background: transparent;
+  color: rgb(230 235 241 / 68%); font: 400 11px/16px "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  white-space: nowrap; cursor: pointer; pointer-events: auto;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 65%);
+}
+.annotation-map-label i { width: 4px; height: 4px; flex: 0 0 4px; border-radius: 50%; }
+.annotation-map-label:hover, .annotation-map-label.selected { color: rgb(255 255 255 / 90%); }
+.annotation-label-overlay.drawing .annotation-map-label { pointer-events: none; }
+.annotation-map-group { position: absolute; pointer-events: none; }
+.annotation-centroid-dot { position: absolute; left: 2px; width: 4px; height: 4px; border-radius: 50%; background: rgb(230 235 241 / 78%); }
+.annotation-place-list { margin-left: 10px; max-height: 42px; overflow-y: auto; scrollbar-width: none; pointer-events: auto; }
+.annotation-place-list button {
+  display: block; width: 100%; height: 14px; padding: 0; border: 0; background: transparent;
+  color: rgb(230 235 241 / 68%); font: 400 11px/14px "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 65%); cursor: pointer; text-align: left;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.annotation-place-list button:hover, .annotation-place-list button.selected { color: rgb(255 255 255 / 90%); }
+.annotation-label-overlay.drawing .annotation-place-list { pointer-events: none; }
