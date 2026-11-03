@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const assert = require('node:assert/strict');
 const ts = require('typescript');
 const vm = require('node:vm');
-const compiled = ts.transpileModule(fs.readFileSync('apps/desktop/src/renderer/annotation-label-layout.ts', 'utf8'), {
+const compiled = ts.transpileModule(fs.readFileSync('apps/desktop/src/renderer/features/annotations/annotation-label-layout.ts', 'utf8'), {
   compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022},
 }).outputText;
 const mod = {exports: {}};

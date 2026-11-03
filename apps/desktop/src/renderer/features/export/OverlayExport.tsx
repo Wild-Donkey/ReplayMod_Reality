@@ -1,7 +1,8 @@
+import { useCachedState, cachedMapRequest } from "../../shared/cache";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import maplibregl from "maplibre-gl";
-import type { PointDataset, TimeBounds } from "../../../../packages/data/src";
+import type { PointDataset, TimeBounds } from "../../../../../../packages/data/src";
 
 interface ExportSettings {
   width: number;
@@ -128,7 +129,7 @@ export function OverlayExport({ dataset, range, apiKey }: { dataset: PointDatase
   const navigationMapRef = useRef<maplibregl.Map | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const cancelExportRef = useRef(false);
-  const [settings, setSettings] = useState<ExportSettings>({ width: 1920, height: 1080, fps: 30, segmentMinutes: 10, bitrate: 12, showStats: true, showMap: true });
+  const [settings, setSettings] = useCachedState<ExportSettings>("export-settings", { width: 1920, height: 1080, fps: 30, segmentMinutes: 10, bitrate: 12, showStats: true, showMap: true });
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isMapReady, setIsMapReady] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
@@ -154,6 +155,7 @@ export function OverlayExport({ dataset, range, apiKey }: { dataset: PointDatase
     const container = navigationContainerRef.current;
     if (!container || !apiKey) return;
     const map = new maplibregl.Map({
+      transformRequest: cachedMapRequest,
       container, interactive: false, attributionControl: false,
       canvasContextAttributes: { preserveDrawingBuffer: true },
       center: [0, 0], zoom: 15,

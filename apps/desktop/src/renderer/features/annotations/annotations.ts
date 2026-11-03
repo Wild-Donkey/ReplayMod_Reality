@@ -1,4 +1,4 @@
-import type { AnnotationNode, AnnotationProject, AnnotationStyle, MapCoordinate } from "../../../../packages/data/src";
+import type { AnnotationNode, AnnotationProject, AnnotationStyle, MapCoordinate } from "../../../../../../packages/data/src";
 
 export const emptyAnnotations = (): AnnotationProject => ({format: "replaymod.annotations", version: 1, name: "我的地图", nodes: []});
 const children = (el: Element, tag: string) => Array.from(el.children).filter(child => child.localName === tag);

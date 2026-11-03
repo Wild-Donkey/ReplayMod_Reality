@@ -10,7 +10,10 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "typecheck": "tsc --noEmit",
-    "check:annotations": "node scripts/check-annotations.cjs"
+    "check:cache": "node tests/cache/check-cache.cjs",
+    "check:annotations": "node tests/annotations/check-annotations.cjs",
+    "check:annotation-labels": "node tests/annotations/check-annotation-labels.cjs",
+    "check": "npm run typecheck && npm run check:cache && npm run check:annotation-labels"
   },
   "author": "",
   "license": "UNLICENSED",

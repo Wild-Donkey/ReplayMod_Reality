@@ -13,6 +13,12 @@ const TRANSCRIBE_MEDIA_CHANNEL = "media:transcribe";
 const SAVE_SUBTITLES_CHANNEL = "media:save-subtitles";
 
 export interface DesktopBridge {
+  readonly cachedState: Record<string, unknown>;
+  readonly cacheDirectory: string;
+  saveCachedState(state: Record<string, unknown>): string | null;
+  openCacheDirectory(): Promise<string>;
+  loadCachedMedia(): Promise<MediaSource | null>;
+  loadMapResource(url: string): Promise<Uint8Array>;
   loadAnnotations(): Promise<{name:string; content:string} | null>;
   openAnnotations(): Promise<{name:string; content:string} | null>;
   saveAnnotations(content: string): Promise<void>;
@@ -26,7 +32,14 @@ export interface DesktopBridge {
   saveSubtitles(sourcePath: string, track: SubtitleTrack): Promise<SavedSubtitleTrack>;
 }
 
+const bootstrap = ipcRenderer.sendSync("cache:bootstrap");
 const bridge: DesktopBridge = Object.freeze({
+  cachedState: bootstrap.state,
+  cacheDirectory: bootstrap.directory,
+  saveCachedState: (state: Record<string, unknown>) => ipcRenderer.sendSync("cache:save", state),
+  openCacheDirectory: () => ipcRenderer.invoke("cache:open"),
+  loadCachedMedia: () => ipcRenderer.invoke("cache:media"),
+  loadMapResource: (url: string) => ipcRenderer.invoke("cache:map", url),
   loadAnnotations: () => ipcRenderer.invoke("annotations:load"),
   openAnnotations: () => ipcRenderer.invoke("annotations:open"),
   saveAnnotations: (content: string) => ipcRenderer.invoke("annotations:save", content),

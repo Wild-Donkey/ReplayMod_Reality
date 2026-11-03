@@ -1,6 +1,8 @@
+import { LocalCache } from "./cache";
+import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { access, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell, net } from "electron";
 import path from "node:path";
 import { parse } from "csv-parse";
 import type {
@@ -27,6 +29,57 @@ const LOAD_DEFAULT_LOCATION_CSV_CHANNEL = "data:load-default-location-csv";
 const OPEN_MEDIA_CHANNEL = "media:open";
 const TRANSCRIBE_MEDIA_CHANNEL = "media:transcribe";
 const SAVE_SUBTITLES_CHANNEL = "media:save-subtitles";
+
+const cacheRoot = path.join(app.getPath("userData"), "cache");
+const cache = new LocalCache(path.join(cacheRoot, "snapshots-v1"));
+const mapCache = new LocalCache(path.join(cacheRoot, "maps-v1"));
+// Keep sessionData at Electron's original location: localStorage contains saved API keys.
+// Only disposable HTTP responses belong in the cache directory.
+app.commandLine.appendSwitch("disk-cache-dir", path.join(cacheRoot, "browser", "http"));
+app.commandLine.appendSwitch("disk-cache-size", String(512 * 1024 * 1024));
+let workspace = cache.readSync<Record<string, unknown>>("workspace") ?? {};
+ipcMain.on("cache:bootstrap", event => {
+  event.returnValue = { state: workspace, directory: cacheRoot };
+});
+ipcMain.on("cache:save", (event, state: Record<string, unknown>) => {
+  try {
+    if (!state || typeof state !== "object" || Array.isArray(state)) throw new Error("缓存状态无效");
+    cache.writeSync("workspace", state);
+    workspace = state;
+    event.returnValue = null;
+  } catch (error) { event.returnValue = String(error); }
+});
+ipcMain.handle("cache:open", () => shell.openPath(cacheRoot));
+const mapRequests = new Map<string, Promise<Uint8Array>>();
+ipcMain.handle("cache:map", async (_event, rawUrl: string) => {
+  const url = new URL(rawUrl);
+  if (url.protocol !== "https:" || url.hostname !== "api.maptiler.com" || url.port || url.username || url.password) {
+    throw new Error("不支持的地图资源地址");
+  }
+  const key = createHash("sha256").update(url.href).digest("hex");
+  let request = mapRequests.get(key);
+  if (!request) {
+    request = (async () => {
+      const saved = await mapCache.read<{ at: number; data: Uint8Array }>(key);
+      if (saved && Date.now() - saved.at < 7 * 86400_000) return saved.data;
+      try {
+        const response = await net.fetch(url.href);
+        if (!response.ok) throw new Error(`地图请求失败 (${response.status})`);
+        const data = new Uint8Array(await response.arrayBuffer());
+        if (data.byteLength <= 32 * 1024 * 1024) {
+          await mapCache.write(key, { at: Date.now(), data }).catch(console.warn);
+        }
+        return data;
+      } catch (error) {
+        if (saved) return saved.data;
+        throw error;
+      }
+    })();
+    mapRequests.set(key, request);
+    void request.finally(() => mapRequests.delete(key)).catch(() => {});
+  }
+  return request;
+});
 
 const openedMediaPaths = new Set<string>();
 
@@ -82,6 +135,17 @@ const readLocationCsv = async (
   mainFilePath: string,
   photoFilePath: string | null = null,
 ): Promise<PointDataset> => {
+  const signature = await Promise.all([mainFilePath, photoFilePath].map(async file => {
+    if (!file) return null;
+    const info = await stat(file);
+    return [file, info.size, info.mtimeMs];
+  }));
+  const key = createHash("sha256").update(JSON.stringify(signature)).digest("hex");
+  const saved = await cache.read<PointDataset>(key);
+  if (saved) {
+    await cache.write("last-dataset", saved).catch(console.warn);
+    return saved;
+  }
   const footprintPoints: TimedCoordinate[] = [];
   const photoPointsByKey = new Map<string, TimedCoordinate>();
   let skippedRowCount = 0;
@@ -189,7 +253,7 @@ const readLocationCsv = async (
   const timelineTimestamps = timelinePoints.map((point) => point.timestamp);
   const timelineAltitudes = timelinePoints.map((point) => point.altitude);
 
-  return {
+  const dataset: PointDataset = {
     sourceName: photoFilePath
       ? `${path.basename(mainFilePath)} + ${path.basename(photoFilePath)}`
       : path.basename(mainFilePath),
@@ -207,6 +271,9 @@ const readLocationCsv = async (
     bounds,
     timeBounds,
   };
+  await cache.write(key, dataset).catch(console.warn);
+  await cache.write("last-dataset", dataset).catch(console.warn);
+  return dataset;
 };
 
 const findCsvPairInDirectory = async (
@@ -282,6 +349,8 @@ ipcMain.handle(
   LOAD_DEFAULT_LOCATION_CSV_CHANNEL,
   (): Promise<PointDataset | null> => {
     defaultDatasetPromise ??= (async () => {
+      const last = await cache.read<PointDataset>("last-dataset");
+      if (last) return last;
       const pair = await findLatestRawDataCsvPair();
       return pair
         ? readLocationCsv(pair.mainFilePath, pair.photoFilePath)
@@ -322,6 +391,14 @@ ipcMain.handle(
   },
 );
 
+ipcMain.handle("cache:media", async () => {
+  const source = await cache.read<MediaSource>("last-media");
+  if (!source) return null;
+  try { await access(source.sourcePath); } catch { return null; }
+  openedMediaPaths.add(source.sourcePath);
+  return source;
+});
+
 ipcMain.handle(OPEN_MEDIA_CHANNEL, async (): Promise<MediaSource | null> => {
   const result = await dialog.showOpenDialog({
     title: "载入 DJI 视频",
@@ -332,7 +409,9 @@ ipcMain.handle(OPEN_MEDIA_CHANNEL, async (): Promise<MediaSource | null> => {
 
   if (result.canceled || !selectedFilePath) return null;
   openedMediaPaths.add(selectedFilePath);
-  return probeMediaFile(selectedFilePath);
+  const source = await probeMediaFile(selectedFilePath);
+  await cache.write("last-media", source).catch(console.warn);
+  return source;
 });
 
 ipcMain.handle(

@@ -1,10 +1,11 @@
-import { AnnotationLabels } from "./AnnotationLabels";
-import type { AnnotationProject, MapCoordinate } from "../../../../packages/data/src";
+import { cachedMapRequest, readCached, writeCached } from "../../shared/cache";
+import { AnnotationLabels } from "../annotations/AnnotationLabels";
+import type { AnnotationProject, MapCoordinate } from "../../../../../../packages/data/src";
 import type { FeatureCollection, Geometry } from "geojson";
-import { visibleAnnotations } from "./annotations";
+import { visibleAnnotations } from "../annotations/annotations";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
-import type { PointDataset } from "../../../../packages/data/src";
+import type { PointDataset } from "../../../../../../packages/data/src";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 const FOOTPRINT_SOURCE_ID = "footprint-points";
@@ -214,6 +215,7 @@ export function MapViewport({
   pointDataset,
   currentTime,
 }: MapViewportProps) {
+  const restoreCameraRef = useRef(Boolean(readCached("map-camera", null)));
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
@@ -230,16 +232,24 @@ export function MapViewport({
     setStatus("loading");
     setErrorMessage("");
 
+    const camera = readCached<{center: [number, number]; zoom: number; bearing: number; pitch: number} | null>("map-camera", null);
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: `https://api.maptiler.com/maps/dataviz-dark/style.json?key=${encodeURIComponent(apiKey)}`,
       center: [104.2, 35.8],
       zoom: 2.4,
+      ...camera,
+      transformRequest: cachedMapRequest,
       attributionControl: false,
       localIdeographFontFamily:
         '"Microsoft YaHei UI", "Microsoft YaHei", sans-serif',
     });
     mapRef.current = map;
+    const saveCamera = () => {
+      const center = map.getCenter();
+      writeCached("map-camera", { center: [center.lng, center.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch() });
+    };
+    map.on("moveend", saveCamera);
     map.dragPan.disable();
     map.dragRotate.disable();
     map.boxZoom.disable();
@@ -413,6 +423,7 @@ export function MapViewport({
       });
     }
 
+    if (restoreCameraRef.current) { restoreCameraRef.current = false; return; }
     map.fitBounds(
       [
         [pointDataset.bounds[0], pointDataset.bounds[1]],

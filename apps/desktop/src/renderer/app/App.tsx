@@ -1,16 +1,17 @@
-import type { AnnotationProject, MapCoordinate } from "../../../../packages/data/src";
-import { AnnotationPanel } from "./AnnotationPanel";
-import { emptyAnnotations, parseAnnotationProject } from "./annotations";
+import { useCachedState, readCached, cacheError } from "../shared/cache";
+import type { AnnotationProject, MapCoordinate } from "../../../../../packages/data/src";
+import { AnnotationPanel } from "../features/annotations/AnnotationPanel";
+import { emptyAnnotations, parseAnnotationProject } from "../features/annotations/annotations";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PointDataset, TimeBounds } from "../../../../packages/data/src";
-import type { MediaSource, SubtitleTrack } from "../../../../packages/media/src";
-import { MapTokenSetup, MapViewport } from "./MapViewport";
-import { OverlayExport } from "./OverlayExport";
-import { SubtitleEditor } from "./SubtitleEditor";
+import type { PointDataset, TimeBounds } from "../../../../../packages/data/src";
+import type { MediaSource, SubtitleTrack } from "../../../../../packages/media/src";
+import { MapTokenSetup, MapViewport } from "../features/map/MapViewport";
+import { OverlayExport } from "../features/export/OverlayExport";
+import { SubtitleEditor } from "../features/subtitles/SubtitleEditor";
 import {
   Timeline,
   type TimelineFocusRequest,
-} from "./Timeline";
+} from "../features/timeline/Timeline";
 
 const MAPTILER_KEY_STORAGE_KEY = "replaymod.maptiler.api-key";
 
@@ -45,19 +46,19 @@ const PanelHeader = ({
 );
 
 export function App() {
-  const [annotations, setAnnotations] = useState<AnnotationProject>(emptyAnnotations);
+  const [annotations, setAnnotations] = useCachedState<AnnotationProject>("annotations", emptyAnnotations());
   const [annotationsReady,setAnnotationsReady] = useState(false);
   const [annotationStatus,setAnnotationStatus] = useState("正在载入地图标注…");
-  const [annotationSelectedId,setAnnotationSelectedId] = useState<string|null>(null);
+  const [annotationSelectedId,setAnnotationSelectedId] = useCachedState<string|null>("annotationSelectedId", null);
   const [annotationFocus,setAnnotationFocus] = useState<{id:string;sequence:number}|null>(null);
-  const [drawMode,setDrawMode] = useState<"select"|"point"|"route">("select");
-  const [draftCoordinates,setDraftCoordinates] = useState<MapCoordinate[]>([]);
+  const [drawMode,setDrawMode] = useCachedState<"select"|"point"|"route">("drawMode", "select");
+  const [draftCoordinates,setDraftCoordinates] = useCachedState<MapCoordinate[]>("draftCoordinates", []);
   useEffect(()=>{
     let active=true;
     if(!window.replaymod){setAnnotationStatus("请在桌面应用中打开地图标注");return;}
     window.replaymod.loadAnnotations().then(file=>{
       if(!active)return;
-      if(file)setAnnotations(parseAnnotationProject(file.content,file.name));
+      if(file && !readCached<AnnotationProject | null>("annotations", null))setAnnotations(parseAnnotationProject(file.content,file.name));
       setAnnotationsReady(true);setAnnotationStatus("地图标注已载入");
     }).catch((e:unknown)=>{if(active)setAnnotationStatus(`载入失败：${e instanceof Error?e.message:String(e)}`);});
     return()=>{active=false;};
@@ -82,8 +83,8 @@ export function App() {
   };
   const finishRoute = () => {if(draftCoordinates.length>=2)addAnnotation(draftCoordinates,"route");};
   const [pointDataset, setPointDataset] = useState<PointDataset | null>(null);
-  const [currentTime, setCurrentTime] = useState<number | null>(null);
-  const [exportRange, setExportRange] = useState<TimeBounds | null>(null);
+  const [currentTime, setCurrentTime] = useCachedState<number | null>("currentTime", null);
+  const [exportRange, setExportRange] = useCachedState<TimeBounds | null>("exportRange", null);
   const [timelineFocusRequest, setTimelineFocusRequest] =
     useState<TimelineFocusRequest | null>(null);
   const timelineFocusSequenceRef = useRef(0);
@@ -91,15 +92,15 @@ export function App() {
   const [dataError, setDataError] = useState("");
   const [mediaSource, setMediaSource] = useState<MediaSource | null>(null);
   const [isLoadingMedia, setIsLoadingMedia] = useState(false);
-  const [subtitleTrack, setSubtitleTrack] = useState<SubtitleTrack | null>(null);
-  const [isSubtitleEditorOpen, setIsSubtitleEditorOpen] = useState(false);
+  const [subtitleTrack, setSubtitleTrack] = useCachedState<SubtitleTrack | null>("subtitleTrack", null);
+  const [isSubtitleEditorOpen, setIsSubtitleEditorOpen] = useCachedState("subtitle-editor-open", false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [subtitleStatus, setSubtitleStatus] = useState("");
   const [maptilerKey, setMaptilerKey] = useState(() => {
     const environmentKey = import.meta.env.VITE_MAPTILER_API_KEY?.trim();
     return (
-      environmentKey ??
-      window.localStorage.getItem(MAPTILER_KEY_STORAGE_KEY) ??
+      environmentKey ||
+      window.localStorage.getItem(MAPTILER_KEY_STORAGE_KEY) ||
       ""
     );
   });
@@ -170,8 +171,8 @@ export function App() {
         }
 
         setPointDataset(dataset);
-        setCurrentTime(dataset.timeBounds[0]);
-        setExportRange(dataset.timeBounds);
+        setCurrentTime(readCached("currentTime", dataset.timeBounds[0]));
+        setExportRange(readCached("exportRange", dataset.timeBounds));
         setTimelineFocusRequest(null);
       })
       .catch((error: unknown) => {
@@ -192,6 +193,14 @@ export function App() {
     return () => {
       isActive = false;
     };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    window.replaymod?.loadCachedMedia().then(source => {
+      if (active) setMediaSource(source);
+    }).catch(error => { if (active) setDataError(String(error)); });
+    return () => { active = false; };
   }, []);
 
   const openLocationCsv = async () => {
@@ -493,7 +502,12 @@ export function App() {
               </div>
               <div>
                 <dt>缓存状态</dt>
-                <dd>空</dd>
+                <dd title={window.replaymod?.cacheDirectory}>
+                  {window.replaymod ? <button type="button" onClick={() => {
+                    if (cacheError()) setDataError(cacheError());
+                    void window.replaymod!.openCacheDirectory().then(error => { if (error) setDataError(error); });
+                  }}>本地自动缓存 · 打开目录</button> : "桌面应用可用"}
+                </dd>
               </div>
             </dl>
           </section>

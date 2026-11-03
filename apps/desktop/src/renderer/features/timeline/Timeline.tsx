@@ -1,3 +1,4 @@
+import { useCachedState } from "../../shared/cache";
 import {
   type PointerEvent,
   useEffect,
@@ -5,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { PointDataset, TimeBounds } from "../../../../packages/data/src";
+import type { PointDataset, TimeBounds } from "../../../../../../packages/data/src";
 
 const MIN_VISIBLE_SPAN = 60_000;
 const PAN_SPEED_PER_SECOND = 0.55;
@@ -479,10 +480,12 @@ export function Timeline({
   const panVelocityRef = useRef(0);
   const panFrameRef = useRef<number | null>(null);
   const lastPanFrameTimeRef = useRef<number | null>(null);
-  const [viewRange, setViewRange] = useState<TimeBounds | null>(null);
+  const [viewRange, setViewRange] = useCachedState<TimeBounds | null>("timeline-view", null);
 
   useEffect(() => {
-    setViewRange(dataset?.timeBounds ?? null);
+    if (!dataset) return;
+    setViewRange(previous => previous && previous[0] >= dataset.timeBounds[0] && previous[1] <= dataset.timeBounds[1]
+      ? previous : dataset.timeBounds);
   }, [dataset]);
 
   useEffect(() => {

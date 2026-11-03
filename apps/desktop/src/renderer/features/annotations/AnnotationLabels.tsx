@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import maplibregl from "maplibre-gl";
-import type { AnnotationNode } from "../../../../packages/data/src";
+import type { AnnotationNode } from "../../../../../../packages/data/src";
 import { layoutAnnotationLabels, pointLabelText, type LabelGroup } from "./annotation-label-layout";
 
 interface Props {

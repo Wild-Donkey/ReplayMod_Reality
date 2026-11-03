@@ -1,4 +1,4 @@
-import type { SubtitleTrack, TimedTextCue } from "../../../../packages/media/src";
+import type { SubtitleTrack, TimedTextCue } from "../../../../../../packages/media/src";
 
 interface SubtitleEditorProps {
   readonly track: SubtitleTrack | null;

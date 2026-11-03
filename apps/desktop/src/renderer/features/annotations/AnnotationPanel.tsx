@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { AnnotationProject, AnnotationNode } from "../../../../packages/data/src";
+import type { AnnotationProject, AnnotationNode } from "../../../../../../packages/data/src";
 import { exportKml, parseAnnotationProject } from "./annotations";
 interface Props {
   project: AnnotationProject;

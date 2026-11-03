@@ -4,7 +4,7 @@ const assert = require('assert/strict');
 const root=process.cwd();
 const ts=require(path.join(root,'node_modules/typescript'));
 const {DOMParser,XMLSerializer}=require(path.join(root,'node_modules/@xmldom/xmldom'));
-const code=ts.transpileModule(fs.readFileSync('apps/desktop/src/renderer/annotations.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+const code=ts.transpileModule(fs.readFileSync('apps/desktop/src/renderer/features/annotations/annotations.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 const m={exports:{}};
 require('vm').runInNewContext(code,{exports:m.exports,DOMParser,XMLSerializer,crypto:require('crypto').webcrypto,console});
 const {importKml,parseAnnotationProject,exportKml,visibleAnnotations,compactAnnotationProject}=m.exports;
