@@ -9,7 +9,7 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-node "%~dp0scripts\start\launch.cjs"
+node "%~dp0source\scripts\start\launch.cjs"
 if errorlevel 1 (
   pause
   exit /b 1
