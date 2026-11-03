@@ -250,10 +250,36 @@ export function MapViewport({
       writeCached("map-camera", { center: [center.lng, center.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch() });
     };
     map.on("moveend", saveCamera);
-    map.dragPan.disable();
+    map.dragPan.enable();
     map.dragRotate.disable();
     map.boxZoom.disable();
     map.doubleClickZoom.disable();
+
+    const canvasContainer = map.getCanvasContainer();
+    const handleWheel = (event: WheelEvent) => {
+      // Chromium emits trackpad pinch gestures as Ctrl+wheel. Let MapLibre
+      // keep handling those so its existing zoom behavior stays intact.
+      if (event.ctrlKey) return;
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const horizontalScale = event.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? 40
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+          ? canvasContainer.clientWidth
+          : 1;
+      const verticalScale = event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+        ? canvasContainer.clientHeight
+        : horizontalScale;
+      map.panBy(
+        [event.deltaX * horizontalScale, event.deltaY * verticalScale],
+        { duration: 0 },
+      );
+    };
+    canvasContainer.addEventListener("wheel", handleWheel, {
+      capture: true,
+      passive: false,
+    });
 
     map.addControl(
       new maplibregl.NavigationControl({
@@ -282,6 +308,7 @@ export function MapViewport({
     });
 
     return () => {
+      canvasContainer.removeEventListener("wheel", handleWheel, true);
       mapRef.current = null;
       map.remove();
     };
@@ -703,7 +730,7 @@ export function MapViewport({
               <span>底图已连接，可以开始导入 CSV 数据。</span>
             )}
             <span className="map-control-hint">
-              {drawMode==="point"?"点击地图放置地标 · Esc 取消":drawMode==="route"?"逐点点击绘制路线 · Enter 完成 · Esc 取消":"点击标注编辑 · WASD 移动 · 滚轮缩放"}
+              {drawMode==="point"?"点击地图放置地标 · Esc 取消":drawMode==="route"?"逐点点击绘制路线 · Enter 完成 · Esc 取消":"点击标注编辑 · 双指滑动 / 鼠标拖拽平移 · 双指捏合缩放 · WASD 移动"}
             </span>
           </div>
           <div className="viewport-badge">MAPTILER　在线</div>
