@@ -66,7 +66,7 @@ vm.runInNewContext(componentCode, {exports: labelComponent.exports, require: nam
 const renderLabels = points => renderToStaticMarkup(React.createElement(labelComponent.exports.AnnotationLabels, {
   map: {}, points, selectedId: null, drawing: false, onSelect: () => {},
 }));
-const visiblePoint = {id:'a', name:'保留地点', coordinates:[[0,0]], style:{color:'#ffffff', opacity:1}};
+const visiblePoint = {id:'a', name:'保留地点', coordinates:[[0,0]], color:'#ffffff'};
 previousGroups = layoutAnnotationLabels([point('a',0,0)], measure);
 assert.match(renderLabels([visiblePoint]), /保留地点/);
 assert.doesNotThrow(() => renderLabels([]));

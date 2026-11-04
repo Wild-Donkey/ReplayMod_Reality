@@ -2,8 +2,10 @@ import { HDRSettings } from "../features/settings/HDRSettings";
 import { defaultTimelineMetrics, type TimelineMetricsSettings } from "../features/timeline/metrics";
 import { useCachedState, readCached, cacheError } from "../shared/cache";
 import type { AnnotationProject, MapCoordinate } from "../../../../../packages/data/src";
+import type { TerrainProfilePoint } from "../features/map/elevation";
 import { AnnotationPanel } from "../features/annotations/AnnotationPanel";
-import { emptyAnnotations, parseAnnotationProject } from "../features/annotations/annotations";
+import { ElevationProfile } from "../features/annotations/ElevationProfile";
+import { emptyAnnotations, parseAnnotationProject, serializeAnnotationProject } from "../features/annotations/annotations";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PointDataset, TimeBounds } from "../../../../../packages/data/src";
 import type { MediaSource, SubtitleTrack } from "../../../../../packages/media/src";
@@ -53,11 +55,15 @@ export function App() {
   const [activeTab, setActiveTab] = useCachedState<WorkspaceTab>("workspace-tab", "annotations");
   const [keyDraft, setKeyDraft] = useState("");
   const [settingsStatus, setSettingsStatus] = useState("");
-  const [annotations, setAnnotations] = useCachedState<AnnotationProject>("annotations", emptyAnnotations());
+  const [annotations, setAnnotations] = useState<AnnotationProject>(emptyAnnotations());
   const [annotationsReady,setAnnotationsReady] = useState(false);
   const [annotationStatus,setAnnotationStatus] = useState("正在载入地图标注…");
   const [annotationSelectedId,setAnnotationSelectedId] = useCachedState<string|null>("annotationSelectedId", null);
   const [annotationFocus,setAnnotationFocus] = useState<{id:string;sequence:number}|null>(null);
+  const [annotationHoverCoordinate,setAnnotationHoverCoordinate] = useState<TerrainProfilePoint|null>(null);
+  const [annotationElevationProfile,setAnnotationElevationProfile] = useState<TerrainProfilePoint[]|null|undefined>(undefined);
+  const selectedRoute = annotations.nodes.find(node => node.id === annotationSelectedId && node.kind === "route");
+  useEffect(()=>setAnnotationHoverCoordinate(null),[annotationSelectedId]);
   const [drawMode,setDrawMode] = useCachedState<"select"|"point"|"route">("drawMode", "select");
   const [draftCoordinates,setDraftCoordinates] = useCachedState<MapCoordinate[]>("draftCoordinates", []);
   useEffect(()=>{
@@ -65,9 +71,7 @@ export function App() {
     if(!window.replaymod){setAnnotationStatus("请在桌面应用中打开地图标注");return;}
     window.replaymod.loadAnnotations().then(file=>{
       if(!active)return;
-      const cached = readCached<AnnotationProject | null>("annotations", null);
-      if(cached)setAnnotations(parseAnnotationProject(JSON.stringify(cached)));
-      else if(file)setAnnotations(parseAnnotationProject(file.content,file.name));
+      if(file)setAnnotations(parseAnnotationProject(file.content,file.name));
       setAnnotationsReady(true);setAnnotationStatus("地图标注已载入");
     }).catch((e:unknown)=>{if(active)setAnnotationStatus(`载入失败：${e instanceof Error?e.message:String(e)}`);});
     return()=>{active=false;};
@@ -76,18 +80,22 @@ export function App() {
     if(!annotationsReady)return;
     let active=true;setAnnotationStatus("有更改，等待保存…");
     const timer=window.setTimeout(()=>{
-      window.replaymod!.saveAnnotations(JSON.stringify(annotations)).then(()=>{if(active)setAnnotationStatus("已自动保存到本机");}).catch((e:unknown)=>{if(active)setAnnotationStatus(`保存失败：${e instanceof Error?e.message:String(e)}`);});
+      window.replaymod!.saveAnnotations(serializeAnnotationProject(annotations)).then(()=>{if(active)setAnnotationStatus("已自动保存到本机");}).catch((e:unknown)=>{if(active)setAnnotationStatus(`保存失败：${e instanceof Error?e.message:String(e)}`);});
     },600);
     return()=>{active=false;window.clearTimeout(timer);};
   },[annotations,annotationsReady]);
-  const selectAnnotation = (id:string) => {
-    setAnnotationSelectedId(id);setAnnotationFocus({id,sequence:Date.now()});
+  const selectAnnotation = (id:string|null) => {
+    setAnnotationSelectedId(id);
+    setCurrentTime(null);
+    setTimelineFocusRequest(null);
+    if(!id)setAnnotationHoverCoordinate(null);
   };
+  const focusAnnotation = (id:string) => setAnnotationFocus({id,sequence:Date.now()});
   const addAnnotation = (coordinates:MapCoordinate[],kind:"point"|"route") => {
     if(!annotationsReady)return;
     const selected=annotations.nodes.find(n=>n.id===annotationSelectedId);
     const id=crypto.randomUUID();
-    setAnnotations(p=>({...p,nodes:[...p.nodes,{id,parentId:selected?.kind==="folder"?selected.id:selected?.parentId??null,kind,name:kind==="point"?"新建地标":"新建路线",description:"",visible:true,open:true,coordinates,altitudeMode:"clampToGround",style:{color:"#55cfff",opacity:1,width:3}}]}));
+    setAnnotations(p=>({...p,nodes:[...p.nodes,{id,parentId:selected?.kind==="folder"?selected.id:selected?.parentId??null,kind,name:kind==="point"?"新建地标":"新建路线",description:"",visible:true,open:false,coordinates,color:"#55cfff"}]}));
     setAnnotationSelectedId(id);setDraftCoordinates([]);setDrawMode("select");
   };
   const finishRoute = () => {if(draftCoordinates.length>=2)addAnnotation(draftCoordinates,"route");};
@@ -148,6 +156,8 @@ export function App() {
   }, [currentTime, exportRange]);
 
   const selectMapPoint = useCallback((timestamp: number) => {
+    setAnnotationSelectedId(null);
+    setAnnotationHoverCoordinate(null);
     timelineFocusSequenceRef.current += 1;
     setCurrentTime(timestamp);
     setTimelineFocusRequest({
@@ -321,7 +331,10 @@ export function App() {
             annotations={annotations}
             annotationSelectedId={annotationSelectedId}
             annotationFocus={annotationFocus}
-            onAnnotationSelect={setAnnotationSelectedId}
+            annotationHoverCoordinate={annotationHoverCoordinate}
+            onAnnotationElevationProfile={setAnnotationElevationProfile}
+            onAnnotationSelect={selectAnnotation}
+            onAnnotationFocus={focusAnnotation}
             drawMode={drawMode}
             draftCoordinates={draftCoordinates}
             onDrawCoordinate={coordinate=>drawMode==="point"?addAnnotation([coordinate],"point"):setDraftCoordinates(p=>[...p,coordinate])}
@@ -385,7 +398,7 @@ export function App() {
         <aside className="library-panel">
           <PanelHeader title={tabs.find(tab => tab.id === activeTab)?.label ?? "地图标注"} />
           <div className="workspace-page" hidden={activeTab !== "annotations"}>
-          <AnnotationPanel project={annotations} onChange={setAnnotations} selectedId={annotationSelectedId} onSelect={selectAnnotation} status={annotationStatus} ready={annotationsReady}/>
+          <AnnotationPanel project={annotations} onChange={setAnnotations} selectedId={annotationSelectedId} onSelect={selectAnnotation} onFocus={focusAnnotation} status={annotationStatus} ready={annotationsReady}/>
           </div>
           <div className="workspace-page" hidden={activeTab !== "sources"}>
           <section className="library-section">
@@ -506,14 +519,14 @@ export function App() {
 
           <div className="map-interaction-area" aria-label="地图视图" />
 
-          <Timeline
+          {selectedRoute ? <ElevationProfile coordinates={annotationElevationProfile} routeName={selectedRoute.name} onHover={setAnnotationHoverCoordinate}/> : <Timeline
             dataset={pointDataset}
             currentTime={currentTime}
             onCurrentTimeChange={setCurrentTime}
             focusRequest={timelineFocusRequest}
             selectionRange={exportRange}
             metrics={timelineMetrics}
-          />
+          />}
         </section>
 
 

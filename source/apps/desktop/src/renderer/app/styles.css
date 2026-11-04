@@ -1647,6 +1647,14 @@ body,
 .annotation-editor input, .annotation-editor textarea, .annotation-editor select { width: 155px; min-width: 0; color: #dce5ed; background: #171d26; border: 1px solid #ffffff25; padding: 4px; }
 .annotation-editor textarea { min-height: 60px; resize: vertical; }
 .annotation-editor input[type=color] { width: 55px; height: 27px; }
+.route-elevation { min-height: 0; padding: 6px 12px 8px; border-top: 1px solid #ffffff20; background: #0d1218; color: #aebdca; }
+.route-elevation header { display: flex; height: 24px; align-items: center; justify-content: space-between; gap: 16px; }
+.route-elevation header strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #d8e2ea; }
+.route-elevation svg { display: block; width: 100%; height: calc(100% - 24px); min-height: 90px; touch-action: none; }
+.route-elevation text { fill: #7f8d99; font-size: 11px; }
+.route-elevation polyline { fill: none; stroke: #55cfff; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.route-elevation line { stroke: #ffe36e; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.route-elevation circle { fill: #ffe36e; stroke: #111; stroke-width: 1; vector-effect: non-scaling-stroke; }
 .annotation-handle { width: 7px; height: 7px; border: 1px solid #fff; background: #29abdf; border-radius: 50%; cursor: grab; }
 .library-panel { overflow-y: auto; }
 

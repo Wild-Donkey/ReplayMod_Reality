@@ -135,6 +135,19 @@ interface CsvPair {
   readonly photoFilePath: string | null;
 }
 
+interface CachedDatasetSource {
+  readonly mainFilePath: string;
+  readonly photoFilePath: string | null;
+}
+
+const rememberDatasetSource = async (
+  mainFilePath: string,
+  photoFilePath: string | null,
+) => storage.state.write("last-dataset-source", {
+  mainFilePath,
+  photoFilePath,
+} satisfies CachedDatasetSource).catch(console.warn);
+
 const isPhotoDataFile = (filePath: string) =>
   path.basename(filePath).toLowerCase().includes("photo");
 
@@ -154,6 +167,7 @@ const readLocationCsv = async (
   const saved = await storage.snapshots.read<PointDataset>(key);
   if (saved) {
     await storage.state.write("last-dataset", saved).catch(console.warn);
+    await rememberDatasetSource(mainFilePath, photoFilePath);
     return saved;
   }
   const footprintPoints: TimedCoordinate[] = [];
@@ -283,6 +297,7 @@ const readLocationCsv = async (
   };
   await storage.snapshots.write(key, dataset).catch(console.warn);
   await storage.state.write("last-dataset", dataset).catch(console.warn);
+  await rememberDatasetSource(mainFilePath, photoFilePath);
   return dataset;
 };
 
@@ -356,13 +371,36 @@ const findLatestRawDataCsvPair = async (): Promise<CsvPair | null> => {
 
 let defaultDatasetPromise: Promise<PointDataset | null> | null = null;
 
+const findDefaultCsvPair = async (): Promise<CsvPair | null> => {
+  const source = await storage.state.read<CachedDatasetSource>("last-dataset-source");
+
+  if (source?.mainFilePath) {
+    try {
+      await access(source.mainFilePath);
+      if (source.photoFilePath) await access(source.photoFilePath);
+      return source;
+    } catch {
+      try {
+        const latestInSourceDirectory = await findCsvPairInDirectory(
+          path.dirname(source.mainFilePath),
+        );
+        if (latestInSourceDirectory) return latestInSourceDirectory;
+      } catch {
+        // The former source directory may have moved or been removed.
+      }
+    }
+  }
+
+  // Older caches did not retain the opened path. In that case, use the newest
+  // CSV in the standard RawData/footprint directory instead of stale data.
+  return findLatestRawDataCsvPair();
+};
+
 ipcMain.handle(
   LOAD_DEFAULT_LOCATION_CSV_CHANNEL,
   (): Promise<PointDataset | null> => {
     defaultDatasetPromise ??= (async () => {
-      const last = await storage.state.read<PointDataset>("last-dataset");
-      if (last) return last;
-      const pair = await findLatestRawDataCsvPair();
+      const pair = await findDefaultCsvPair();
       return pair
         ? readLocationCsv(pair.mainFilePath, pair.photoFilePath)
         : null;
@@ -392,13 +430,23 @@ ipcMain.handle(
       return null;
     }
 
-    const pair = await findCsvPairInDirectory(path.dirname(selectedFilePath));
+    const directoryPair = await findCsvPairInDirectory(
+      path.dirname(selectedFilePath),
+    );
 
-    if (!pair) {
-      return readLocationCsv(selectedFilePath);
+    if (isPhotoDataFile(selectedFilePath)) {
+      return directoryPair
+        ? readLocationCsv(directoryPair.mainFilePath, selectedFilePath)
+        : readLocationCsv(selectedFilePath);
     }
 
-    return readLocationCsv(pair.mainFilePath, pair.photoFilePath);
+    // The selected footprint file is authoritative. Previously this reused the
+    // directory's newest main CSV, which made selecting the full table reopen a
+    // newer Example_footprint.csv instead.
+    return readLocationCsv(
+      selectedFilePath,
+      directoryPair?.photoFilePath ?? null,
+    );
   },
 );
 
@@ -454,14 +502,31 @@ ipcMain.handle(
 // Annotation documents are stored as JSON; KML is only an import/export format.
 ipcMain.handle("annotations:load", async () => {
   const saved = storage.paths.annotations;
-  try { return { name: "我的地图", content: await readFile(saved, "utf8") }; }
-  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   const source = app.isPackaged
-    ? path.resolve(app.getAppPath(), "RawData/annotations/annotations.json")
-    : path.resolve(app.getAppPath(), "../RawData/annotations/annotations.json");
-  try { return { name: "摩旅/自驾", content: await readFile(source, "utf8") }; }
-  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-  return null;
+    ? path.resolve(app.getAppPath(), "RawData/annotations/Example_annotations.json")
+    : path.resolve(app.getAppPath(), "../RawData/annotations/Example_annotations.json");
+  let sourceContent: string | null = null;
+  try {
+    sourceContent = await readFile(source, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+
+  if (sourceContent !== null) {
+    const signature = createHash("sha256").update(sourceContent).digest("hex");
+    const previousSignature = storage.state.readSync<string>("annotations-source-signature");
+    if (signature !== previousSignature) {
+      storage.state.writeSync("annotations-source-signature", signature);
+      return { name: "摩旅/自驾", content: sourceContent };
+    }
+  }
+
+  try {
+    return { name: "我的地图", content: await readFile(saved, "utf8") };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  return sourceContent === null ? null : { name: "摩旅/自驾", content: sourceContent };
 });
 ipcMain.handle("annotations:open", async () => {
   const result = await dialog.showOpenDialog({title:"导入地图标注", properties:["openFile"], filters:[{name:"KML / 地图项目", extensions:["kml","json"]}]});

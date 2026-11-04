@@ -5,6 +5,9 @@ import type { ExpressionSpecification } from "maplibre-gl";
 import { updateWaterFallback } from "./water";
 import { maskTerrainWater } from "./terrainWaterMask";
 import { compressedRatio, DEFAULT_OCEAN_DEPTH, type ElevationRange } from "./elevationRange";
+import type { MapCoordinate } from "../../../../../../packages/data/src";
+
+export type TerrainProfilePoint = [number, number, number];
 
 type Session = { map: maplibregl.Map; signal: AbortSignal; raw?: RawTerrain };
 const sessions = new Map<string, Session>();
@@ -57,6 +60,43 @@ async function loadElevationDEM(request: {url: string}, controller: {signal: Abo
   return {data: renderBytes};
 }
 maplibregl.addProtocol("elevation-dem",loadElevationDEM);
+
+export async function sampleTerrainProfile(coordinates: readonly MapCoordinate[], apiKey: string, signal: AbortSignal): Promise<TerrainProfilePoint[]> {
+  if (coordinates.length < 2) return [];
+  const metadataUrl=`https://api.maptiler.com/tiles/terrain-rgb-v2/tiles.json?key=${encodeURIComponent(apiKey)}`;
+  const metadataBytes=window.replaymod?new Uint8Array(await window.replaymod.loadMapResource(metadataUrl)):new Uint8Array(await (await fetch(metadataUrl,{signal})).arrayBuffer());
+  signal.throwIfAborted();
+  const metadata=JSON.parse(new TextDecoder().decode(metadataBytes)) as {tiles:string[];maxzoom?:number};
+  if(!metadata.tiles[0])throw new Error("地形服务未返回图块地址");
+  const sampleCount = Math.min(500, coordinates.length);
+  const indexes = Array.from({length:sampleCount},(_,index)=>Math.round(index*(coordinates.length-1)/Math.max(1,sampleCount-1)));
+  const zoom = Math.min(12,metadata.maxzoom??12), scale = 2 ** zoom;
+  const samples = indexes.map(index => {
+    const coordinate=coordinates[index],longitude=((coordinate[0]+180)%360+360)%360-180,latitude=Math.max(-85.05112878,Math.min(85.05112878,coordinate[1]));
+    const worldX=(longitude+180)/360*scale;
+    const worldY=(1-Math.asinh(Math.tan(latitude*Math.PI/180))/Math.PI)/2*scale;
+    return {coordinate,tileX:Math.floor(worldX),tileY:Math.floor(worldY),u:worldX-Math.floor(worldX),v:worldY-Math.floor(worldY)};
+  });
+  const tiles=new Map<string,Promise<{width:number;height:number;data:Uint8ClampedArray}>>();
+  const loadTile=(x:number,y:number)=>{
+    const key=`${x}/${y}`;
+    let tile=tiles.get(key);
+    if(!tile){tile=(async()=>{
+      const url=metadata.tiles[0].replace("{z}",String(zoom)).replace("{x}",String(x)).replace("{y}",String(y));
+      const bytes=window.replaymod?new Uint8Array(await window.replaymod.loadMapResource(url)):new Uint8Array(await (await fetch(url,{signal})).arrayBuffer());
+      signal.throwIfAborted();
+      const bitmap=await createImageBitmap(new Blob([bytes]));
+      try{const canvas=document.createElement("canvas");canvas.width=bitmap.width;canvas.height=bitmap.height;const context=canvas.getContext("2d");if(!context)throw new Error("无法读取海拔图块");context.drawImage(bitmap,0,0);return {width:canvas.width,height:canvas.height,data:context.getImageData(0,0,canvas.width,canvas.height).data};}finally{bitmap.close();}
+    })();tiles.set(key,tile);}
+    return tile;
+  };
+  return Promise.all(samples.map(async sample=>{
+    const tile=await loadTile(sample.tileX,sample.tileY);signal.throwIfAborted();
+    const x=Math.min(tile.width-1,Math.floor(sample.u*tile.width)),y=Math.min(tile.height-1,Math.floor(sample.v*tile.height)),offset=(y*tile.width+x)*4;
+    const elevation=-10000+(tile.data[offset]*65536+tile.data[offset+1]*256+tile.data[offset+2])*0.1;
+    return [sample.coordinate[0],sample.coordinate[1],elevation];
+  }));
+}
 
 export function elevationRamp(range: ElevationRange, ocean = false): ExpressionSpecification {
   const stops: (number | string)[] = [];

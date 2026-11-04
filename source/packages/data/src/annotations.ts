@@ -1,23 +1,17 @@
-/** Coordinates use KML / GeoJSON order: WGS84 longitude, latitude, optional altitude in metres. */
-export type MapCoordinate = [number, number] | [number, number, number];
-export interface AnnotationStyle {
-  color: string;
-  opacity: number;
-  width: number;
-  iconHref?: string;
-}
-export interface AnnotationNode {
+/** Annotation coordinates use GeoJSON order: WGS84 longitude and latitude. */
+export type MapCoordinate = [number, number];
+interface AnnotationNodeBase {
   id: string;
   parentId: string | null;
-  kind: "folder" | "point" | "route";
   name: string;
   description: string;
   visible: boolean;
   open: boolean;
   coordinates: MapCoordinate[];
-  altitudeMode: string;
-  style: AnnotationStyle;
 }
+export interface AnnotationFolderNode extends AnnotationNodeBase { kind: "folder"; color?: never; }
+export interface AnnotationFeatureNode extends AnnotationNodeBase { kind: "point" | "route"; color: string; }
+export type AnnotationNode = AnnotationFolderNode | AnnotationFeatureNode;
 export interface AnnotationProject {
   format: "replaymod.annotations";
   version: 1;

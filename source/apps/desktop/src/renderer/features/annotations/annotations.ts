@@ -1,10 +1,16 @@
-import type { AnnotationNode, AnnotationProject, AnnotationStyle, MapCoordinate } from "../../../../../../packages/data/src";
+import type { AnnotationNode, AnnotationProject, MapCoordinate } from "../../../../../../packages/data/src";
 
 export const emptyAnnotations = (): AnnotationProject => ({format: "replaymod.annotations", version: 1, name: "我的地图", nodes: []});
 const children = (el: Element, tag: string) => Array.from(el.children).filter(child => child.localName === tag);
 const child = (el: Element, tag: string) => children(el, tag)[0];
 const value = (el: Element, tag: string) => child(el, tag)?.textContent?.trim() ?? "";
-const defaultStyle = (): AnnotationStyle => ({color: "#55cfff", opacity: 1, width: 3});
+const defaultColor = "#55cfff";
+type LegacyAnnotationNode = AnnotationNode & {style?: {color?:string}};
+const annotationColor = (node: LegacyAnnotationNode) => node.color ?? node.style?.color ?? defaultColor;
+export const sanitizeAnnotationDescription = (description = "") => description.split(/\r?\n/).filter(line =>
+  !/^\s*(?:WGS84(?:参考坐标)?|坐标来源|来源)\s*[：:]/i.test(line)
+  && !/https?:\/\//i.test(line)
+).join("\n").trim();
 const xml = (text: string) => {
   if (/<!DOCTYPE|<!ENTITY/i.test(text)) throw new Error("不支持含 DTD 或实体声明的 KML。");
   const doc = new DOMParser().parseFromString(text, "application/xml");
@@ -15,12 +21,12 @@ const xml = (text: string) => {
 export function compactAnnotationProject(project: AnnotationProject): AnnotationProject {
   return {
     format: project.format, version: project.version, name: project.name,
-    nodes: project.nodes.map(node => ({
-      id: node.id, parentId: node.parentId, kind: node.kind,
-      name: node.name, description: node.description, visible: node.visible,
-      open: node.open, coordinates: node.coordinates,
-      altitudeMode: node.altitudeMode, style: node.style,
-    })),
+    nodes: project.nodes.map(node => {
+      const common = {id:node.id,parentId:node.parentId,name:node.name,description:sanitizeAnnotationDescription(node.description),visible:node.visible,coordinates:(node.coordinates??[]).map(coordinate => [coordinate[0],coordinate[1]] as MapCoordinate)};
+      return node.kind === "folder"
+        ? {...common,kind:"folder" as const,open:node.open??false}
+        : {...common,kind:node.kind,open:false,color:annotationColor(node as LegacyAnnotationNode)};
+    }),
   };
 }
 export function importKml(text: string, fileName = "导入地图"): AnnotationProject {
@@ -31,27 +37,22 @@ export function importKml(text: string, fileName = "导入地图"): AnnotationPr
     const id = el.getAttribute("id") ?? el.getAttributeNS("http://www.opengis.net/kml/2.2", "id");
     return id ? [[id, el] as const] : [];
   }));
-  const resolveStyle = (el: Element, seen = new Set<Element>()): AnnotationStyle => {
-    if (seen.has(el)) return defaultStyle();
+  const resolveColor = (el: Element, seen = new Set<Element>()): string => {
+    if (seen.has(el)) return defaultColor;
     seen.add(el);
     const ref = value(el, "styleUrl");
-    let style = ref.startsWith("#") && ids.has(ref.slice(1)) ? resolveStyle(ids.get(ref.slice(1))!, seen) : defaultStyle();
+    let color = ref.startsWith("#") && ids.has(ref.slice(1)) ? resolveColor(ids.get(ref.slice(1))!, seen) : defaultColor;
     if (el.localName === "StyleMap") {
       const normal = children(el, "Pair").find(pair => value(pair, "key") === "normal");
-      if (normal) style = resolveStyle(normal, seen);
+      if (normal) color = resolveColor(normal, seen);
     }
     const own = el.localName === "Style" ? el : child(el, "Style");
     if (own) {
       const line = child(own, "LineStyle");
-      const icon = child(own, "IconStyle");
-      const color = line ? value(line, "color") : "";
-      if (/^[a-f\d]{8}$/i.test(color)) style = {...style, color: `#${color.slice(6,8)}${color.slice(4,6)}${color.slice(2,4)}`, opacity: parseInt(color.slice(0,2),16)/255};
-      const width = line ? Number(value(line, "width")) : NaN;
-      if (Number.isFinite(width) && width > 0) style.width = width;
-      const iconEl = icon && child(icon, "Icon");
-      if (iconEl) style.iconHref = value(iconEl, "href");
+      const kmlColor = line ? value(line, "color") : "";
+      if (/^[a-f\d]{8}$/i.test(kmlColor)) color = `#${kmlColor.slice(6,8)}${kmlColor.slice(4,6)}${kmlColor.slice(2,4)}`;
     }
-    return style;
+    return color;
   };
   const nodes: AnnotationNode[] = [];
   const usedIds = new Set<string>();
@@ -70,12 +71,15 @@ export function importKml(text: string, fileName = "导入地图"): AnnotationPr
     const coordinates = geometry ? value(geometry, "coordinates").split(/\s+/).filter(Boolean).map(tuple => {
       const numbers = tuple.split(",").map(Number);
       if (numbers.length < 2 || numbers.length > 3 || numbers.some(n => !Number.isFinite(n)) || Math.abs(numbers[0]) > 180 || Math.abs(numbers[1]) > 90) throw new Error("KML 中存在无效坐标。");
-      return numbers as MapCoordinate;
+      return [numbers[0],numbers[1]] as MapCoordinate;
     }) : [];
     const kind = folder ? "folder" : geometry!.localName === "Point" ? "point" : "route";
     if ((kind === "point" && coordinates.length !== 1) || (kind === "route" && coordinates.length < 2)) throw new Error("点或路线的坐标数量无效。");
 
-    nodes.push({id, parentId, kind, name: value(el,"name") || (folder ? "未命名分组" : "未命名地标"), description: value(el,"description"), visible: value(el,"visibility") !== "0", open: value(el,"open") === "1", coordinates, altitudeMode: geometry ? value(geometry,"altitudeMode") || "clampToGround" : "clampToGround", style: resolveStyle(el)});
+    const common={id,parentId,name:value(el,"name")||(folder?"未命名分组":"未命名地标"),description:sanitizeAnnotationDescription(value(el,"description")),visible:value(el,"visibility")!=="0",coordinates};
+    nodes.push(folder
+      ? {...common,kind:"folder",open:value(el,"open")==="1"}
+      : {...common,kind:geometry!.localName==="Point"?"point":"route",open:false,color:resolveColor(el)});
     if (folder) for (const c of Array.from(el.children)) walk(c, id);
   };
   walk(doc.documentElement, null);
@@ -88,9 +92,11 @@ export function parseAnnotationProject(text: string, name?: string): AnnotationP
   if (p.format !== "replaymod.annotations" || p.version !== 1 || typeof p.name !== "string" || !Array.isArray(p.nodes)) throw new Error("不支持的地图项目格式或版本。");
   const ids = new Map<string, AnnotationNode>();
   for (const n of p.nodes) {
-    if (!n || typeof n.id !== "string" || ids.has(n.id) || !["folder","point","route"].includes(n.kind) || typeof n.name !== "string" || typeof n.description !== "string" || typeof n.visible !== "boolean" || typeof n.open !== "boolean" || typeof n.altitudeMode !== "string" || !(n.parentId === null || typeof n.parentId === "string") || !Array.isArray(n.coordinates) || !n.style || !/^#[0-9a-f]{6}$/i.test(n.style.color) || !Number.isFinite(n.style.width) || n.style.width <= 0 || !Number.isFinite(n.style.opacity) || n.style.opacity < 0 || n.style.opacity > 1) throw new Error("地图项目包含无效属性。");
-    for (const c of n.coordinates) if (!Array.isArray(c) || c.length < 2 || c.length > 3 || c.some(v => typeof v !== "number" || !Number.isFinite(v)) || Math.abs(c[0]) > 180 || Math.abs(c[1]) > 90) throw new Error("地图项目包含无效坐标。");
-    if ((n.kind === "point" && n.coordinates.length !== 1) || (n.kind === "route" && n.coordinates.length < 2) || (n.kind === "folder" && n.coordinates.length)) throw new Error("地图几何无效。");
+    const color=(n as LegacyAnnotationNode).color ?? (n as LegacyAnnotationNode).style?.color;
+    if (!n || typeof n.id !== "string" || ids.has(n.id) || !["folder","point","route"].includes(n.kind) || typeof n.name !== "string" || !(n.description === undefined || typeof n.description === "string") || typeof n.visible !== "boolean" || !(n.open === undefined || typeof n.open === "boolean") || !(n.parentId === null || typeof n.parentId === "string") || !(n.coordinates === undefined || Array.isArray(n.coordinates)) || (n.kind !== "folder" && !/^#[0-9a-f]{6}$/i.test(color ?? ""))) throw new Error("地图项目包含无效属性。");
+    const coordinates = n.coordinates ?? [];
+    for (const c of coordinates) if (!Array.isArray(c) || c.length < 2 || c.length > 3 || c.some(v => typeof v !== "number" || !Number.isFinite(v)) || Math.abs(c[0]) > 180 || Math.abs(c[1]) > 90) throw new Error("地图项目包含无效坐标。");
+    if ((n.kind === "point" && coordinates.length !== 1) || (n.kind === "route" && coordinates.length < 2) || (n.kind === "folder" && coordinates.length)) throw new Error("地图几何无效。");
     ids.set(n.id,n);
   }
   for (const n of p.nodes) {
@@ -110,6 +116,22 @@ export function visibleAnnotations(project: AnnotationProject) {
     return n.kind !== "folder";
   });
 }
+export function serializeAnnotationProject(project: AnnotationProject): string {
+  const coordinateSequences: string[] = [];
+  const tokenPrefix = "__REPLAYMOD_COORDINATE_SEQUENCE_";
+  let output = JSON.stringify(project, function replacer(key, value) {
+    if (key === "description" && typeof value === "string") return sanitizeAnnotationDescription(value) || undefined;
+    if (key === "coordinates" && Array.isArray(value) && value.length === 0) return undefined;
+    if (key === "open" && (value === false || this.kind !== "folder")) return undefined;
+    if (key !== "coordinates" || !Array.isArray(value)) return value;
+    const index = coordinateSequences.push(JSON.stringify(value.map(coordinate => [coordinate[0], coordinate[1]]))) - 1;
+    return `${tokenPrefix}${index}__`;
+  }, 2);
+  coordinateSequences.forEach((coordinates, index) => {
+    output = output.replace(`"${tokenPrefix}${index}__"`, coordinates);
+  });
+  return `${output}\n`;
+}
 export function exportKml(project: AnnotationProject): string {
   const doc = xml('<kml xmlns="http://www.opengis.net/kml/2.2"><Document/></kml>');
   const root = doc.documentElement.children[0];
@@ -123,15 +145,12 @@ export function exportKml(project: AnnotationProject): string {
       if(n.description) add(el,"description",n.description);
       if(!n.visible) add(el,"visibility","0");
       if(n.kind === "folder" && n.open) add(el,"open","1");
-      const style=doc.createElementNS(root.namespaceURI,"Style"); el.appendChild(style);
-      const line=doc.createElementNS(root.namespaceURI,"LineStyle"); style.appendChild(line);
-      const color=n.style.color.slice(1); const kmlColor=Math.round(n.style.opacity*255).toString(16).padStart(2,"0")+color.slice(4,6)+color.slice(2,4)+color.slice(0,2);
-      add(line,"color",kmlColor); add(line,"width",String(n.style.width));
-      const icon=doc.createElementNS(root.namespaceURI,"IconStyle"); style.appendChild(icon); add(icon,"color",kmlColor);
-      if(n.style.iconHref){const iconUrl=doc.createElementNS(root.namespaceURI,"Icon");icon.appendChild(iconUrl);add(iconUrl,"href",n.style.iconHref);}
       if (n.kind !== "folder") {
+        const style=doc.createElementNS(root.namespaceURI,"Style"); el.appendChild(style);
+        const line=doc.createElementNS(root.namespaceURI,"LineStyle"); style.appendChild(line);
+        const color=(n.color ?? defaultColor).slice(1); const kmlColor="ff"+color.slice(4,6)+color.slice(2,4)+color.slice(0,2);
+        add(line,"color",kmlColor);
         const geom=doc.createElementNS(root.namespaceURI,n.kind === "point" ? "Point" : "LineString"); el.appendChild(geom);
-        if(n.altitudeMode !== "clampToGround") add(geom,"altitudeMode",n.altitudeMode);
         add(geom,"coordinates",n.coordinates.map(c=>c.join(",")).join(" "));
       }
       parent.appendChild(el); if(n.kind === "folder") write(n.id,el);

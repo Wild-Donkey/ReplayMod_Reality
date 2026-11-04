@@ -67,7 +67,7 @@ export function AnnotationLabels({map, points, selectedId, drawing, onSelect}: P
         style={{left: group.left, top: group.top, width: group.width}}
         title={node.name} aria-label={`地标 ${node.name}`}
         onClick={event => { event.stopPropagation(); onSelect(node.id); }}
-      ><i style={{backgroundColor: node.style.color, opacity: node.style.opacity}}/>{pointLabelText(group.items[0])}</button>;
+      ><i style={{backgroundColor: node.color??"#55cfff"}}/>{pointLabelText(group.items[0])}</button>;
     })}
   </div>;
 }

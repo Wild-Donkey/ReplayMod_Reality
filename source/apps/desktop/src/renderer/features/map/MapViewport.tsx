@@ -11,7 +11,7 @@ import type { PointDataset } from "../../../../../../packages/data/src";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import { presentHDR } from "../../shared/hdr";
-import { addElevationGlass } from "./elevation";
+import { addElevationGlass, sampleTerrainProfile, type TerrainProfilePoint } from "./elevation";
 import { restoreWaterLayers } from "./water";
 import { TerrainLegend } from "./TerrainLegend";
 import type { TerrainAppearance } from "./terrainExposure";
@@ -22,6 +22,8 @@ const PHOTO_SOURCE_ID = "photo-points";
 const PHOTO_LAYER_ID = "photo-points-circle";
 const CURRENT_POSITION_SOURCE_ID = "current-position";
 const CURRENT_POSITION_LAYER_ID = "current-position-circle";
+const ANNOTATION_HOVER_SOURCE_ID = "annotation-profile-hover";
+const ANNOTATION_HOVER_LAYER_ID = "annotation-profile-hover-circle";
 const KEYBOARD_PAN_SPEED = 680;
 const POINT_HIT_RADIUS = 12;
 
@@ -201,7 +203,10 @@ interface MapViewportProps {
   annotations: AnnotationProject;
   annotationSelectedId: string | null;
   annotationFocus: {id:string;sequence:number}|null;
-  onAnnotationSelect: (id:string)=>void;
+  annotationHoverCoordinate: TerrainProfilePoint|null;
+  onAnnotationElevationProfile: (profile:TerrainProfilePoint[]|null|undefined)=>void;
+  onAnnotationSelect: (id:string|null)=>void;
+  onAnnotationFocus: (id:string)=>void;
   drawMode: "select"|"point"|"route";
   draftCoordinates: MapCoordinate[];
   onDrawCoordinate: (coordinate:MapCoordinate)=>void;
@@ -217,7 +222,7 @@ interface MapViewportProps {
 
 export function MapViewport({
   legendContainer,
-  annotations, annotationSelectedId, annotationFocus, onAnnotationSelect,
+  annotations, annotationSelectedId, annotationFocus, annotationHoverCoordinate, onAnnotationElevationProfile, onAnnotationSelect, onAnnotationFocus,
   drawMode, draftCoordinates, onDrawCoordinate, onFinishRoute, onCancelDrawing, onMoveAnnotationCoordinate,
   apiKey,
   onClearKey,
@@ -236,6 +241,15 @@ export function MapViewport({
   );
   const [errorMessage, setErrorMessage] = useState("");
   const annotationPoints = useMemo(() => visibleAnnotations(annotations).filter(node => node.kind === "point"), [annotations]);
+
+  useEffect(()=>{
+    const route=annotations.nodes.find(node=>node.id===annotationSelectedId&&node.kind==="route");
+    if(!route){onAnnotationElevationProfile(null);return;}
+    const controller=new AbortController();
+    onAnnotationElevationProfile(undefined);
+    sampleTerrainProfile(route.coordinates,apiKey,controller.signal).then(profile=>{if(!controller.signal.aborted)onAnnotationElevationProfile(profile);}).catch(error=>{if(!controller.signal.aborted){console.warn("路线海拔采样失败",error);onAnnotationElevationProfile(null);}});
+    return()=>controller.abort();
+  },[annotations,annotationSelectedId,apiKey,onAnnotationElevationProfile]);
 
   useEffect(() => {
     if (!containerRef.current) {
@@ -358,16 +372,26 @@ export function MapViewport({
   useEffect(()=>{
     const map=mapRef.current;
     if(!map || status!=="ready")return;
-    const features: FeatureCollection<Geometry> = {type:"FeatureCollection",features:visibleAnnotations(annotations).filter(n=>n.kind==="route").map(n=>({type:"Feature",id:n.id,properties:{id:n.id,name:n.name,color:n.style.color,opacity:n.style.opacity,width:n.style.width,selected:n.id===annotationSelectedId},geometry:n.kind==="point"?{type:"Point",coordinates:n.coordinates[0]}:{type:"LineString",coordinates:n.coordinates}}))};
-    if(draftCoordinates.length)features.features.push({type:"Feature",properties:{id:"draft",color:"#ffe36e",opacity:1,width:3},geometry:draftCoordinates.length>1?{type:"LineString",coordinates:draftCoordinates}:{type:"Point",coordinates:draftCoordinates[0]}});
+    const features: FeatureCollection<Geometry> = {type:"FeatureCollection",features:visibleAnnotations(annotations).filter(n=>n.kind==="route").map(n=>({type:"Feature",id:n.id,properties:{id:n.id,name:n.name,color:n.color??"#55cfff",selected:n.id===annotationSelectedId},geometry:n.kind==="point"?{type:"Point",coordinates:n.coordinates[0]}:{type:"LineString",coordinates:n.coordinates}}))};
+    if(draftCoordinates.length)features.features.push({type:"Feature",properties:{id:"draft",color:"#ffe36e"},geometry:draftCoordinates.length>1?{type:"LineString",coordinates:draftCoordinates}:{type:"Point",coordinates:draftCoordinates[0]}});
     const source=map.getSource("annotations") as maplibregl.GeoJSONSource|undefined;
     if(source)source.setData(features);
     else {
       map.addSource("annotations",{type:"geojson",data:features});
-      map.addLayer({id:"annotation-routes",type:"line",source:"annotations",filter:["==",["geometry-type"],"LineString"],paint:{"line-color":["get","color"],"line-width":["+",["get","width"],["case",["==",["get","selected"],true],2,0]],"line-opacity":["get","opacity"]}});
-      map.addLayer({id:"annotation-points",type:"circle",source:"annotations",filter:["==",["geometry-type"],"Point"],paint:{"circle-color":["get","color"],"circle-radius":["case",["==",["get","selected"],true],4,2.5],"circle-stroke-width":0.75,"circle-stroke-color":"#fff","circle-opacity":["get","opacity"]}});
+      map.addLayer({id:"annotation-routes",type:"line",source:"annotations",filter:["==",["geometry-type"],"LineString"],paint:{"line-color":["get","color"],"line-width":["case",["==",["get","selected"],true],5,3],"line-opacity":0.82}});
+      map.addLayer({id:"annotation-points",type:"circle",source:"annotations",filter:["==",["geometry-type"],"Point"],paint:{"circle-color":["get","color"],"circle-radius":["case",["==",["get","selected"],true],4,2.5],"circle-stroke-width":0.75,"circle-stroke-color":"#fff","circle-opacity":0.9}});
     }
   },[annotations,annotationSelectedId,draftCoordinates,status]);
+
+  useEffect(()=>{
+    const map=mapRef.current;
+    if(!map||status!=="ready")return;
+    const data:GeoJSON.FeatureCollection<GeoJSON.Point>={type:"FeatureCollection",features:annotationHoverCoordinate?[{type:"Feature",properties:{},geometry:{type:"Point",coordinates:annotationHoverCoordinate}}]:[]};
+    const source=map.getSource(ANNOTATION_HOVER_SOURCE_ID) as maplibregl.GeoJSONSource|undefined;
+    if(source){source.setData(data);return;}
+    map.addSource(ANNOTATION_HOVER_SOURCE_ID,{type:"geojson",data});
+    map.addLayer({id:ANNOTATION_HOVER_LAYER_ID,type:"circle",source:ANNOTATION_HOVER_SOURCE_ID,paint:{"circle-color":"#ffe36e","circle-radius":7,"circle-stroke-color":"#111","circle-stroke-width":2}});
+  },[annotationHoverCoordinate,status]);
 
   useEffect(()=>{
     const map=mapRef.current;
@@ -386,20 +410,26 @@ export function MapViewport({
     if(!map || status!=="ready")return;
     map.getCanvas().style.cursor=drawMode==="select"?"":"crosshair";
     const click=(e:maplibregl.MapMouseEvent)=>{
-      if(drawMode!=="select"){onDrawCoordinate([((e.lngLat.lng+180)%360+360)%360-180,e.lngLat.lat,0]);return;}
+      if(drawMode!=="select"){onDrawCoordinate([((e.lngLat.lng+180)%360+360)%360-180,e.lngLat.lat]);return;}
       const layers=["annotation-points","annotation-routes"].filter(id=>map.getLayer(id));
-      if(!layers.length)return;
-      const feature=map.queryRenderedFeatures([[e.point.x-5,e.point.y-5],[e.point.x+5,e.point.y+5]],{layers})[0];
+      const feature=layers.length?map.queryRenderedFeatures([[e.point.x-5,e.point.y-5],[e.point.x+5,e.point.y+5]],{layers})[0]:undefined;
       if(feature?.properties?.id && feature.properties.id!=="draft")onAnnotationSelect(String(feature.properties.id));
+      else onAnnotationSelect(null);
+    };
+    const doubleClick=(e:maplibregl.MapMouseEvent)=>{
+      if(drawMode!=="select")return;
+      const layers=["annotation-routes"].filter(id=>map.getLayer(id));
+      const feature=layers.length?map.queryRenderedFeatures([[e.point.x-5,e.point.y-5],[e.point.x+5,e.point.y+5]],{layers})[0]:undefined;
+      if(feature?.properties?.id && feature.properties.id!=="draft")onAnnotationFocus(String(feature.properties.id));
     };
     const key=(e:KeyboardEvent)=>{
       if(isEditableTarget(e.target))return;
       if(e.key==="Escape")onCancelDrawing();
       if(e.key==="Enter"&&drawMode==="route"){e.preventDefault();onFinishRoute();}
     };
-    map.on("click",click);window.addEventListener("keydown",key);
-    return()=>{map.off("click",click);window.removeEventListener("keydown",key);};
-  },[drawMode,status,onDrawCoordinate,onAnnotationSelect,onFinishRoute,onCancelDrawing]);
+    map.on("click",click);map.on("dblclick",doubleClick);window.addEventListener("keydown",key);
+    return()=>{map.off("click",click);map.off("dblclick",doubleClick);window.removeEventListener("keydown",key);};
+  },[drawMode,status,onDrawCoordinate,onAnnotationSelect,onAnnotationFocus,onFinishRoute,onCancelDrawing]);
 
   useEffect(()=>{
     const map=mapRef.current;
@@ -408,7 +438,7 @@ export function MapViewport({
     const markers=node.coordinates.map((c,index)=>{
       const element=document.createElement("div");element.className="annotation-handle";element.title="拖动调整坐标";
       const marker=new maplibregl.Marker({element,draggable:true}).setLngLat([c[0],c[1]]).addTo(map);
-      marker.on("dragend",()=>{const pos=marker.getLngLat();onMoveAnnotationCoordinate(node.id,index,[((pos.lng+180)%360+360)%360-180,pos.lat,c[2]??0]);});
+      marker.on("dragend",()=>{const pos=marker.getLngLat();onMoveAnnotationCoordinate(node.id,index,[((pos.lng+180)%360+360)%360-180,pos.lat]);});
       return marker;
     });
     return()=>markers.forEach(m=>m.remove());

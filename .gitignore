@@ -1,5 +1,10 @@
 RawData/*
-!RawData/.gitkeep
+!RawData/footprint/
+RawData/footprint/*
+!RawData/footprint/Example_footprint.csv
+!RawData/annotations/
+RawData/annotations/*
+!RawData/annotations/Example_annotations.json
 node_modules/
 .tools/
 .vite/
