@@ -1,13 +1,21 @@
+import { execFileSync } from "node:child_process";
+import path from "node:path";
 import type { ForgeConfig } from "@electron-forge/shared-types";
 import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
 import { VitePlugin } from "@electron-forge/plugin-vite";
 
 const config: ForgeConfig = {
+  hooks: {
+    generateAssets: async () => {
+      execFileSync(process.execPath, [path.resolve("scripts/native/build-hdr.cjs")], { stdio: "inherit" });
+    },
+  },
   packagerConfig: {
     name: "ReplayMod Reality",
     appBundleId: "com.replaymod.reality",
     asar: true,
+    extraResource: process.platform === "darwin" ? ["native/build/hdr-display"] : [],
     executableName: "ReplayMod Reality",
   },
   makers: [

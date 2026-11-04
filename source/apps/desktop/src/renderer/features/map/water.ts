@@ -41,12 +41,12 @@ export function restoreWaterLayers(map: Map, range: ElevationRange = {minimum: 0
 }
 
 // Only update paint during a depth-range change; do not rebuild shoreline layers.
-export function updateWaterFallback(map: Map, range: ElevationRange) {
+export function updateWaterFallback(map: Map, range: ElevationRange, rawTerrain = Boolean(map.getLayer("terrain-raw-presentation"))) {
   const fallback = elevationAppearance(NaN, range, true).alpha;
   for (const layer of map.getStyle().layers ?? []) {
     if (layer.type !== "fill" || /shadow/i.test(layer.id)) continue;
     if (layer["source-layer"] !== "water") continue;
     map.setPaintProperty(layer.id, "fill-opacity", range.minimum < 0 && map.getLayer("ocean-elevation-glass")
-        ? ["case", ["==", ["get", "class"], "ocean"], WATER_SURFACE_OPACITY, fallback] : fallback);
+        ? ["case", ["==", ["get", "class"], "ocean"], rawTerrain ? 0 : WATER_SURFACE_OPACITY, fallback] : fallback);
   }
 }

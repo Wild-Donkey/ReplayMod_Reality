@@ -13,14 +13,20 @@
     "check:cache": "node tests/cache/check-cache.cjs",
     "check:annotations": "node tests/annotations/check-annotations.cjs",
     "check:annotation-labels": "node tests/annotations/check-annotation-labels.cjs",
-    "check": "npm run typecheck && npm run check:storage && npm run check:cache && npm run check:annotation-labels && npm run check:backdrop",
+    "check": "npm run typecheck && npm run check:storage && npm run check:cache && npm run check:annotation-labels && npm run check:backdrop && npm run check:timeline && npm run check:terrain",
     "check:storage": "node tests/cache/check-storage.cjs",
-    "check:backdrop": "node tests/backdrop/check-backdrop.cjs"
+    "check:backdrop": "node tests/backdrop/check-backdrop.cjs",
+    "check:timeline": "node tests/timeline/check-metrics.cjs",
+    "check:terrain": "node tests/map/check-terrain-exposure.cjs && node tests/map/check-hdr-settings.cjs && node tests/map/check-display-ui.cjs",
+    "check:terrain:gpu": "electron tests/map/check-raw-terrain.cjs",
+    "check:footprint:gpu": "electron tests/map/check-footprint-density.cjs",
+    "check:display:gpu": "electron tests/map/check-display-gray.cjs"
   },
   "author": "",
   "license": "UNLICENSED",
   "dependencies": {
     "csv-parse": "^6.2.1",
+    "echarts": "^6.1.0",
     "maplibre-gl": "^5.24.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
@@ -35,10 +41,10 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
+    "@xmldom/xmldom": "0.9.10",
     "electron": "^42.3.3",
     "typescript": "^6.0.3",
-    "vite": "^8.0.16",
-    "@xmldom/xmldom": "0.9.10"
+    "vite": "^8.0.16"
   },
   "config": {
     "forge": "./config/forge.config.ts"

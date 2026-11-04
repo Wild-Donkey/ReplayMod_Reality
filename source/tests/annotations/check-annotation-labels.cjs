@@ -23,6 +23,16 @@ const coincident = Array.from({length: 120}, (_, i) => point(String(i), 50, 50))
 assert.equal(layoutAnnotationLabels(coincident, measure)[0].items.length, 120);
 assert.equal(layoutAnnotationLabels(coincident, measure)[0].bottom - layoutAnnotationLabels(coincident, measure)[0].top, 42);
 assert.equal(pointLabelText(point('x', 0, 0, '未命名地标')), '');
+// A long name can move left rather than absorbing a nearby marker.
+const avoid = [point('a', 200, 100, '一段比较长的地名'), point('b', 270, 100)];
+const avoided = layoutAnnotationLabels(avoid, measure, 800);
+assert.equal(avoided.length, 2);
+assert.equal(avoided.find(group => group.items[0].id === 'a').side, 'left');
+assert.equal(JSON.stringify(avoided), JSON.stringify(layoutAnnotationLabels([...avoid].reverse(), measure, 800)));
+const edge = layoutAnnotationLabels([point('edge', 790, 100, '边缘地点')], measure, 800)[0];
+assert.equal(edge.side, 'left');
+assert(edge.right <= 800);
+
 const chain = [point('a', 0, 0), point('b', 25, 0), point('c', 50, 0)];
 assert.equal(layoutAnnotationLabels(chain, measure).length, 1);
 const realPath = '../RawData/annotations/annotations.json';
@@ -33,7 +43,9 @@ assert.equal(groups.reduce((sum, group) => sum + group.items.length, 0), items.l
 assert.equal(new Set(groups.flatMap(group => group.items.map(item => item.id))).size, items.length);
 for (let i = 0; i < groups.length; i++) for (let j = i + 1; j < groups.length; j++) {
   const a = groups[i], b = groups[j];
-  assert(!(a.left < b.right + 3 && a.right + 3 > b.left && a.top < b.bottom + 3 && a.bottom + 3 > b.top), 'final labels must not overlap');
+  const textBounds = g => ({left: g.left + (g.side === 'right' ? (g.items.length > 1 ? 10 : 8) : 0), right: g.right - (g.side === 'left' ? (g.items.length > 1 ? 10 : 8) : 0)});
+  const at = textBounds(a), bt = textBounds(b);
+  assert(!(at.left < bt.right + 3 && at.right + 3 > bt.left && a.top < b.bottom + 3 && a.bottom + 3 > b.top), 'final text must not overlap');
 }
 console.log('Label layout passed: separated, overlap, long names, vertical spacing, coincident points, transitive groups, real point count conservation.');
 
@@ -63,3 +75,21 @@ previousGroups = overlap;
 assert(!renderLabels([visiblePoint]).includes('annotation-map-group'));
 assert.doesNotThrow(() => renderLabels([]));
 console.log('Label rendering passed: hiding/deleting places and folders with stale single/cluster layouts.');
+
+for (const total of [4, 5, 6, 120]) {
+  const members = Array.from({length: total}, (_, i) => point(String(i), 50, 50, `地点${i}`));
+  previousGroups = layoutAnnotationLabels(members, measure);
+  const markup = renderLabels(members.map(item => ({...visiblePoint, ...item})));
+  assert.equal((markup.match(/<button/g) || []).length, 3);
+  assert(markup.includes(`+${total - 3}</b>`));
+}
+console.log('Label updates passed: left-side avoidance, viewport edge, stable ordering, three rows with +N.');
+
+// Nearby peaks: marker hit areas overlap vertically, but text fits on opposite sides.
+for (const dx of [-6, 0, 6]) {
+  const peaks = [point('everest', 600, 300, '珠穆朗玛峰｜8848.86m'), point('lhotse', 600 + dx, 313, '洛子峰｜8516m')];
+  const result = layoutAnnotationLabels(peaks, measure, 1200);
+  assert.equal(result.length, 2, 'nearby peaks must remain separate');
+  assert.equal(new Set(result.map(group => group.side)).size, 2, 'peaks must use opposite sides');
+}
+console.log('Nearby peak regression passed: overlapping marker bounds allow left/right text.');

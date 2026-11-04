@@ -1,3 +1,4 @@
+import { FootprintDensity } from "./footprintDensity";
 import { cachedMapRequest, readCached, writeCached } from "../../shared/cache";
 import { AnnotationLabels } from "../annotations/AnnotationLabels";
 import type { AnnotationProject, MapCoordinate } from "../../../../../../packages/data/src";
@@ -5,11 +6,15 @@ import type { FeatureCollection, Geometry } from "geojson";
 import { visibleAnnotations } from "../annotations/annotations";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
+import { createPortal } from "react-dom";
 import type { PointDataset } from "../../../../../../packages/data/src";
 import "maplibre-gl/dist/maplibre-gl.css";
 
+import { presentHDR } from "../../shared/hdr";
 import { addElevationGlass } from "./elevation";
 import { restoreWaterLayers } from "./water";
+import { TerrainLegend } from "./TerrainLegend";
+import type { TerrainAppearance } from "./terrainExposure";
 
 const FOOTPRINT_SOURCE_ID = "footprint-points";
 const FOOTPRINT_LAYER_ID = "footprint-points-circle";
@@ -192,6 +197,7 @@ const findNearestPointTimestamp = (
 };
 
 interface MapViewportProps {
+  legendContainer: HTMLDivElement | null;
   annotations: AnnotationProject;
   annotationSelectedId: string | null;
   annotationFocus: {id:string;sequence:number}|null;
@@ -210,6 +216,7 @@ interface MapViewportProps {
 }
 
 export function MapViewport({
+  legendContainer,
   annotations, annotationSelectedId, annotationFocus, onAnnotationSelect,
   drawMode, draftCoordinates, onDrawCoordinate, onFinishRoute, onCancelDrawing, onMoveAnnotationCoordinate,
   apiKey,
@@ -219,9 +226,11 @@ export function MapViewport({
   currentTime,
 }: MapViewportProps) {
   const restoreCameraRef = useRef(Boolean(readCached("map-camera", null)));
+  const [terrainAppearance,setTerrainAppearance] = useState<TerrainAppearance | null>(null);
   const [elevationUnavailable, setElevationUnavailable] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const footprintDensityRef = useRef<FootprintDensity | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
     "loading",
   );
@@ -252,6 +261,8 @@ export function MapViewport({
         '"Microsoft YaHei UI", "Microsoft YaHei", sans-serif',
     });
     mapRef.current = map;
+    const hdr = presentHDR(map.getCanvas());
+    map.on("render", hdr.render);
     const basemap = map;
     basemap.once("load", () => {
       baseStyleReady = true;
@@ -264,7 +275,7 @@ export function MapViewport({
       }
       restoreWaterLayers(basemap);
       setStatus("ready");
-      void addElevationGlass(basemap, apiKey, elevationController.signal).catch(() => {
+      void addElevationGlass(basemap, apiKey, elevationController.signal, setTerrainAppearance).catch(() => {
         if (!elevationController.signal.aborted) {
           setElevationUnavailable(true);
           for (const layer of surfaceLayers) {
@@ -281,6 +292,10 @@ export function MapViewport({
       writeCached("map-camera", { center: [center.lng, center.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch() });
     };
     map.on("moveend", saveCamera);
+    // MapLibre defaults: trackpad 1/100, wheel 1/450, touch scale 1.
+    map.scrollZoom.setZoomRate(2 / 100);
+    map.scrollZoom.setWheelZoomRate(2 / 450);
+    map.touchZoomRotate.setZoomRate(2);
     map.dragPan.enable();
     map.dragRotate.disable();
     map.boxZoom.disable();
@@ -289,7 +304,7 @@ export function MapViewport({
     const canvasContainer = map.getCanvasContainer();
     const handleWheel = (event: WheelEvent) => {
       // Chromium emits trackpad pinch gestures as Ctrl+wheel. Let MapLibre
-      // keep handling those so its existing zoom behavior stays intact.
+      // handle those with the doubled zoom rates configured above.
       if (event.ctrlKey) return;
 
       event.preventDefault();
@@ -320,12 +335,7 @@ export function MapViewport({
       }),
       "top-right",
     );
-    map.addControl(
-      new maplibregl.AttributionControl({
-        compact: true,
-      }),
-      "bottom-right",
-    );
+
 
     basemap.on("error", (event) => {
       if (!baseStyleReady) {
@@ -337,6 +347,9 @@ export function MapViewport({
     return () => {
       canvasContainer.removeEventListener("wheel", handleWheel, true);
       elevationController.abort();
+      map.off("render", hdr.render);
+      hdr.dispose();
+      footprintDensityRef.current = null;
       mapRef.current = null;
       map.remove();
     };
@@ -365,7 +378,7 @@ export function MapViewport({
     if(selected.kind==="folder") {let changed=true;while(changed){changed=false;for(const n of annotations.nodes)if(n.parentId&&descendants.has(n.parentId)&&!descendants.has(n.id)){descendants.add(n.id);changed=true;}}}
     const bounds=new maplibregl.LngLatBounds();
     for(const n of annotations.nodes)if(descendants.has(n.id))for(const c of n.coordinates)bounds.extend([c[0],c[1]]);
-    if(!bounds.isEmpty())map.fitBounds(bounds,{padding:{top:120,bottom:180,left:350,right:310},maxZoom:14,duration:700});
+    if(!bounds.isEmpty())map.fitBounds(bounds,{padding:{top:120,bottom:180,left:350,right:32},maxZoom:14,duration:700});
   },[annotationFocus,status]);
 
   useEffect(()=>{
@@ -428,17 +441,17 @@ export function MapViewport({
         source: FOOTPRINT_SOURCE_ID,
         paint: {
           "circle-color": "#b9f5c5",
-          "circle-opacity": 0.34,
+          "circle-opacity": 0.12,
           "circle-radius": [
             "interpolate",
             ["linear"],
             ["zoom"],
             1,
-            1.2,
+            0.6,
             8,
-            2.2,
+            1.1,
             14,
-            4,
+            2,
           ],
           "circle-blur": 0.15,
         },
@@ -478,6 +491,21 @@ export function MapViewport({
       });
     }
 
+    const density = footprintDensityRef.current;
+    if (density) density.setCoordinates(pointDataset.footprintCoordinates);
+    else {
+      const layer = new FootprintDensity(pointDataset.footprintCoordinates);
+      try {
+        map.addLayer(layer, PHOTO_LAYER_ID);
+        footprintDensityRef.current = layer;
+        map.setLayoutProperty(FOOTPRINT_LAYER_ID, "visibility", "none");
+      } catch (error) {
+        console.warn("对数轨迹密度不可用，使用较暗的小尺寸轨迹点", error);
+        if (map.getLayer(layer.id)) map.removeLayer(layer.id);
+        else layer.onRemove();
+      }
+    }
+
     if (restoreCameraRef.current) { restoreCameraRef.current = false; return; }
     map.fitBounds(
       [
@@ -487,7 +515,7 @@ export function MapViewport({
       {
         padding: {
           top: 84,
-          right: 290,
+          right: 32,
           bottom: 150,
           left: 320,
         },
@@ -734,35 +762,14 @@ export function MapViewport({
         </div>
       )}
 
-      {status === "ready" && (
-        <>
-          <div className="map-data-state">
-            <strong>
-              {pointDataset
-                ? pointDataset.sourceName
-                : "尚未载入位置数据"}
-            </strong>
-            {pointDataset ? (
-              <span className="point-legend">
-                <span className="point-legend-item">
-                  <i className="footprint-swatch" />
-                  足迹{" "}
-                  {pointDataset.footprintPointCount.toLocaleString("zh-CN")}
-                </span>
-                <span className="point-legend-item">
-                  <i className="photo-swatch" />
-                  照片 {pointDataset.photoPointCount.toLocaleString("zh-CN")}
-                </span>
-              </span>
-            ) : (
-              <span>底图已连接，可以开始导入 CSV 数据。</span>
-            )}
-            <span className="map-control-hint">
-              {drawMode==="point"?"点击地图放置地标 · Esc 取消":drawMode==="route"?"逐点点击绘制路线 · Enter 完成 · Esc 取消":"点击标注编辑 · 双指滑动 / 鼠标拖拽平移 · 双指捏合缩放 · WASD 移动"}
-            </span>
-          </div>
-          <div className="viewport-badge">{elevationUnavailable ? "MAPTILER　在线 · 海拔暂不可用" : "MAPTILER　在线 · 海拔渐变"}</div>
-        </>
+      {status === "ready" && legendContainer && createPortal(
+        <div className="toolbar-map-legend" aria-label="地图图例">
+          {pointDataset && <span className="toolbar-point-legend" title={pointDataset.sourceName}>
+            <span><i className="footprint-swatch"/>足迹 {pointDataset.footprintPointCount.toLocaleString("zh-CN")}</span>
+            <span><i className="photo-swatch"/>照片 {pointDataset.photoPointCount.toLocaleString("zh-CN")}</span>
+          </span>}
+          {elevationUnavailable ? <span role="status">海拔图层暂不可用</span> : <TerrainLegend appearance={terrainAppearance}/>}
+        </div>, legendContainer
       )}
     </section>
   );
@@ -814,7 +821,6 @@ export function MapTokenSetup({ onSave }: MapTokenSetupProps) {
           打开 MapTiler Key 管理页
         </a>
       </form>
-      <div className="viewport-badge">MAPTILER　未配置</div>
     </section>
   );
 }

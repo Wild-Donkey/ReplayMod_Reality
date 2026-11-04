@@ -33,6 +33,7 @@ export async function maskTerrainWater(map: Map, canvas: HTMLCanvasElement, tile
     for (const feature of map.querySourceFeatures(source, {sourceLayer:"water"})) {
       const geometry = feature.geometry;
       const polygons = geometry.type === "Polygon" ? [geometry.coordinates] : geometry.type === "MultiPolygon" ? geometry.coordinates : [];
+      mask.fillStyle = feature.properties?.class === "ocean" ? "#ff0000" : "#00ff00";
       for (const polygon of polygons) {
         mask.beginPath();
         for (const ring of polygon) {
@@ -50,13 +51,16 @@ export async function maskTerrainWater(map: Map, canvas: HTMLCanvasElement, tile
     }
   }
   const alpha = mask.getImageData(0,0,canvas.width,canvas.height).data;
+  const materials = new Uint8Array(canvas.width*canvas.height);
   const terrain = context.getImageData(0,0,canvas.width,canvas.height);
   for (let i=0; i<terrain.data.length; i+=4) {
     const water = alpha[i+3] >= 128;
+    materials[i/4] = water ? (alpha[i] > alpha[i+1] ? 1 : 2) : 0;
     if ((keep === "land" && water) || (keep === "water" && !water)) {
       // Exact Terrain RGB representation of 0 m, with no channel mixing.
       terrain.data[i]=1;terrain.data[i+1]=134;terrain.data[i+2]=160;terrain.data[i+3]=255;
     }
   }
   context.putImageData(terrain,0,0);
+  return materials;
 }

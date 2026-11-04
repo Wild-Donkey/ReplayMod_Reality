@@ -1,3 +1,4 @@
+import { installDisplayHDR } from "./displayHDR";
 import { AppStorage } from "./storage";
 import { windowBackgroundOptions } from "./windowBackground";
 import { createHash } from "node:crypto";
@@ -593,6 +594,7 @@ void app.whenReady().then(() => {
     app.quit();
     return;
   }
+  installDisplayHDR();
   installMacMenu();
   createWindow();
 

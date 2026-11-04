@@ -1363,8 +1363,8 @@ body,
 }
 
 .viewport-badge {
-  right: 276px;
-  bottom: 242px;
+  right: 10px;
+  bottom: 175px;
   color: var(--level-2);
   background: rgb(10 10 10 / 56%);
   font-size: 10px;
@@ -1372,13 +1372,13 @@ body,
 }
 
 .maplibregl-ctrl-top-right {
-  top: 60px;
-  right: 266px;
+  top: 64px;
+  right: 8px;
 }
 
 .maplibregl-ctrl-bottom-right {
-  right: 266px;
-  bottom: 228px;
+  right: 8px;
+  bottom: 137px;
 }
 
 .maplibregl-ctrl-group {
@@ -1501,7 +1501,7 @@ body,
 
 /* Interactive map and timeline */
 .stage-column {
-  grid-template-rows: 39px minmax(260px, 1fr) 112px;
+  grid-template-rows: minmax(260px, 1fr) 112px;
 }
 
 .timeline-toolbar {
@@ -1581,7 +1581,7 @@ body,
   bottom: 0;
   pointer-events: none;
   border: 1px solid #5abeff;
-  background: rgb(90 190 255 / 13%);
+  background: transparent;
 }
 
 .timeline-playhead::before {
@@ -1615,11 +1615,11 @@ body,
 }
 
 .viewport-badge {
-  bottom: 144px;
+  bottom: 175px;
 }
 
 .maplibregl-ctrl-bottom-right {
-  bottom: 130px;
+  bottom: 137px;
 }
 
 @media (max-width: 1250px) {
@@ -1672,3 +1672,85 @@ body,
 }
 .annotation-place-list button:hover, .annotation-place-list button.selected { color: rgb(255 255 255 / 90%); }
 .annotation-label-overlay.drawing .annotation-place-list { pointer-events: none; }
+
+/* Compact module rail; each icon opens a working page over the map. */
+:root { --module-rail-width: 56px; --workspace-panel-width: 290px; }
+.workspace { grid-template-columns: var(--module-rail-width) var(--workspace-panel-width) minmax(0, 1fr); }
+.activity-bar { padding: 10px 5px; gap: 8px; }
+.activity-button { width: 46px; height: 46px; border-radius: 12px; flex-shrink: 0; }
+.activity-button.active { background: #ededed; color: #161616; }
+.activity-button.settings-entry { margin-top: auto; }
+.workspace-page { display: flex; flex-direction: column; min-height: 0; }
+.workspace-page[hidden] { display: none; }
+.page-intro { padding: 8px 14px; color: #aaa; font-size: 12px; line-height: 1.7; }
+h2.section-label { margin: 0; }
+.settings-heading { padding: 22px 16px 10px; border-top: 3px solid #eee; }
+.settings-heading small { color: #999; font-size: 9px; letter-spacing: 2px; }
+.settings-heading h2 { margin: 8px 0; font-size: 26px; color: #fff; }
+.settings-page h3 { margin: 16px 0 10px; padding: 10px 16px; background: #e6e6e6; color: #151515; font-size: 12px; }
+.settings-page p { margin: 8px 16px; color: #aaa; font-size: 11px; line-height: 1.7; }
+.settings-page form { padding: 4px 16px; }
+.settings-page form p { margin: 8px 0; }
+.settings-page label { font-size: 12px; }
+.settings-page input { width: 100%; min-width: 0; padding: 10px; background: #151515; color: #eee; border: 1px solid #555; }
+.settings-page button { margin: 6px 16px; padding: 10px 12px; text-align: left; color: #eee; background: #333; }
+.settings-page form button { margin: 10px 0 0; width: 100%; }
+.settings-page button:hover:not(:disabled) { color: #111; background: #eee; }
+.settings-page button:disabled { opacity: .4; cursor: default; }
+.settings-row { display: flex; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid #ffffff12; font-size: 12px; }
+.settings-row kbd { color: #eee; }
+.activity-button:focus-visible, .settings-page button:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+.annotation-map-label.left { flex-direction: row-reverse; }
+.annotation-place-list { overflow: hidden; }
+.annotation-map-group.left .annotation-place-list { margin-left: 0; margin-right: 10px; }
+.annotation-place-list button { display: flex; align-items: center; gap: 4px; }
+.annotation-place-list button > span { overflow: hidden; text-overflow: ellipsis; }
+.annotation-more { flex-shrink: 0; font-size: 10px; font-weight: 500; color: #fff; }
+@media (max-width: 1000px) { :root { --module-rail-width: 50px; --workspace-panel-width: 260px; } .activity-button { width: 40px; } }
+
+.settings-page input[type="checkbox"] { width: auto; margin-right: 6px; accent-color: #73c8ff; }
+.settings-row select { max-width: 160px; padding: 5px; background: #151515; color: #eee; border: 1px solid #555; }
+
+/* Keep the last two density rows inside the timeline, above the selection edge. */
+.timeline { display: grid; grid-template-rows: 28px minmax(0, 1fr); min-height: 0; }
+.timeline-body { height: auto; min-height: 0; }
+
+/* Keep data statistics and the map legend in the dark title bar. */
+.stage-toolbar { gap: 16px; min-width: 0; }
+.stage-toolbar > .tool-group { flex-shrink: 0; }
+.titlebar-legend-slot { display: flex; align-items: center; min-width: 0; max-width: 50vw; margin-right: 16px; overflow-x: auto; scrollbar-width: none; -webkit-app-region: no-drag; }
+.titlebar { grid-template-columns: minmax(200px, 280px) minmax(0, 1fr) auto minmax(0, auto); }
+.project-state { min-width: 0; overflow: hidden; white-space: nowrap; }
+.toolbar-map-legend { display: flex; align-items: center; gap: 18px; color: #b8b8b8; font-size: 10px; white-space: nowrap; }
+.toolbar-point-legend { display: flex; align-items: center; gap: 12px; }
+.toolbar-point-legend > span { display: inline-flex; align-items: center; gap: 5px; }
+.toolbar-point-legend i { display: inline-block; width: 6px; height: 6px; }
+.elevation-legend { display: flex; align-items: center; gap: 16px; }
+.elevation-legend-row { display: flex; align-items: center; gap: 7px; }
+.elevation-scale { width: 130px; flex-shrink: 0; }
+.elevation-gradient { height: 7px; background-color: var(--map-paper); border: 1px solid #ffffff26; }
+.elevation-ticks { display: flex; justify-content: space-between; margin-top: 2px; font-size: 8px; line-height: 10px; color: #aaa; }
+@media (max-width: 1100px) {
+  .toolbar-point-legend { display: none; }
+  .elevation-scale { width: 105px; }
+  .stage-toolbar { gap: 8px; }
+}
+
+.titlebar-map-tools { display: flex; align-items: center; gap: 4px; margin-right: 18px; -webkit-app-region: no-drag; }
+.titlebar-map-tools .tool-button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; flex-shrink: 0; border-radius: 5px; }
+.titlebar-map-tools .tool-button:disabled { opacity: .35; cursor: default; }
+
+.trajectory-file-button { align-self: center; height: 34px; margin-right: 12px; padding: 0 10px; background: transparent; text-align: left; cursor: pointer; -webkit-app-region: no-drag; }
+.trajectory-file-button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.trajectory-file-button svg { flex-shrink: 0; }
+.trajectory-file-button:hover:not(:disabled) { background: #ffffff12; color: #eee; }
+.trajectory-file-button:disabled { opacity: .5; cursor: wait; }
+.settings-row:has(input:disabled) { color: #777; cursor: not-allowed; }
+.settings-page input[role="switch"] { width: 30px; height: 16px; padding: 0; cursor: pointer; }
+.settings-page input[role="switch"]:disabled { opacity: .4; cursor: not-allowed; }
+.settings-page input[role="switch"] { appearance: none; position: relative; width: 32px; height: 18px; margin: 0; padding: 0; border: 1px solid #666; border-radius: 12px; background: #292929; flex-shrink: 0; }
+.settings-page input[role="switch"]::before { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #bbb; transition: transform .12s ease; }
+.settings-page input[role="switch"]:checked { background: #36566c; border-color: #73c8ff; }
+.settings-page input[role="switch"]:checked::before { transform: translateX(14px); background: #dff3ff; }
+.settings-page input[role="switch"]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.elevation-range-empty { color: #888; font-size: 9px; }

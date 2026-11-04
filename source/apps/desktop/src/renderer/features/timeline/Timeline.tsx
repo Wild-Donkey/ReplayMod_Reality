@@ -1,6 +1,12 @@
+import { presentHDR } from "../../shared/hdr";
+import { createPortal } from "react-dom";
+import { timelineWheelRange } from "./gestures";
+import { pixelDensity, type TimelineMetricsSettings } from "./metrics";
+import { MetricChart } from "./MetricChart";
 import { useCachedState } from "../../shared/cache";
 import {
   type PointerEvent,
+  type RefObject,
   useEffect,
   useMemo,
   useRef,
@@ -8,7 +14,7 @@ import {
 } from "react";
 import type { PointDataset, TimeBounds } from "../../../../../../packages/data/src";
 
-const MIN_VISIBLE_SPAN = 60_000;
+const MIN_VISIBLE_SPAN = 1;
 const PAN_SPEED_PER_SECOND = 0.55;
 const PAN_ACCELERATION = 11;
 const PAN_DECELERATION = 8;
@@ -203,64 +209,40 @@ const formatTickLabel = (timestamp: number, scale: TickScale) => {
   });
 };
 
-const lowerBound = (values: readonly number[], target: number) => {
-  let low = 0;
-  let high = values.length;
-
-  while (low < high) {
-    const middle = Math.floor((low + high) / 2);
-
-    if (values[middle] < target) {
-      low = middle + 1;
-    } else {
-      high = middle;
-    }
-  }
-
-  return low;
+const drawDensityStrip = (context: CanvasRenderingContext2D, timestamps: readonly number[], start: number, end: number, width: number, top: number, color: readonly [number, number, number]) => {
+  const { counts, peak } = pixelDensity(timestamps, start, end, width);
+  context.save();
+  counts.forEach((count, x) => {
+    const intensity = peak > 0 ? Math.log1p(count) / Math.log1p(peak) : 0;
+    // Black -> map point color -> white; both ends have zero saturation.
+    const rgb = color.map(channel => Math.round(intensity <= 0.5
+      ? channel * intensity * 2
+      : channel + (255 - channel) * (intensity * 2 - 1)));
+    context.fillStyle = `rgb(${rgb.join(",")})`;
+    context.fillRect(x, top, 1, 2);
+  });
+  context.restore();
 };
 
-const drawPointTrack = (
-  context: CanvasRenderingContext2D,
-  timestamps: readonly number[],
-  start: number,
-  end: number,
-  width: number,
-  centerY: number,
-  color: string,
-  pointWidth: number,
-) => {
-  const span = Math.max(end - start, 1);
-  const firstVisibleIndex = lowerBound(timestamps, start);
-  const lastVisibleIndex = lowerBound(timestamps, end);
-  const pixelWidth = Math.max(1, Math.ceil(width));
-  const occupiedPixels = new Uint8Array(pixelWidth);
-  context.fillStyle = color;
-
-  for (
-    let index = firstVisibleIndex;
-    index < timestamps.length && index <= lastVisibleIndex;
-    index += 1
-  ) {
-    const timestamp = timestamps[index];
-
-    if (timestamp > end) {
-      break;
-    }
-
-    const x = Math.min(
-      pixelWidth - 1,
-      Math.max(0, Math.floor(((timestamp - start) / span) * width)),
-    );
-    occupiedPixels[x] = 1;
-  }
-
-  for (let x = 0; x < occupiedPixels.length; x += 1) {
-    if (occupiedPixels[x] === 1) {
-      context.fillRect(x, centerY - 8, pointWidth, 16);
-    }
-  }
-};
+function DensityStrip({ timestamps, viewRange, width, photo }: {
+  timestamps: readonly number[]; viewRange: TimeBounds; width: number; photo: boolean;
+}) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas || width <= 0) return;
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = Math.round(width * ratio);
+    canvas.height = Math.round(2 * ratio);
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    drawDensityStrip(context, timestamps, viewRange[0], viewRange[1], width, 0, photo ? [255, 227, 110] : [185, 245, 197]);
+    const hdr = presentHDR(canvas);
+    return () => hdr.dispose();
+  }, [timestamps, viewRange, width, photo]);
+  return <div style={{ position: "relative", height: 2, minHeight: 0, overflow: "hidden", background: "#000" }}><canvas ref={ref} style={{ position: "absolute", inset: 0, display: "block", width: "100%", height: 2, minHeight: 0 }} /></div>;
+}
 
 interface TimelineCanvasProps {
   dataset: PointDataset | null;
@@ -268,6 +250,8 @@ interface TimelineCanvasProps {
   currentTime: number | null;
   onCurrentTimeChange: (timestamp: number) => void;
   selectionRange: TimeBounds | null;
+  metrics: TimelineMetricsSettings;
+  axisContainer: RefObject<HTMLDivElement | null>;
 }
 
 function TimelineCanvas({
@@ -276,7 +260,12 @@ function TimelineCanvas({
   currentTime,
   onCurrentTimeChange,
   selectionRange,
+  metrics,
+  axisContainer,
 }: TimelineCanvasProps) {
+  const [stripHover, setStripHover] = useState<{ x: number; y: number; label: string; count: number; peak: number; start: number; end: number } | null>(null);
+  const speedMetrics = useMemo(() => ({ ...metrics, mode: "speed" as const }), [metrics]);
+  useEffect(() => setStripHover(null), [dataset, viewRange]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -322,12 +311,11 @@ function TimelineCanvas({
     context.clearRect(0, 0, size.width, size.height);
 
     const rulerHeight = 18;
-    const trackHeight = (size.height - rulerHeight) / 2;
+    const trackHeight = Math.max(1, size.height - rulerHeight - 5);
 
     context.fillStyle = "rgb(255 255 255 / 4%)";
     context.fillRect(0, rulerHeight, size.width, trackHeight);
-    context.fillStyle = "rgb(255 255 255 / 7%)";
-    context.fillRect(0, rulerHeight + trackHeight, size.width, trackHeight);
+
 
     if (!dataset || !viewRange) {
       context.fillStyle = "#777";
@@ -373,28 +361,9 @@ function TimelineCanvas({
       tick = nextTick;
     }
 
-    drawPointTrack(
-      context,
-      dataset.footprintTimestamps,
-      start,
-      end,
-      size.width,
-      rulerHeight + trackHeight / 2,
-      "rgb(185 245 197 / 38%)",
-      1,
-    );
-    drawPointTrack(
-      context,
-      dataset.photoTimestamps,
-      start,
-      end,
-      size.width,
-      rulerHeight + trackHeight + trackHeight / 2,
-      "rgb(255 227 110 / 92%)",
-      2,
-    );
 
-  }, [dataset, size, viewRange]);
+
+  }, [dataset, size, viewRange, metrics]);
 
   const selectionStyle = selectionRange && viewRange
     ? {
@@ -430,11 +399,22 @@ function TimelineCanvas({
     <div
       ref={containerRef}
       className="timeline-canvas-shell"
+
       onPointerDown={(event) => {
         event.currentTarget.setPointerCapture(event.pointerId);
         updateCurrentTime(event);
       }}
+      onPointerLeave={() => setStripHover(null)}
       onPointerMove={(event) => {
+        const bounds = event.currentTarget.getBoundingClientRect();
+        const y = event.clientY - bounds.top;
+        if (dataset && viewRange && y >= bounds.height - 5) {
+          const photo = y >= bounds.height - 3;
+          const { counts, peak } = pixelDensity(photo ? dataset.photoTimestamps : dataset.footprintTimestamps, viewRange[0], viewRange[1], size.width);
+          const x = Math.max(0, Math.min(counts.length - 1, Math.floor(event.clientX - bounds.left)));
+          const span = viewRange[1] - viewRange[0];
+          setStripHover({ x: event.clientX, y: bounds.top, label: photo ? "照片密度" : "足迹密度", count: counts[x], peak, start: viewRange[0] + x / counts.length * span, end: viewRange[0] + (x + 1) / counts.length * span });
+        } else setStripHover(null);
         if (event.currentTarget.hasPointerCapture(event.pointerId)) {
           updateCurrentTime(event);
         }
@@ -444,6 +424,19 @@ function TimelineCanvas({
       }}
     >
       <canvas ref={canvasRef} className="timeline-canvas" />
+      <div style={{ position: "absolute", top: 18, bottom: 5, left: 0, right: 0, minHeight: 0, minWidth: 0 }}><MetricChart dataset={dataset} viewRange={viewRange} metrics={speedMetrics} axisContainer={axisContainer} /></div>
+      {dataset && viewRange && <>
+        <div style={{ position: "absolute", left: 0, right: 0, bottom: 3, height: 2, overflow: "hidden", pointerEvents: "none", zIndex: 2 }}>
+          <DensityStrip timestamps={dataset.footprintTimestamps} viewRange={viewRange} width={size.width} photo={false} />
+        </div>
+        <div style={{ position: "absolute", left: 0, right: 0, bottom: 1, height: 2, overflow: "hidden", pointerEvents: "none", zIndex: 2 }}>
+          <DensityStrip timestamps={dataset.photoTimestamps} viewRange={viewRange} width={size.width} photo />
+        </div>
+      </>}
+      {stripHover && createPortal(<div role="tooltip" style={{ position: "fixed", left: Math.max(8, Math.min(window.innerWidth - 330, stripHover.x + 12)), top: Math.max(8, stripHover.y - 68), zIndex: 10000, pointerEvents: "none", padding: "7px 10px", background: "#18202af5", color: "#edf4ff", border: "1px solid #566575", borderRadius: 4, fontSize: 11, lineHeight: "18px" }}>
+        <div>{stripHover.label}：{stripHover.count} 点/像素 · 当前峰值 {stripHover.peak} 点/像素</div>
+        <div>{new Date(stripHover.start).toLocaleString("zh-CN", { hour12: false })} – {new Date(stripHover.end).toLocaleString("zh-CN", { hour12: false })}</div>
+      </div>, document.body)}
       {selectionStyle && <div className="timeline-selection" style={selectionStyle} />}
       {playheadPosition !== null && (
         <div
@@ -461,6 +454,7 @@ interface TimelineProps {
   onCurrentTimeChange: (timestamp: number) => void;
   focusRequest: TimelineFocusRequest | null;
   selectionRange: TimeBounds | null;
+  metrics: TimelineMetricsSettings;
 }
 
 export interface TimelineFocusRequest {
@@ -474,8 +468,10 @@ export function Timeline({
   onCurrentTimeChange,
   focusRequest,
   selectionRange,
+  metrics,
 }: TimelineProps) {
   const timelineRef = useRef<HTMLElement>(null);
+  const axisContainer = useRef<HTMLDivElement>(null);
   const pressedPanKeysRef = useRef(new Set<"q" | "e">());
   const panVelocityRef = useRef(0);
   const panFrameRef = useRef<number | null>(null);
@@ -662,28 +658,21 @@ export function Timeline({
     }
 
     const handleWheel = (event: globalThis.WheelEvent) => {
-      if (!event.ctrlKey || !dataset || !viewRange) {
-        return;
-      }
-
+      if (!dataset || isEditableTarget(event.target)) return;
       event.preventDefault();
-      const bounds = timeline.getBoundingClientRect();
-      const pointerRatio = Math.min(
-        Math.max((event.clientX - bounds.left) / bounds.width, 0),
-        1,
-      );
-      const currentSpan = viewRange[1] - viewRange[0];
-      const zoomFactor = Math.exp(event.deltaY * 0.002);
-      const nextSpan = currentSpan * zoomFactor;
-      const anchorTime = viewRange[0] + currentSpan * pointerRatio;
-      const nextStart = anchorTime - nextSpan * pointerRatio;
+      event.stopPropagation();
+      const plot = timeline.querySelector(".timeline-canvas-shell") ?? timeline;
+      const bounds = plot.getBoundingClientRect();
+      const pointerRatio = (event.clientX - bounds.left) / Math.max(1, bounds.width);
+      setViewRange(previous => previous
+        ? timelineWheelRange(previous, dataset.timeBounds, event, bounds.width, bounds.height, pointerRatio)
+        : previous);
 
-      setViewRange(clampRange(nextStart, nextSpan, dataset.timeBounds));
     };
 
-    timeline.addEventListener("wheel", handleWheel, { passive: false });
-    return () => timeline.removeEventListener("wheel", handleWheel);
-  }, [dataset, viewRange]);
+    timeline.addEventListener("wheel", handleWheel, { passive: false, capture: true });
+    return () => timeline.removeEventListener("wheel", handleWheel, true);
+  }, [dataset]);
 
   return (
     <section ref={timelineRef} className="timeline">
@@ -702,7 +691,7 @@ export function Timeline({
         <span className="timecode">{currentTimeLabel}</span>
         <span className="timeline-title">{visibleRangeLabel}</span>
         <div className="timeline-options">
-          <span>Ctrl+滚轮缩放 · Q/E 移动</span>
+          <span>横滚移动 · 竖滚/双指缩放 · Q/E 移动</span>
           <button
             type="button"
             disabled={!dataset}
@@ -713,22 +702,15 @@ export function Timeline({
         </div>
       </header>
       <div className="timeline-body">
-        <div className="track-labels">
-          <span>
-            <i className="footprint-swatch" />
-            足迹
-          </span>
-          <span>
-            <i className="photo-swatch" />
-            照片
-          </span>
-        </div>
+        <div ref={axisContainer} className="timeline-y-axis" style={{ position: "relative", marginTop: 18, marginBottom: 5, minWidth: 0 }} />
         <TimelineCanvas
           dataset={dataset}
           viewRange={viewRange}
           currentTime={currentTime}
           onCurrentTimeChange={onCurrentTimeChange}
           selectionRange={selectionRange}
+          metrics={metrics}
+          axisContainer={axisContainer}
         />
       </div>
     </section>

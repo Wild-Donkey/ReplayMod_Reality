@@ -1,3 +1,5 @@
+import { HDRSettings } from "../features/settings/HDRSettings";
+import { defaultTimelineMetrics, type TimelineMetricsSettings } from "../features/timeline/metrics";
 import { useCachedState, readCached, cacheError } from "../shared/cache";
 import type { AnnotationProject, MapCoordinate } from "../../../../../packages/data/src";
 import { AnnotationPanel } from "../features/annotations/AnnotationPanel";
@@ -13,11 +15,13 @@ import {
   type TimelineFocusRequest,
 } from "../features/timeline/Timeline";
 
-const Icon = ({ children }: { children: string }) => (
-  <span className="icon" aria-hidden="true">
-    {children}
-  </span>
-);
+type WorkspaceTab = "annotations" | "sources" | "export" | "settings";
+const tabs: {id: WorkspaceTab; label: string; path: string}[] = [
+  {id: "annotations", label: "地图标注", path: "M12 21s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12Z M15 9a3 3 0 1 1-6 0 3 3 0 0 1 6 0"},
+  {id: "sources", label: "数据与视频", path: "M3 7h7l2 2h9v11H3Z M3 7V4h7l2 3 M10 12l5 3-5 3Z"},
+  {id: "export", label: "叠加导出", path: "M4 14v6h16v-6 M12 16V3 M7 8l5-5 5 5"},
+  {id: "settings", label: "设置", path: "M4 6h16 M4 12h16 M4 18h16 M8 3v6 M16 9v6 M10 15v6"},
+];
 
 const PanelHeader = ({
   title,
@@ -44,6 +48,11 @@ const PanelHeader = ({
 );
 
 export function App() {
+  const [mapLegendContainer, setMapLegendContainer] = useState<HTMLDivElement | null>(null);
+  const [timelineMetrics, setTimelineMetrics] = useCachedState<TimelineMetricsSettings>("timeline-metrics", defaultTimelineMetrics);
+  const [activeTab, setActiveTab] = useCachedState<WorkspaceTab>("workspace-tab", "annotations");
+  const [keyDraft, setKeyDraft] = useState("");
+  const [settingsStatus, setSettingsStatus] = useState("");
   const [annotations, setAnnotations] = useCachedState<AnnotationProject>("annotations", emptyAnnotations());
   const [annotationsReady,setAnnotationsReady] = useState(false);
   const [annotationStatus,setAnnotationStatus] = useState("正在载入地图标注…");
@@ -100,8 +109,9 @@ export function App() {
 
   const saveMaptilerKey = (key: string) => {
     const error = window.replaymod?.saveSettings({ maptilerApiKey: key });
-    if (error) { setDataError(error); return; }
+    if (error) { setDataError(error); setSettingsStatus(error); return false; }
     setMaptilerKey(key.trim());
+    return true;
   };
 
   const clearMaptilerKey = () => saveMaptilerKey("");
@@ -301,6 +311,7 @@ export function App() {
       <div className="map-background">
         {maptilerKey ? (
           <MapViewport
+            legendContainer={mapLegendContainer}
             apiKey={maptilerKey}
             onClearKey={clearMaptilerKey}
             onPointSelect={selectMapPoint}
@@ -330,57 +341,57 @@ export function App() {
             <small>REPLAY MOD REALITY</small>
           </span>
         </div>
-        {!isMac && <nav className="top-actions" aria-label="项目操作">
-          <button type="button">项目</button>
-          <button type="button">编辑</button>
-          <button type="button">视图</button>
-          <button type="button">输出</button>
-        </nav>}
-        <div className="project-state">
-          <span className="status-dot" />
-          {pointDataset?.sourceName ?? "未载入工程"}
-        </div>
+        <button className="project-state trajectory-file-button" type="button"
+          title={pointDataset ? `选择轨迹文件 · 当前：${pointDataset.sourceName}` : "选择轨迹 CSV 文件"}
+          aria-label="选择轨迹文件" aria-busy={isLoadingData}
+          disabled={isLoadingData} onClick={() => void openLocationCsv()}>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 7V4h7l2 3h9v13H3Z M3 10h18"/></svg>
+          <span>{isLoadingData ? "正在读取轨迹…" : pointDataset?.sourceName ?? "选择轨迹文件…"}</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+        </button>
+        <nav className="titlebar-map-tools" aria-label="地图工具">
+          {([
+            {mode: "select", label: "选择", path: "M5 3l14 9-7 1-3 7Z"},
+            {mode: "point", label: "标点", path: "M12 21s7-6 7-12a7 7 0 1 0-14 0c0 6 7 12 7 12Z M15 9a3 3 0 1 1-6 0 3 3 0 0 1 6 0"},
+            {mode: "route", label: "画路线", path: "M6 6h9a4 4 0 0 1 0 8H9a4 4 0 0 0 0 8 M6 3v6 M3 6h6 M18 19v4 M16 21h4"},
+          ] as const).map(tool => <button key={tool.mode} className={`tool-button ${drawMode === tool.mode ? "active" : ""}`}
+            type="button" title={tool.label} aria-label={tool.label} aria-pressed={drawMode === tool.mode}
+            disabled={tool.mode !== "select" && !annotationsReady}
+            onClick={() => {setDrawMode(tool.mode); setDraftCoordinates([]);}}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={tool.path}/></svg>
+          </button>)}
+          {drawMode === "route" && <>
+            <button className="tool-button" type="button" title={`完成路线（${draftCoordinates.length} 个点）`} aria-label="完成路线" disabled={draftCoordinates.length < 2} onClick={finishRoute}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>
+            </button>
+            <button className="tool-button" type="button" title="撤回一点" aria-label="撤回一点" disabled={!draftCoordinates.length} onClick={() => setDraftCoordinates(p => p.slice(0, -1))}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 5 4 10l5 5 M4 10h10a6 6 0 0 1 0 12"/></svg>
+            </button>
+          </>}
+        </nav>
+        <div className="titlebar-legend-slot" ref={setMapLegendContainer} />
       </header>
 
       <section className="workspace">
         <aside className="activity-bar" aria-label="工作区模块">
-          <button className="activity-button active" type="button" title="数据">
-            <Icon>数</Icon>
-          </button>
-          <button className="activity-button" type="button" title="处理管线">
-            <Icon>流</Icon>
-          </button>
-          <button
-            className="activity-button"
-            type="button"
-            title="回放 / 视频输出"
-          >
-            <Icon>录</Icon>
-          </button>
-          <button
-            className="activity-button"
-            type="button"
-            title="视界 / 实时预览"
-          >
-            <Icon>视</Icon>
-          </button>
-          <span className="activity-spacer" />
-          <button className="activity-button" type="button" title="设置">
-            <Icon>设</Icon>
-          </button>
+          {tabs.map(tab => <button key={tab.id} type="button"
+            className={`activity-button ${activeTab === tab.id ? "active" : ""} ${tab.id === "settings" ? "settings-entry" : ""}`}
+            title={tab.label} aria-label={tab.label} aria-pressed={activeTab === tab.id}
+            onClick={() => setActiveTab(tab.id)}>
+            <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={tab.path}/></svg>
+          </button>)}
         </aside>
 
         <aside className="library-panel">
-          <PanelHeader
-            title="工程工作区"
-            action="+"
-            onAction={() => void openLocationCsv()}
-          />
+          <PanelHeader title={tabs.find(tab => tab.id === activeTab)?.label ?? "地图标注"} />
+          <div className="workspace-page" hidden={activeTab !== "annotations"}>
           <AnnotationPanel project={annotations} onChange={setAnnotations} selectedId={annotationSelectedId} onSelect={selectAnnotation} status={annotationStatus} ready={annotationsReady}/>
+          </div>
+          <div className="workspace-page" hidden={activeTab !== "sources"}>
           <section className="library-section">
-            <button className="section-label" type="button">
-              <span>▼</span> 数据源
-            </button>
+            <h2 className="section-label">
+              数据源
+            </h2>
             <div className={pointDataset ? "data-source-item" : "empty-list"}>
               {pointDataset ? (
                 <>
@@ -398,11 +409,10 @@ export function App() {
             </div>
           </section>
           <section className="library-section">
-            <button className="section-label" type="button">
-              <span>▼</span> 时间压缩
-            </button>
+            <h2 className="section-label">
+              时间压缩
+            </h2>
             <div className="time-compression-list">
-              <span>骑行类 · 姿态旋转</span>
               <button
                 type="button"
                 disabled={!mediaSource}
@@ -411,9 +421,9 @@ export function App() {
             </div>
           </section>
           <section className="library-section">
-            <button className="section-label" type="button">
-              <span>▼</span> 视频源
-            </button>
+            <h2 className="section-label">
+              视频源
+            </h2>
             <div className={mediaSource ? "data-source-item" : "empty-list"}>
               {mediaSource ? (
                 <>
@@ -425,18 +435,6 @@ export function App() {
                 </>
               ) : "尚未载入视频"}
             </div>
-          </section>
-          <section className="library-section">
-            <button className="section-label" type="button">
-              <span>▼</span> 处理管线
-            </button>
-            <div className="empty-list">尚未配置处理节点</div>
-          </section>
-          <section className="library-section grow">
-            <button className="section-label" type="button">
-              <span>▼</span> 输出目标
-            </button>
-            <div className="empty-list">尚未创建输出任务</div>
           </section>
           <button
             className="primary-action"
@@ -455,42 +453,9 @@ export function App() {
             {isLoadingMedia ? "正在检查视频..." : "载入 DJI 视频"}
           </button>
           {dataError && <div className="data-error">{dataError}</div>}
-        </aside>
-
-        <section className="stage-column">
-          <header className="stage-toolbar">
-            <div className="tool-group">
-              <button className={`tool-button ${drawMode==="select"?"active":""}`} type="button" onClick={()=>{setDrawMode("select");setDraftCoordinates([]);}}>选择</button>
-              <button className={`tool-button ${drawMode==="point"?"active":""}`} type="button" disabled={!annotationsReady} onClick={()=>{setDrawMode("point");setDraftCoordinates([]);}}>标点</button>
-              <button className={`tool-button ${drawMode==="route"?"active":""}`} type="button" disabled={!annotationsReady} onClick={()=>{setDrawMode("route");setDraftCoordinates([]);}}>画路线</button>
-              {drawMode==="route" && <>
-                <button className="tool-button" type="button" disabled={draftCoordinates.length<2} onClick={finishRoute}>完成 ({draftCoordinates.length})</button>
-                <button className="tool-button" type="button" disabled={!draftCoordinates.length} onClick={()=>setDraftCoordinates(p=>p.slice(0,-1))}>撤回一点</button>
-              </>}
-            </div>
-            <div className="view-switch">
-              <button className="active" type="button">
-                地图
-              </button>
-              <button type="button">管线</button>
-              <button type="button">表格</button>
-            </div>
-            <div className="zoom-readout">100%</div>
-          </header>
-
-          <div className="map-interaction-area" aria-label="地图视图" />
-
-          <Timeline
-            dataset={pointDataset}
-            currentTime={currentTime}
-            onCurrentTimeChange={setCurrentTime}
-            focusRequest={timelineFocusRequest}
-            selectionRange={exportRange}
-          />
-        </section>
-
-        <aside className="inspector-panel">
-          <PanelHeader title="透明叠加视频" />
+          </div>
+          <div className="workspace-page" hidden={activeTab !== "export"}>
+            <p className="page-intro">将轨迹与仪表导出为透明视频，叠加到拍摄素材上。</p>
           <section className="range-editor">
             <p>移动红色播放头，再设置导出区间。</p>
             <div>
@@ -508,29 +473,50 @@ export function App() {
           ) : (
             <div className="inspector-empty"><div className="inspector-icon">i</div><p>载入轨迹后可输出透明视频。</p></div>
           )}
-          <section className="inspector-section">
-            <h2>数据管线</h2>
-            <dl>
-              <div>
-                <dt>输入 IR</dt>
-                <dd>无</dd>
-              </div>
-              <div>
-                <dt>输出 IR</dt>
-                <dd>无</dd>
-              </div>
-              <div>
-                <dt>缓存状态</dt>
-                <dd title={window.replaymod?.cacheDirectory}>
-                  {window.replaymod ? <button type="button" onClick={() => {
-                    if (cacheError()) setDataError(cacheError());
-                    void window.replaymod!.openCacheDirectory().then(error => { if (error) setDataError(error); });
-                  }}>本地自动缓存 · 打开目录</button> : "桌面应用可用"}
-                </dd>
-              </div>
-            </dl>
-          </section>
+          </div>
+          <div className="workspace-page settings-page" hidden={activeTab !== "settings"}>
+            <div className="settings-heading"><small>REPLAY MOD REALITY</small><h2>设置</h2><p>工作区偏好自动保存在本机。</p></div>
+            <HDRSettings/>
+            <h3>地图服务</h3>
+            <form onSubmit={event => {event.preventDefault(); if (saveMaptilerKey(keyDraft)) {setKeyDraft(""); setSettingsStatus("地图密钥已更新");}}}>
+              <label htmlFor="settings-map-key">MapTiler API Key</label>
+              <p>{maptilerKey ? "已连接 · 输入新密钥可替换" : "尚未连接地图服务"}</p>
+              <input id="settings-map-key" type="password" autoComplete="off" placeholder="输入新的 API Key" value={keyDraft} onChange={event => setKeyDraft(event.target.value)}/>
+              <button className="primary-action" disabled={!keyDraft.trim()} type="submit">保存并连接</button>
+              <button type="button" disabled={!maptilerKey} onClick={() => {if (saveMaptilerKey("")) setSettingsStatus("地图密钥已移除");}}>移除密钥</button>
+            </form>
+            <h3>时间轴信息</h3>
+            <p>上方为速度图：位置按真实时间分段线性插值后求导取模，纵轴按当前视野自动缩放。</p>
+            <p>下方为足迹、照片的一维密度条：每像素一个时间桶，亮度按点数取对数后，以各自当前峰值归一化，空桶为纯黑，两条线紧贴速度图底部。悬停可查看点数与时间范围。</p>
+            <h3>本地存储</h3>
+            <p>标注、视角和导出偏好会自动保存。</p>
+            <button type="button" disabled={!window.replaymod} onClick={() => {
+              if (cacheError()) setSettingsStatus(cacheError());
+              void window.replaymod?.openCacheDirectory().then(error => setSettingsStatus(error || "已打开缓存目录"));
+            }}>打开缓存目录 ↗</button>
+            <h3>操作快捷键</h3>
+            <div className="settings-row"><span>设置导出入点</span><kbd>I</kbd></div>
+            <div className="settings-row"><span>设置导出出点</span><kbd>O</kbd></div>
+            <p role="status">{settingsStatus}</p>
+          </div>
         </aside>
+
+        <section className="stage-column">
+
+
+          <div className="map-interaction-area" aria-label="地图视图" />
+
+          <Timeline
+            dataset={pointDataset}
+            currentTime={currentTime}
+            onCurrentTimeChange={setCurrentTime}
+            focusRequest={timelineFocusRequest}
+            selectionRange={exportRange}
+            metrics={timelineMetrics}
+          />
+        </section>
+
+
       </section>
 
       {isSubtitleEditorOpen && (
@@ -557,7 +543,7 @@ export function App() {
         <span>
           数据点 {pointDataset?.pointCount.toLocaleString("zh-CN") ?? "0"}
         </span>
-        <span>处理节点 0</span>
+
         <span>{window.replaymod?.platform ?? "web-preview"}</span>
       </footer>
     </main>

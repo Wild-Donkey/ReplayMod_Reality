@@ -29,7 +29,7 @@ export function AnnotationLabels({map, points, selectedId, drawing, onSelect}: P
         const point = map.project([lng, coordinate[1]]);
         return {id: node.id, name: node.name, x: point.x, y: point.y};
       }).filter(point => point.x >= -250 && point.x <= width + 250 && point.y >= -20 && point.y <= height + 20);
-      setGroups(layoutAnnotationLabels(projected, text => context.measureText(text).width));
+      setGroups(layoutAnnotationLabels(projected, text => context.measureText(text).width, width));
     };
     const schedule = () => { if (frame === null) frame = requestAnimationFrame(update); };
     update();
@@ -49,21 +49,21 @@ export function AnnotationLabels({map, points, selectedId, drawing, onSelect}: P
       const node = pointById.get(group.items[0].id);
       if (!node) return null;
       const key = group.items.map(item => item.id).sort().join("|");
-      if (!single) return <div key={key} className="annotation-map-group" role="group"
+      if (!single) return <div key={key} className={`annotation-map-group ${group.side}`} role="group"
         aria-label={`${group.items.length} 个重叠地点`}
         style={{left: group.left, top: group.top, width: group.width, height: group.bottom - group.top}}
       >
-        <i className="annotation-centroid-dot" style={{top: group.y - group.top - 2}} title={`${group.items.length} 个地点的重心`}/>
+        <i className="annotation-centroid-dot" style={{top: group.y - group.top - 2, left: group.x - group.left - 2}} title={`${group.items.length} 个地点的重心`}/>
         <div className="annotation-place-list">
-          {group.items.map(item => <button type="button" key={item.id}
+          {group.items.slice(0, 3).map((item, index) => <button type="button" key={item.id}
             className={item.id === selectedId ? "selected" : ""}
             aria-label={`地标 ${item.name}`} title={item.name}
             onClick={event => { event.stopPropagation(); onSelect(item.id); }}
-          >{item.name}</button>)}
+          ><span>{item.name}</span>{index === 2 && group.items.length > 3 && <b className="annotation-more" title={group.items.slice(3).map(item => item.name).join("、")}>+{group.items.length - 3}</b>}</button>)}
         </div>
       </div>;
       return <button type="button" key={key}
-        className={`annotation-map-label place ${node.id === selectedId ? "selected" : ""}`}
+        className={`annotation-map-label place ${group.side} ${node.id === selectedId ? "selected" : ""}`}
         style={{left: group.left, top: group.top, width: group.width}}
         title={node.name} aria-label={`地标 ${node.name}`}
         onClick={event => { event.stopPropagation(); onSelect(node.id); }}

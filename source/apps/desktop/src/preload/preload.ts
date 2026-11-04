@@ -1,3 +1,4 @@
+import type { DisplayHDRInfo } from "../shared/display";
 import { contextBridge, ipcRenderer } from "electron";
 import type { AppSettings } from "../shared/settings";
 import { MENU_ACTION_CHANNEL, MENU_STATE_CHANNEL, type MenuAction, type MenuState } from "../shared/menu";
@@ -15,6 +16,7 @@ const TRANSCRIBE_MEDIA_CHANNEL = "media:transcribe";
 const SAVE_SUBTITLES_CHANNEL = "media:save-subtitles";
 
 export interface DesktopBridge {
+  getDisplayHDR(): Promise<DisplayHDRInfo | null>;
   readonly settings: AppSettings;
   saveSettings(settings: AppSettings): string | null;
   onMenuAction(listener: (action: MenuAction) => void): () => void;
@@ -40,6 +42,7 @@ export interface DesktopBridge {
 
 const bootstrap = ipcRenderer.sendSync("storage:bootstrap");
 const bridge: DesktopBridge = Object.freeze({
+  getDisplayHDR: () => ipcRenderer.invoke("display:hdr"),
   settings: bootstrap.settings,
   saveSettings: (settings: AppSettings) => ipcRenderer.sendSync("settings:save", settings),
   onMenuAction: (listener: (action: MenuAction) => void) => {

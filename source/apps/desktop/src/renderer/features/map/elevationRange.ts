@@ -23,3 +23,15 @@ export function elevationAppearance(elevation: number, range: ElevationRange, wa
   }
   return {gray: 255, alpha: compressedRatio(elevation, 9000)};
 }
+
+// Match the DEM gamma curve and the water surface compositing in the legend.
+export function elevationLegendGradient(water = false) {
+  const extent = water ? DEFAULT_OCEAN_DEPTH : 9000;
+  const range = {minimum: -DEFAULT_OCEAN_DEPTH, maximum: 9000};
+  const stops = Array.from({length: 65}, (_, index) => {
+    const ratio = (index / 64) ** 2;
+    const {gray, alpha} = elevationAppearance((water ? -1 : 1) * extent * ratio, range, water);
+    return `rgba(${gray},${gray},${gray},${alpha}) ${ratio * 100}%`;
+  });
+  return `linear-gradient(to right, ${stops.join(", ")})`;
+}
