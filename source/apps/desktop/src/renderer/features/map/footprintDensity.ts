@@ -45,7 +45,13 @@ export class FootprintDensity implements CustomLayerInterface {
   private width = 0;
   private height = 0;
   private count = 0;
+  private visible = true;
   constructor(private coordinates: readonly number[]) {}
+  setVisible(visible: boolean) {
+    if (this.visible === visible) return;
+    this.visible = visible;
+    if (this.map) this.map.triggerRepaint();
+  }
   setCoordinates(coordinates: readonly number[]) {
     this.coordinates = coordinates;
     if (this.gl) { this.upload(); this.map.triggerRepaint(); }
@@ -101,6 +107,7 @@ export class FootprintDensity implements CustomLayerInterface {
     this.upload();
   }
   prerender(context: WebGLRenderingContext | WebGL2RenderingContext, options: CustomRenderMethodInput) {
+    if (!this.visible) return;
     const gl = this.gl;
     const previous = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
     const viewport = gl.getParameter(gl.VIEWPORT) as Int32Array;
@@ -134,6 +141,7 @@ export class FootprintDensity implements CustomLayerInterface {
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
   }
   render() {
+    if (!this.visible) return;
     const gl = this.gl;
     gl.disable(gl.DEPTH_TEST); gl.disable(gl.STENCIL_TEST); gl.disable(gl.SCISSOR_TEST); gl.disable(gl.CULL_FACE);
     gl.enable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);

@@ -24,6 +24,8 @@ import { applyMapLanguage } from "./mapLanguage";
 
 const FOOTPRINT_SOURCE_ID = "footprint-points";
 const FOOTPRINT_LAYER_ID = "footprint-points-circle";
+const FOOTPRINT_ROUTE_SOURCE_ID = "footprint-route";
+const FOOTPRINT_ROUTE_LAYER_ID = "footprint-route-line";
 const PHOTO_SOURCE_ID = "photo-points";
 const PHOTO_LAYER_ID = "photo-points-circle";
 const CURRENT_POSITION_SOURCE_ID = "current-position";
@@ -32,6 +34,11 @@ const ANNOTATION_HOVER_SOURCE_ID = "annotation-profile-hover";
 const ANNOTATION_HOVER_LAYER_ID = "annotation-profile-hover-circle";
 const KEYBOARD_PAN_SPEED = 680;
 const POINT_HIT_RADIUS = 12;
+const ROUTE_MODE_ENTER_DISTANCE = 8;
+const POINT_MODE_ENTER_DISTANCE = 5;
+const ROUTE_BREAK_DURATION = 5 * 60 * 1000;
+
+type FootprintDisplayMode = "points" | "line";
 
 const isEditableTarget = (target: EventTarget | null) =>
   target instanceof HTMLInputElement ||
@@ -57,6 +64,95 @@ const toMultiPoint = (flatCoordinates: readonly number[]) => {
       coordinates,
     },
   };
+};
+
+const toSmoothedRoute = (
+  flatCoordinates: readonly number[],
+  timestamps: readonly number[],
+) => {
+  const count = Math.min(timestamps.length, Math.floor(flatCoordinates.length / 2));
+  const rawSegments: [number, number][][] = [];
+  let segment: [number, number][] = [];
+
+  for (let index = 0; index < count; index += 1) {
+    if (
+      index > 0 &&
+      timestamps[index] - timestamps[index - 1] > ROUTE_BREAK_DURATION
+    ) {
+      if (segment.length > 1) rawSegments.push(segment);
+      segment = [];
+    }
+    segment.push([
+      flatCoordinates[index * 2],
+      flatCoordinates[index * 2 + 1],
+    ]);
+  }
+  if (segment.length > 1) rawSegments.push(segment);
+
+  const coordinates = rawSegments.map((points) => points.map((point, index) => {
+    if (index === 0 || index === points.length - 1) return point;
+    const previous = points[index - 1];
+    const next = points[index + 1];
+    return [
+      previous[0] * 0.25 + point[0] * 0.5 + next[0] * 0.25,
+      previous[1] * 0.25 + point[1] * 0.5 + next[1] * 0.25,
+    ] as [number, number];
+  }));
+
+  return {
+    type: "Feature" as const,
+    properties: {},
+    geometry: {
+      type: "MultiLineString" as const,
+      coordinates,
+    },
+  };
+};
+
+const visibleMedianAdjacentDistance = (
+  map: maplibregl.Map,
+  flatCoordinates: readonly number[],
+) => {
+  const count = Math.floor(flatCoordinates.length / 2);
+  if (count < 2) return null;
+  const bounds = map.getBounds();
+  const distances: number[] = [];
+
+  for (let index = 1; index < count; index += 1) {
+    const previous: [number, number] = [
+      flatCoordinates[(index - 1) * 2],
+      flatCoordinates[(index - 1) * 2 + 1],
+    ];
+    const current: [number, number] = [
+      flatCoordinates[index * 2],
+      flatCoordinates[index * 2 + 1],
+    ];
+    if (!bounds.contains(previous) || !bounds.contains(current)) continue;
+    const a = map.project(previous);
+    const b = map.project(current);
+    distances.push(Math.hypot(b.x - a.x, b.y - a.y));
+  }
+
+  if (distances.length === 0) return null;
+  distances.sort((a, b) => a - b);
+  const middle = Math.floor(distances.length / 2);
+  return distances.length % 2
+    ? distances[middle]
+    : (distances[middle - 1] + distances[middle]) / 2;
+};
+
+const nextFootprintDisplayMode = (
+  current: FootprintDisplayMode,
+  medianDistance: number | null,
+) => {
+  if (medianDistance === null) return current;
+  if (current === "points" && medianDistance >= ROUTE_MODE_ENTER_DISTANCE) {
+    return "line";
+  }
+  if (current === "line" && medianDistance <= POINT_MODE_ENTER_DISTANCE) {
+    return "points";
+  }
+  return current;
 };
 
 const lowerBound = (values: readonly number[], target: number) => {
@@ -249,6 +345,7 @@ export function MapViewport({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const footprintDensityRef = useRef<FootprintDensity | null>(null);
+  const footprintDisplayModeRef = useRef<FootprintDisplayMode>("points");
   const buildingOverlayRef=useRef<BuildingHeightOverlay|null>(null);
   const buildingCacheLimitRef=useRef(buildingCacheLimitMB);
   useEffect(() => window.replaymod?.onScrollSource(source => {
@@ -520,9 +617,14 @@ export function MapViewport({
     const footprintGeoJson = toMultiPoint(
       pointDataset.footprintCoordinates,
     );
+    const footprintRouteGeoJson = toSmoothedRoute(
+      pointDataset.footprintCoordinates,
+      pointDataset.footprintTimestamps,
+    );
     const photoGeoJson = toMultiPoint(pointDataset.photoCoordinates);
     const footprintSource = map.getSource(FOOTPRINT_SOURCE_ID);
     const photoSource = map.getSource(PHOTO_SOURCE_ID);
+    const footprintRouteSource = map.getSource(FOOTPRINT_ROUTE_SOURCE_ID);
 
     if (footprintSource) {
       (footprintSource as maplibregl.GeoJSONSource).setData(footprintGeoJson);
@@ -550,6 +652,41 @@ export function MapViewport({
             2,
           ],
           "circle-blur": 0.15,
+        },
+      });
+    }
+
+    if (footprintRouteSource) {
+      (footprintRouteSource as maplibregl.GeoJSONSource).setData(footprintRouteGeoJson);
+    } else {
+      map.addSource(FOOTPRINT_ROUTE_SOURCE_ID, {
+        type: "geojson",
+        data: footprintRouteGeoJson,
+      });
+      map.addLayer({
+        id: FOOTPRINT_ROUTE_LAYER_ID,
+        type: "line",
+        source: FOOTPRINT_ROUTE_SOURCE_ID,
+        layout: {
+          visibility: "none",
+          "line-cap": "round",
+          "line-join": "round",
+        },
+        paint: {
+          "line-color": "#b9f5c5",
+          "line-opacity": 0.72,
+          "line-width": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            1,
+            0.7,
+            8,
+            1.4,
+            14,
+            2.4,
+          ],
+          "line-blur": 0.2,
         },
       });
     }
@@ -602,7 +739,42 @@ export function MapViewport({
       }
     }
 
-    if (restoreCameraRef.current) { restoreCameraRef.current = false; return; }
+    const updateFootprintDisplayMode = () => {
+      const medianDistance = visibleMedianAdjacentDistance(
+        map,
+        pointDataset.footprintCoordinates,
+      );
+      const mode = nextFootprintDisplayMode(
+        footprintDisplayModeRef.current,
+        medianDistance,
+      );
+      footprintDisplayModeRef.current = mode;
+      const activeDensity = footprintDensityRef.current;
+      activeDensity?.setVisible(mode === "points");
+      if (map.getLayer(FOOTPRINT_LAYER_ID)) {
+        map.setLayoutProperty(
+          FOOTPRINT_LAYER_ID,
+          "visibility",
+          mode === "points" && !activeDensity ? "visible" : "none",
+        );
+      }
+      if (map.getLayer(FOOTPRINT_ROUTE_LAYER_ID)) {
+        map.setLayoutProperty(
+          FOOTPRINT_ROUTE_LAYER_ID,
+          "visibility",
+          mode === "line" ? "visible" : "none",
+        );
+      }
+    };
+    map.on("moveend", updateFootprintDisplayMode);
+    updateFootprintDisplayMode();
+
+    if (restoreCameraRef.current) {
+      restoreCameraRef.current = false;
+      return () => {
+        map.off("moveend", updateFootprintDisplayMode);
+      };
+    }
     map.fitBounds(
       [
         [pointDataset.bounds[0], pointDataset.bounds[1]],
@@ -619,6 +791,9 @@ export function MapViewport({
         maxZoom: 13,
       },
     );
+    return () => {
+      map.off("moveend", updateFootprintDisplayMode);
+    };
   }, [pointDataset, status]);
 
   useEffect(() => {

@@ -6,12 +6,16 @@ RawData/footprint/*
 RawData/annotations/*
 !RawData/annotations/Example_annotations.json
 node_modules/
+.agents/
 .tools/
 .vite/
 out/
+outputs/
 dist/
 *.log
 .DS_Store
 Thumbs.db
 */build/*
 */tmp/*
+# 本地全量机场总表（large+medium），由 scripts/data/build-airports-table.cjs 生成；仓库只内置国际机场临时表
+source/apps/desktop/src/renderer/features/map/airports-full.tsv
