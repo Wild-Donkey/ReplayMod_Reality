@@ -27,6 +27,8 @@ export class RawTerrain {
   private readback: GPU;
   private toneBinding: GPU;
   private meterBinding: GPU;
+  private buildingTexture: GPU;
+  private buildingCanvas: HTMLCanvasElement | null = null;
   private matrix: number[] = [];
   private revision = 0;
   private renderedRevision = -1;
@@ -109,24 +111,29 @@ export class RawTerrain {
     this.revision++;
     this.map.triggerRepaint();
   }
+  setBuildingCanvas(canvas:HTMLCanvasElement|null){this.buildingCanvas=canvas;this.revision++;this.map.triggerRepaint();}
   private resize() {
     const source = this.map.getCanvas();
     if (this.heightTexture && this.canvas.width === source.width && this.canvas.height === source.height) return;
     this.canvas.width = Math.max(1, source.width); this.canvas.height = Math.max(1, source.height);
     this.heightTexture?.destroy();
     this.surfaceTexture?.destroy(); this.oceanTexture?.destroy();
+    this.buildingTexture?.destroy();
     this.surfaceTexture = this.device.createTexture({ size: [this.canvas.width,this.canvas.height],format: "rg32float",usage: 0x14 });
     this.oceanTexture = this.device.createTexture({ size: [this.canvas.width,this.canvas.height],format: "rg32float",usage: 0x14 });
     this.composeBinding = this.device.createBindGroup({ layout:this.composePipeline.getBindGroupLayout(0),entries:[
       {binding:0,resource:this.surfaceTexture.createView()},{binding:1,resource:this.oceanTexture.createView()},
     ] });
     this.heightTexture = this.device.createTexture({ size: [this.canvas.width, this.canvas.height], format: "rg32float", usage: 0x15 });
+    // copyExternalImageToTexture requires COPY_DST + TEXTURE_BINDING +
+    // RENDER_ATTACHMENT even though this texture is only sampled afterward.
+    this.buildingTexture = this.device.createTexture({size:[this.canvas.width,this.canvas.height],format:"rgba8unorm",usage:0x16});
     const view = this.heightTexture.createView();
     this.toneBinding = this.device.createBindGroup({ layout: this.tonePipeline.getBindGroupLayout(0), entries: [
-      { binding: 0, resource: view }, { binding: 1, resource: { buffer: this.settings } },
+      { binding: 0, resource: view }, { binding: 1, resource: { buffer: this.settings } }, {binding:2,resource:this.buildingTexture.createView()},
     ] });
     this.meterBinding = this.device.createBindGroup({ layout: this.meterPipeline.getBindGroupLayout(0), entries: [
-      { binding: 0, resource: view }, { binding: 1, resource: { buffer: this.histogram } },
+      { binding: 0, resource: view }, { binding: 1, resource: { buffer: this.histogram } }, {binding:2,resource:this.buildingTexture.createView()},
     ] });
     this.revision++;
   }
@@ -194,6 +201,7 @@ export class RawTerrain {
       const now = performance.now();
       const changed = this.renderedRevision !== this.revision || matrix.some((value,i) => value !== this.matrix[i]);
       const encoder = this.device.createCommandEncoder();
+      if(this.buildingCanvas&&this.buildingCanvas.dataset.buildingFrameReady!=="0"&&this.buildingCanvas.width===this.canvas.width&&this.buildingCanvas.height===this.canvas.height)this.device.queue.copyExternalImageToTexture({source:this.buildingCanvas},{texture:this.buildingTexture},[this.canvas.width,this.canvas.height]);
       if (changed) {
         this.drawElevation(encoder,matrix);
         this.matrix = matrix; this.renderedRevision = this.revision; this.imageRevision++;
@@ -231,7 +239,7 @@ export class RawTerrain {
         this.onAppearance({land:this.land,depth:this.depth,black:this.black,white:this.white,headroom,oceanBlack:this.oceanBlack,oceanWhite:this.oceanWhite});
       }
       if (adapting || (!this.metering && this.measuredRevision!==this.imageRevision)) this.schedulePresentation();
-    } catch { this.fail(); }
+    } catch(error) { console.error("浮点地形渲染失败",error); this.fail(); }
   }
   private async readMeter(revision: number) {
     try {
@@ -286,7 +294,7 @@ export class RawTerrain {
     for (const tile of this.tiles.values()) { tile.texture?.destroy(); tile.draws.forEach(draw => draw.uniform.destroy()); }
     this.tiles.clear();
     this.surfaceTexture?.destroy(); this.oceanTexture?.destroy();
-    this.heightTexture?.destroy(); this.settings?.destroy(); this.histogram?.destroy(); this.readback?.destroy();
+    this.heightTexture?.destroy(); this.buildingTexture?.destroy(); this.settings?.destroy(); this.histogram?.destroy(); this.readback?.destroy();
     this.context?.unconfigure(); this.canvas.remove();
   }
 }

@@ -3,6 +3,7 @@ import { defaultTimelineMetrics, type TimelineMetricsSettings } from "../feature
 import { useCachedState, readCached, cacheError } from "../shared/cache";
 import type { AnnotationProject, MapCoordinate } from "../../../../../packages/data/src";
 import type { TerrainProfilePoint } from "../features/map/elevation";
+import type { AppSettings, MapLanguage } from "../../shared/settings";
 import { AnnotationPanel } from "../features/annotations/AnnotationPanel";
 import { ElevationProfile } from "../features/annotations/ElevationProfile";
 import { emptyAnnotations, parseAnnotationProject, serializeAnnotationProject } from "../features/annotations/annotations";
@@ -53,6 +54,8 @@ export function App() {
   const [mapLegendContainer, setMapLegendContainer] = useState<HTMLDivElement | null>(null);
   const [timelineMetrics, setTimelineMetrics] = useCachedState<TimelineMetricsSettings>("timeline-metrics", defaultTimelineMetrics);
   const [activeTab, setActiveTab] = useCachedState<WorkspaceTab>("workspace-tab", "annotations");
+  const [leftPanelCollapsed, setLeftPanelCollapsed] = useCachedState("left-panel-collapsed", false);
+  const [bottomPanelCollapsed, setBottomPanelCollapsed] = useCachedState("bottom-panel-collapsed", false);
   const [keyDraft, setKeyDraft] = useState("");
   const [settingsStatus, setSettingsStatus] = useState("");
   const [annotations, setAnnotations] = useState<AnnotationProject>(emptyAnnotations());
@@ -114,15 +117,41 @@ export function App() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [subtitleStatus, setSubtitleStatus] = useState("");
   const [maptilerKey, setMaptilerKey] = useState(() => window.replaymod?.settings.maptilerApiKey ?? "");
+  const [mapLanguage, setMapLanguage] = useState<MapLanguage>(() => window.replaymod?.settings.mapLanguage ?? "auto");
+  const [buildingCacheLimitMB,setBuildingCacheLimitMB]=useState(()=>window.replaymod?.settings.buildingCacheLimitMB??256);
+  const [buildingCacheStats,setBuildingCacheStats]=useState({bytes:0,features:0});
+  const [pointerLocation, setPointerLocation] = useState<TerrainProfilePoint | null>(null);
+
+  const saveAppSettings = (settings: AppSettings) => {
+    const error = window.replaymod?.saveSettings(settings);
+    if (error) { setDataError(error); setSettingsStatus(error); return false; }
+    return true;
+  };
 
   const saveMaptilerKey = (key: string) => {
-    const error = window.replaymod?.saveSettings({ maptilerApiKey: key });
-    if (error) { setDataError(error); setSettingsStatus(error); return false; }
+    if (!saveAppSettings({ maptilerApiKey: key, mapLanguage, buildingCacheLimitMB })) return false;
     setMaptilerKey(key.trim());
     return true;
   };
 
+  const saveMapLanguage = (language: MapLanguage) => {
+    if (!saveAppSettings({ maptilerApiKey: maptilerKey, mapLanguage: language, buildingCacheLimitMB })) return;
+    setMapLanguage(language);
+    setSettingsStatus("地图文字语言已更新");
+  };
+
   const clearMaptilerKey = () => saveMaptilerKey("");
+
+  const saveBuildingCacheLimit=(limit:number)=>{
+    if(!saveAppSettings({maptilerApiKey:maptilerKey,mapLanguage,buildingCacheLimitMB:limit}))return;
+    setBuildingCacheLimitMB(limit);setSettingsStatus(`建筑 LOD 缓存上限已设为 ${limit} MB`);
+  };
+
+  useEffect(()=>{
+    const update=(event:Event)=>setBuildingCacheStats((event as CustomEvent<{bytes:number;features:number}>).detail);
+    window.addEventListener("building-cache-stats",update);
+    return()=>window.removeEventListener("building-cache-stats",update);
+  },[]);
 
   useEffect(() => {
     const handleRangeShortcut = (event: KeyboardEvent) => {
@@ -323,8 +352,11 @@ export function App() {
           <MapViewport
             legendContainer={mapLegendContainer}
             apiKey={maptilerKey}
+            mapLanguage={mapLanguage}
+            buildingCacheLimitMB={buildingCacheLimitMB}
             onClearKey={clearMaptilerKey}
             onPointSelect={selectMapPoint}
+            onPointerLocation={setPointerLocation}
             pointDataset={pointDataset}
             currentTime={currentTime}
             onMoveAnnotationCoordinate={(id,index,coordinate)=>setAnnotations(p=>({...p,nodes:p.nodes.map(n=>n.id===id?{...n,coordinates:n.coordinates.map((c,i)=>i===index?coordinate:c)}:n)}))}
@@ -385,18 +417,25 @@ export function App() {
         <div className="titlebar-legend-slot" ref={setMapLegendContainer} />
       </header>
 
-      <section className="workspace">
+      <section className={`workspace ${leftPanelCollapsed ? "left-panel-collapsed" : ""} ${bottomPanelCollapsed ? "bottom-panel-collapsed" : ""}`}>
         <aside className="activity-bar" aria-label="工作区模块">
           {tabs.map(tab => <button key={tab.id} type="button"
-            className={`activity-button ${activeTab === tab.id ? "active" : ""} ${tab.id === "settings" ? "settings-entry" : ""}`}
-            title={tab.label} aria-label={tab.label} aria-pressed={activeTab === tab.id}
-            onClick={() => setActiveTab(tab.id)}>
+            className={`activity-button ${!leftPanelCollapsed && activeTab === tab.id ? "active" : ""} ${tab.id === "settings" ? "settings-entry" : ""}`}
+            title={tab.label} aria-label={tab.label} aria-pressed={!leftPanelCollapsed && activeTab === tab.id}
+            onClick={() => {
+              if (!leftPanelCollapsed && activeTab === tab.id) {
+                setLeftPanelCollapsed(true);
+                return;
+              }
+              setActiveTab(tab.id);
+              setLeftPanelCollapsed(false);
+            }}>
             <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={tab.path}/></svg>
           </button>)}
         </aside>
 
         <aside className="library-panel">
-          <PanelHeader title={tabs.find(tab => tab.id === activeTab)?.label ?? "地图标注"} />
+          <PanelHeader title={tabs.find(tab => tab.id === activeTab)?.label ?? "地图标注"} action="收起左侧面板" onAction={() => setLeftPanelCollapsed(true)} />
           <div className="workspace-page" hidden={activeTab !== "annotations"}>
           <AnnotationPanel project={annotations} onChange={setAnnotations} selectedId={annotationSelectedId} onSelect={selectAnnotation} onFocus={focusAnnotation} status={annotationStatus} ready={annotationsReady}/>
           </div>
@@ -498,9 +537,25 @@ export function App() {
               <button className="primary-action" disabled={!keyDraft.trim()} type="submit">保存并连接</button>
               <button type="button" disabled={!maptilerKey} onClick={() => {if (saveMaptilerKey("")) setSettingsStatus("地图密钥已移除");}}>移除密钥</button>
             </form>
-            <h3>时间轴信息</h3>
-            <p>上方为速度图：位置按真实时间分段线性插值后求导取模，纵轴按当前视野自动缩放。</p>
-            <p>下方为足迹、照片的一维密度条：每像素一个时间桶，亮度按点数取对数后，以各自当前峰值归一化，空桶为纯黑，两条线紧贴速度图底部。悬停可查看点数与时间范围。</p>
+            <label className="settings-row" htmlFor="settings-map-language">
+              <span>地图文字语言</span>
+              <select id="settings-map-language" value={mapLanguage} onChange={event => saveMapLanguage(event.target.value as MapLanguage)}>
+                <option value="auto">跟随系统</option>
+                <option value="local">当地语言</option>
+                <option value="zh">中文</option>
+                <option value="en">English</option>
+              </select>
+            </label>
+            <p>切换后底图地名会立即更新；缺少翻译时使用当地名称。</p>
+            <h3>建筑 LOD 缓存</h3>
+            <label className="settings-row" htmlFor="settings-building-cache-limit">
+              <span>容量上限</span>
+              <select id="settings-building-cache-limit" value={buildingCacheLimitMB} onChange={event=>saveBuildingCacheLimit(Number(event.target.value))}>
+                {[64,128,256,512,1024,2048].map(value=><option key={value} value={value}>{value>=1024?`${value/1024} GB`:`${value} MB`}</option>)}
+              </select>
+            </label>
+            <div className="settings-row"><span>当前已用</span><strong>{buildingCacheStats.bytes<1024*1024?`${(buildingCacheStats.bytes/1024).toFixed(1)} KB`:`${(buildingCacheStats.bytes/1024/1024).toFixed(1)} MB`}</strong></div>
+            <p>{buildingCacheStats.features.toLocaleString("zh-CN")} 个建筑要素；超出上限后优先淘汰最早记忆的区域。</p>
             <h3>本地存储</h3>
             <p>标注、视角和导出偏好会自动保存。</p>
             <button type="button" disabled={!window.replaymod} onClick={() => {
@@ -519,14 +574,24 @@ export function App() {
 
           <div className="map-interaction-area" aria-label="地图视图" />
 
-          {selectedRoute ? <ElevationProfile coordinates={annotationElevationProfile} routeName={selectedRoute.name} onHover={setAnnotationHoverCoordinate}/> : <Timeline
-            dataset={pointDataset}
-            currentTime={currentTime}
-            onCurrentTimeChange={setCurrentTime}
-            focusRequest={timelineFocusRequest}
-            selectionRange={exportRange}
-            metrics={timelineMetrics}
-          />}
+          <div className="bottom-panel">
+            <button className="bottom-panel-toggle" type="button"
+              title={bottomPanelCollapsed ? "展开底部面板" : "收起底部面板"}
+              aria-label={bottomPanelCollapsed ? "展开底部面板" : "收起底部面板"}
+              aria-expanded={!bottomPanelCollapsed} onClick={() => setBottomPanelCollapsed(value => !value)}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={bottomPanelCollapsed ? "m5 15 7-7 7 7" : "m5 9 7 7 7-7"}/></svg>
+            </button>
+            <div className="bottom-panel-content">
+              {selectedRoute ? <ElevationProfile coordinates={annotationElevationProfile} routeName={selectedRoute.name} onHover={setAnnotationHoverCoordinate}/> : <Timeline
+                dataset={pointDataset}
+                currentTime={currentTime}
+                onCurrentTimeChange={setCurrentTime}
+                focusRequest={timelineFocusRequest}
+                selectionRange={exportRange}
+                metrics={timelineMetrics}
+              />}
+            </div>
+          </div>
         </section>
 
 
@@ -553,6 +618,11 @@ export function App() {
               : "系统就绪"}
         </span>
         <span className="status-spacer" />
+        <span className="pointer-location">
+          {pointerLocation
+            ? `经度 ${pointerLocation[0].toFixed(5)}  纬度 ${pointerLocation[1].toFixed(5)}  海拔 ${Number.isFinite(pointerLocation[2]) ? `${Math.round(pointerLocation[2])} m` : "…"}`
+            : "经度 —  纬度 —  海拔 —"}
+        </span>
         <span>
           数据点 {pointDataset?.pointCount.toLocaleString("zh-CN") ?? "0"}
         </span>

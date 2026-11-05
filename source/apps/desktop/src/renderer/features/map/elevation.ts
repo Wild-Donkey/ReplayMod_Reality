@@ -62,7 +62,7 @@ async function loadElevationDEM(request: {url: string}, controller: {signal: Abo
 maplibregl.addProtocol("elevation-dem",loadElevationDEM);
 
 export async function sampleTerrainProfile(coordinates: readonly MapCoordinate[], apiKey: string, signal: AbortSignal): Promise<TerrainProfilePoint[]> {
-  if (coordinates.length < 2) return [];
+  if (coordinates.length === 0) return [];
   const metadataUrl=`https://api.maptiler.com/tiles/terrain-rgb-v2/tiles.json?key=${encodeURIComponent(apiKey)}`;
   const metadataBytes=window.replaymod?new Uint8Array(await window.replaymod.loadMapResource(metadataUrl)):new Uint8Array(await (await fetch(metadataUrl,{signal})).arrayBuffer());
   signal.throwIfAborted();
@@ -112,7 +112,7 @@ export function elevationRamp(range: ElevationRange, ocean = false): ExpressionS
   return ["interpolate", ["linear"], ["elevation"], ...stops] as ExpressionSpecification;
 }
 
-export async function addElevationGlass(map: maplibregl.Map, apiKey: string, signal: AbortSignal, onAppearance?: (appearance: TerrainAppearance | null) => void) {
+export async function addElevationGlass(map: maplibregl.Map, apiKey: string, signal: AbortSignal, onAppearance?: (appearance: TerrainAppearance | null) => void, onRaw?: (raw:RawTerrain|null)=>void) {
   const id = String(++sequence);
   const session: Session = {map,signal};
   sessions.set(id, session);
@@ -132,8 +132,9 @@ export async function addElevationGlass(map: maplibregl.Map, apiKey: string, sig
   try {
     const raw = await RawTerrain.create(map,restoreLegacy,onAppearance);
     if (signal.aborted) { raw.dispose(); return; }
-    if (rawFailed) raw.dispose(); else session.raw = raw;
+    if (rawFailed) raw.dispose(); else {session.raw = raw;onRaw?.(raw);}
   } catch (error) {
+    onRaw?.(null);
     console.warn("浮点地形不可用，保留标准地形显示",error);
   }
   if (signal.aborted) return;

@@ -15,7 +15,7 @@
     "check:annotation-labels": "node tests/annotations/check-annotation-labels.cjs",
     "check": "npm run typecheck && npm run check:storage && npm run check:cache && npm run check:annotations && npm run check:annotation-labels && npm run check:backdrop && npm run check:timeline && npm run check:terrain",
     "check:storage": "node tests/cache/check-storage.cjs",
-    "check:backdrop": "node tests/backdrop/check-backdrop.cjs",
+    "check:backdrop": "node tests/backdrop/check-backdrop.cjs && node tests/map/check-basemap-style.cjs",
     "check:timeline": "node tests/timeline/check-metrics.cjs",
     "check:terrain": "node tests/map/check-terrain-exposure.cjs && node tests/map/check-hdr-settings.cjs && node tests/map/check-display-ui.cjs",
     "check:terrain:gpu": "electron tests/map/check-raw-terrain.cjs",

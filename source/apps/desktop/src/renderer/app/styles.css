@@ -1095,6 +1095,12 @@ button:focus-visible {
   color: #bbb;
 }
 
+.pointer-location {
+  min-width: 270px;
+  font-variant-numeric: tabular-nums;
+  white-space: pre;
+}
+
 @media (max-width: 1150px) {
   .workspace {
     grid-template-columns: 48px 210px minmax(500px, 1fr);
@@ -1688,6 +1694,20 @@ body,
 .activity-button { width: 46px; height: 46px; border-radius: 12px; flex-shrink: 0; }
 .activity-button.active { background: #ededed; color: #161616; }
 .activity-button.settings-entry { margin-top: auto; }
+.panel-header .icon-button { display: grid; place-items: center; font-size: 0; }
+.panel-header .icon-button::before { content: "‹"; font-size: 22px; line-height: 1; }
+.workspace.left-panel-collapsed { grid-template-columns: var(--module-rail-width) minmax(0, 1fr); }
+.workspace.left-panel-collapsed .library-panel { display: none; }
+.bottom-panel { position: relative; min-width: 0; min-height: 0; pointer-events: auto; }
+.bottom-panel-content { width: 100%; height: 100%; min-height: 0; }
+.bottom-panel-content > * { width: 100%; height: 100%; }
+.bottom-panel-toggle { position: absolute; z-index: 5; top: 2px; right: 4px; display: grid; width: 28px; height: 24px; padding: 0; place-items: center; color: #aaa; background: rgb(8 8 8 / 72%); cursor: pointer; }
+.bottom-panel-toggle:hover { color: #111; background: #eee; }
+.bottom-panel-content .timeline-toolbar { padding-right: 38px; }
+.bottom-panel-content .route-elevation header { padding-right: 34px; }
+.workspace.bottom-panel-collapsed .stage-column { grid-template-rows: minmax(260px, 1fr) 28px; }
+.workspace.bottom-panel-collapsed .bottom-panel { background: var(--glass-black); pointer-events: auto; }
+.workspace.bottom-panel-collapsed .bottom-panel-content { display: none; }
 .workspace-page { display: flex; flex-direction: column; min-height: 0; }
 .workspace-page[hidden] { display: none; }
 .page-intro { padding: 8px 14px; color: #aaa; font-size: 12px; line-height: 1.7; }

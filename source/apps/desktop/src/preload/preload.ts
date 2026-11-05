@@ -1,6 +1,7 @@
 import type { DisplayHDRInfo } from "../shared/display";
 import { contextBridge, ipcRenderer } from "electron";
 import type { AppSettings } from "../shared/settings";
+import { SCROLL_SOURCE_CHANNEL, type ScrollSource } from "../shared/scrollInput";
 import { MENU_ACTION_CHANNEL, MENU_STATE_CHANNEL, type MenuAction, type MenuState } from "../shared/menu";
 import type { PointDataset } from "../../../../packages/data/src";
 import type {
@@ -21,6 +22,7 @@ export interface DesktopBridge {
   saveSettings(settings: AppSettings): string | null;
   onMenuAction(listener: (action: MenuAction) => void): () => void;
   updateMenuState(state: MenuState): void;
+  onScrollSource(listener: (source: ScrollSource) => void): () => void;
   readonly workspaceState: Record<string, unknown>;
   readonly cacheDirectory: string;
   saveWorkspaceState(state: Record<string, unknown>): string | null;
@@ -51,6 +53,11 @@ const bridge: DesktopBridge = Object.freeze({
     return () => { ipcRenderer.removeListener(MENU_ACTION_CHANNEL, handler); };
   },
   updateMenuState: (state: MenuState) => ipcRenderer.send(MENU_STATE_CHANNEL, state),
+  onScrollSource: (listener: (source: ScrollSource) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, source: ScrollSource) => listener(source);
+    ipcRenderer.on(SCROLL_SOURCE_CHANNEL, handler);
+    return () => { ipcRenderer.removeListener(SCROLL_SOURCE_CHANNEL, handler); };
+  },
   workspaceState: bootstrap.state,
   cacheDirectory: bootstrap.directory,
   saveWorkspaceState: (state: Record<string, unknown>) => ipcRenderer.sendSync("workspace:save", state),

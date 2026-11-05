@@ -19,7 +19,7 @@ function Gradient({range,appearance,ocean}: {range:TerrainRange;appearance:Terra
   const renderer = useRef<(() => void) | null>(null);
   useEffect(() => {
     const canvas=ref.current!;
-    let disposed=false,texture:GPU,settings:GPU,context:GPU,device:GPU;
+    let disposed=false,texture:GPU,buildingTexture:GPU,settings:GPU,context:GPU,device:GPU;
     const fallback=()=>{canvas.style.visibility="hidden";};
     void requestGPUDevice().then(async gpu => {
       if(disposed)return; device=gpu;
@@ -29,8 +29,17 @@ function Gradient({range,appearance,ocean}: {range:TerrainRange;appearance:Terra
       if(disposed)return;
       canvas.width=256;canvas.height=1;
       texture=device.createTexture({size:[256,1],format:"rg32float",usage:6});
+      // The shared tone shader also accepts the vector-building height
+      // buffer. Legends intentionally show terrain only, so bind a zero
+      // texture instead of leaving the shader's third binding invalid.
+      buildingTexture=device.createTexture({size:[1,1],format:"rgba8unorm",usage:6});
+      device.queue.writeTexture({texture:buildingTexture},new Uint8Array(256),{bytesPerRow:256},[1,1]);
       settings=device.createBuffer({size:32,usage:0x48});
-      const binding=device.createBindGroup({layout:pipeline.getBindGroupLayout(0),entries:[{binding:0,resource:texture.createView()},{binding:1,resource:{buffer:settings}}]});
+      const binding=device.createBindGroup({layout:pipeline.getBindGroupLayout(0),entries:[
+        {binding:0,resource:texture.createView()},
+        {binding:1,resource:{buffer:settings}},
+        {binding:2,resource:buildingTexture.createView()},
+      ]});
       renderer.current=()=>{
         if(disposed)return;
         try {
@@ -47,7 +56,7 @@ function Gradient({range,appearance,ocean}: {range:TerrainRange;appearance:Terra
       device.addEventListener("uncapturederror",fallback);
       renderer.current();
     }).catch(fallback);
-    return()=>{disposed=true;renderer.current=null;device?.removeEventListener("uncapturederror",fallback);texture?.destroy();settings?.destroy();context?.unconfigure();};
+    return()=>{disposed=true;renderer.current=null;device?.removeEventListener("uncapturederror",fallback);texture?.destroy();buildingTexture?.destroy();settings?.destroy();context?.unconfigure();};
   },[]);
   useEffect(()=>{renderer.current?.();},[range,appearance,ocean]);
   return <div className="elevation-gradient" style={{position:"relative",backgroundImage:gradient(range,appearance,ocean)}}>

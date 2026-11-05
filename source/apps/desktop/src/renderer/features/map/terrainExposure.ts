@@ -3,7 +3,8 @@
 export const elevationRadiance = (height: number) => 0.03 * 2 ** (height / 2000);
 export const METER_BINS = 256;
 export const METER_RANGE_OFFSET = METER_BINS*2;
-export const METER_BYTES = (METER_RANGE_OFFSET+4)*4;
+export const METER_TONE_OFFSET = METER_RANGE_OFFSET+4;
+export const METER_BYTES = (METER_TONE_OFFSET+2)*4;
 export const METER_MIN = -12000;
 export const METER_MAX = 10000;
 export function exposureFromHistogram(histogram: Uint32Array): number | null {
@@ -103,10 +104,13 @@ export function mappedTerrainLuminance(height: number, black: number, white: num
 }
 
 export function materialToneWindow(meter: Uint32Array, ocean=false) {
-  const isolated = new Uint32Array(METER_RANGE_OFFSET+4);
+  const isolated = new Uint32Array(METER_TONE_OFFSET+2);
   const start = ocean ? METER_BINS : 0;
   isolated.set(meter.subarray(start,start+METER_BINS));
   const offset = METER_RANGE_OFFSET+(ocean?2:0);
-  isolated[offset] = meter[offset]; isolated[offset+1] = meter[offset+1];
+  // Land exposure uses the effective surface (terrain + exaggerated vector
+  // buildings), while the public elevation range remains terrain-only.
+  const toneOffset=!ocean&&meter[METER_TONE_OFFSET+1]?METER_TONE_OFFSET:offset;
+  isolated[offset] = meter[toneOffset]; isolated[offset+1] = meter[toneOffset+1];
   return toneWindowFromHistogram(isolated,!ocean);
 }

@@ -28,8 +28,9 @@ try {
   previous.writeSync('maptiler-key', 'existing-test-key');
   const first = new AppStorage('darwin', home, appData, {});
   assert.equal(first.settings.read().maptilerApiKey, 'existing-test-key');
+  assert.equal(first.settings.read().mapLanguage, 'auto');
   first.state.writeSync('workspace', { draft: 'saved' });
-  first.settings.save({ maptilerApiKey: 'shared-test-key' });
+  first.settings.save({ maptilerApiKey: 'shared-test-key', mapLanguage: 'zh' });
   const before = process.cwd();
   try {
     process.chdir(root);
@@ -37,13 +38,14 @@ try {
     assert.equal(otherLaunch.paths.config, first.paths.config);
     assert.equal(otherLaunch.paths.cache, first.paths.cache);
     assert.equal(otherLaunch.settings.read().maptilerApiKey, 'shared-test-key');
+    assert.equal(otherLaunch.settings.read().mapLanguage, 'zh');
   } finally { process.chdir(before); }
   fs.rmSync(first.paths.cache, { recursive: true });
   const restarted = new AppStorage('darwin', home, appData, {});
   assert.equal(restarted.settings.read().maptilerApiKey, 'shared-test-key');
   assert.equal(restarted.state.readSync('workspace').draft, 'saved');
   // Clearing a key must never revive the previous format's key.
-  restarted.settings.save({ maptilerApiKey: '' });
+  restarted.settings.save({ maptilerApiKey: '', mapLanguage: 'local' });
   assert.equal(new AppStorage('darwin', home, appData, {}).settings.read().maptilerApiKey, '');
   fs.writeFileSync(first.paths.config, '{invalid');
   assert.throws(() => restarted.settings.read());

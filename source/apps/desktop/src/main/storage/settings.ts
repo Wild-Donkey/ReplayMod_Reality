@@ -1,13 +1,15 @@
 import { readFileSync, writeFileSync, renameSync } from "node:fs";
 import type { AppSettings } from "../../shared/settings";
 
+const defaultSettings: AppSettings = { maptilerApiKey: "", mapLanguage: "auto", buildingCacheLimitMB: 256 };
+
 export class SettingsStore {
   constructor(private readonly file: string) {}
 
   read(): AppSettings {
     try { return this.validate(JSON.parse(readFileSync(this.file, "utf8"))); }
     catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return { maptilerApiKey: "" };
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return defaultSettings;
       throw new Error("无法读取应用配置，请检查 config.json；原文件未覆盖。", { cause: error });
     }
   }
@@ -23,6 +25,14 @@ export class SettingsStore {
         typeof value.maptilerApiKey !== "string" || value.maptilerApiKey.length > 4096) {
       throw new Error("应用配置格式无效");
     }
-    return { maptilerApiKey: value.maptilerApiKey.trim() };
+    const mapLanguage = "mapLanguage" in value ? value.mapLanguage : "auto";
+    if (!["auto", "local", "zh", "en"].includes(mapLanguage as string)) {
+      throw new Error("应用配置格式无效");
+    }
+    const rawLimit = "buildingCacheLimitMB" in value ? value.buildingCacheLimitMB : 256;
+    if (typeof rawLimit !== "number" || !Number.isFinite(rawLimit) || rawLimit < 32 || rawLimit > 4096) {
+      throw new Error("应用配置格式无效");
+    }
+    return { maptilerApiKey: value.maptilerApiKey.trim(), mapLanguage: mapLanguage as AppSettings["mapLanguage"], buildingCacheLimitMB: Math.round(rawLimit) };
   }
 }

@@ -9,7 +9,7 @@ export function upgradeStorage(data: string, config: string, state: LocalCache, 
   if (!existsSync(config)) {
     const oldSettings = path.join(data, "settings-v1");
     const key = existsSync(oldSettings) ? new LocalCache(oldSettings).readSync<string>("maptiler-key") : null;
-    settings.save({ maptilerApiKey: key ?? "" });
+    settings.save({ maptilerApiKey: key ?? "", mapLanguage: "auto", buildingCacheLimitMB: 256 });
   }
   const marker = "storage-format-v2";
   if (state.readSync(marker)) return;

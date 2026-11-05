@@ -6,6 +6,8 @@ import type { FeatureCollection, Geometry } from "geojson";
 import { visibleAnnotations } from "../annotations/annotations";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
+import type { ScrollSource } from "../../../shared/scrollInput";
+import type { MapLanguage } from "../../../shared/settings";
 import { createPortal } from "react-dom";
 import type { PointDataset } from "../../../../../../packages/data/src";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -15,6 +17,10 @@ import { addElevationGlass, sampleTerrainProfile, type TerrainProfilePoint } fro
 import { restoreWaterLayers } from "./water";
 import { TerrainLegend } from "./TerrainLegend";
 import type { TerrainAppearance } from "./terrainExposure";
+import { addElevationBuildings, stylePublicBasemap } from "./basemapStyle";
+import { RoadOverlay } from "./RoadOverlay";
+import { BuildingHeightOverlay } from "./BuildingHeightOverlay";
+import { applyMapLanguage } from "./mapLanguage";
 
 const FOOTPRINT_SOURCE_ID = "footprint-points";
 const FOOTPRINT_LAYER_ID = "footprint-points-circle";
@@ -214,8 +220,11 @@ interface MapViewportProps {
   onCancelDrawing: ()=>void;
   onMoveAnnotationCoordinate: (id:string,index:number,coordinate:MapCoordinate)=>void;
   apiKey: string;
+  mapLanguage: MapLanguage;
+  buildingCacheLimitMB: number;
   onClearKey: () => void;
   onPointSelect: (timestamp: number) => void;
+  onPointerLocation: (location: TerrainProfilePoint | null) => void;
   pointDataset: PointDataset | null;
   currentTime: number | null;
 }
@@ -225,17 +234,26 @@ export function MapViewport({
   annotations, annotationSelectedId, annotationFocus, annotationHoverCoordinate, onAnnotationElevationProfile, onAnnotationSelect, onAnnotationFocus,
   drawMode, draftCoordinates, onDrawCoordinate, onFinishRoute, onCancelDrawing, onMoveAnnotationCoordinate,
   apiKey,
+  mapLanguage,
+  buildingCacheLimitMB,
   onClearKey,
   onPointSelect,
+  onPointerLocation,
   pointDataset,
   currentTime,
 }: MapViewportProps) {
   const restoreCameraRef = useRef(Boolean(readCached("map-camera", null)));
+  const scrollSourceRef = useRef<ScrollSource>("unknown");
   const [terrainAppearance,setTerrainAppearance] = useState<TerrainAppearance | null>(null);
   const [elevationUnavailable, setElevationUnavailable] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const footprintDensityRef = useRef<FootprintDensity | null>(null);
+  const buildingOverlayRef=useRef<BuildingHeightOverlay|null>(null);
+  const buildingCacheLimitRef=useRef(buildingCacheLimitMB);
+  useEffect(() => window.replaymod?.onScrollSource(source => {
+    scrollSourceRef.current = source;
+  }), []);
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
     "loading",
   );
@@ -259,6 +277,8 @@ export function MapViewport({
     setStatus("loading");
     setErrorMessage("");
     let baseStyleReady = false;
+    let roadOverlay: RoadOverlay | null = null;
+    let buildingOverlay: BuildingHeightOverlay | null = null;
 
     const camera = readCached<{center: [number, number]; zoom: number; bearing: number; pitch: number} | null>("map-camera", null);
     setElevationUnavailable(false);
@@ -280,6 +300,7 @@ export function MapViewport({
     const basemap = map;
     basemap.once("load", () => {
       baseStyleReady = true;
+      const roadStyle = structuredClone(basemap.getStyle());
       // Terrain supplies the surface color/alpha. Keep cartographic details
       // above it at their original opacity, including all map text.
       const surfaceLayers = (basemap.getStyle().layers ?? []).filter(layer =>
@@ -288,8 +309,17 @@ export function MapViewport({
         basemap.setLayoutProperty(layer.id, "visibility", "none");
       }
       restoreWaterLayers(basemap);
+      stylePublicBasemap(basemap);
+      // Buildings must share the primary map's camera/render lifecycle. The
+      // former hidden-map texture path could present an empty framebuffer at
+      // vector-tile zoom boundaries, making an entire city blink out.
+      addElevationBuildings(basemap);
+      roadOverlay = new RoadOverlay(basemap, roadStyle);
+      buildingOverlay = new BuildingHeightOverlay(basemap,roadStyle,buildingCacheLimitRef.current);
+      buildingOverlayRef.current=buildingOverlay;
+      applyMapLanguage(basemap, mapLanguage);
       setStatus("ready");
-      void addElevationGlass(basemap, apiKey, elevationController.signal, setTerrainAppearance).catch(() => {
+      void addElevationGlass(basemap, apiKey, elevationController.signal, setTerrainAppearance,raw=>raw?.setBuildingCanvas(null)).catch(() => {
         if (!elevationController.signal.aborted) {
           setElevationUnavailable(true);
           for (const layer of surfaceLayers) {
@@ -320,6 +350,7 @@ export function MapViewport({
       // Chromium emits trackpad pinch gestures as Ctrl+wheel. Let MapLibre
       // handle those with the doubled zoom rates configured above.
       if (event.ctrlKey) return;
+      if (scrollSourceRef.current === "mouse-wheel") return;
 
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -364,10 +395,45 @@ export function MapViewport({
       map.off("render", hdr.render);
       hdr.dispose();
       footprintDensityRef.current = null;
+      roadOverlay?.dispose();
+      buildingOverlay?.dispose();
+      if(buildingOverlayRef.current===buildingOverlay)buildingOverlayRef.current=null;
       mapRef.current = null;
       map.remove();
     };
-  }, [apiKey]);
+  }, [apiKey, mapLanguage]);
+
+  useEffect(()=>{buildingCacheLimitRef.current=buildingCacheLimitMB;buildingOverlayRef.current?.updateMemoryLimit(buildingCacheLimitMB);},[buildingCacheLimitMB]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || status !== "ready") return;
+    let timer = 0;
+    let controller: AbortController | null = null;
+    let latest: [number, number] | null = null;
+    const sample = () => {
+      if (!latest) return;
+      controller?.abort();
+      const requestController = new AbortController();
+      controller = requestController;
+      const coordinate = latest;
+      sampleTerrainProfile([coordinate], apiKey, requestController.signal).then(points => {
+        if (!requestController.signal.aborted && points[0]) onPointerLocation(points[0]);
+      }).catch(() => undefined);
+    };
+    const move = (event: maplibregl.MapMouseEvent) => {
+      latest = [event.lngLat.lng, event.lngLat.lat];
+      onPointerLocation([latest[0], latest[1], Number.NaN]);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(sample, 180);
+    };
+    map.on("mousemove", move);
+    return () => {
+      map.off("mousemove", move);
+      window.clearTimeout(timer);
+      controller?.abort();
+    };
+  }, [apiKey, onPointerLocation, status]);
 
   useEffect(()=>{
     const map=mapRef.current;
@@ -378,8 +444,8 @@ export function MapViewport({
     if(source)source.setData(features);
     else {
       map.addSource("annotations",{type:"geojson",data:features});
-      map.addLayer({id:"annotation-routes",type:"line",source:"annotations",filter:["==",["geometry-type"],"LineString"],paint:{"line-color":["get","color"],"line-width":["case",["==",["get","selected"],true],5,3],"line-opacity":0.82}});
-      map.addLayer({id:"annotation-points",type:"circle",source:"annotations",filter:["==",["geometry-type"],"Point"],paint:{"circle-color":["get","color"],"circle-radius":["case",["==",["get","selected"],true],4,2.5],"circle-stroke-width":0.75,"circle-stroke-color":"#fff","circle-opacity":0.9}});
+      map.addLayer({id:"annotation-routes",type:"line",source:"annotations",filter:["==",["geometry-type"],"LineString"],layout:{"line-cap":"round","line-join":"round"},paint:{"line-color":["get","color"],"line-width":["case",["==",["get","selected"],true],3,2],"line-opacity":1}});
+      map.addLayer({id:"annotation-points",type:"circle",source:"annotations",filter:["==",["geometry-type"],"Point"],paint:{"circle-color":["get","color"],"circle-radius":["case",["==",["get","selected"],true],4,2.5],"circle-stroke-width":0.75,"circle-stroke-color":"#fff","circle-opacity":1}});
     }
   },[annotations,annotationSelectedId,draftCoordinates,status]);
 

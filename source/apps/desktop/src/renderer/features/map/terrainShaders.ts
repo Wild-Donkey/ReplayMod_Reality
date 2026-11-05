@@ -29,13 +29,17 @@ export const toneShader = `
 @group(0) @binding(0) var height: texture_2d<f32>;
 struct Settings { land: vec4f, ocean: vec4f }
 @group(0) @binding(1) var<uniform> settings: Settings;
+@group(0) @binding(2) var buildings: texture_2d<f32>;
 @vertex fn vertex(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
   let uv = vec2f(f32((i << 1u) & 2u), f32(i & 2u));
   return vec4f(uv * 2.0 - 1.0, 0, 1);
 }
 @fragment fn fragment(@builtin(position) pixel: vec4f) -> @location(0) vec4f {
   let surface = textureLoad(height, vec2i(pixel.xy), 0).rg;
-  let elevation = surface.r;
+  let encodedBuilding = textureLoad(buildings,vec2i(pixel.xy),0).rg * 255.0;
+  // RG is a 16-bit decimetre value. Dividing by ten to metres and applying
+  // the requested 10x exaggeration cancel, so the encoded integer is metres.
+  let elevation = surface.r + encodedBuilding.r*256.0 + encodedBuilding.g;
   if (elevation < -1e10) { return vec4f(0.013, 0.013, 0.013, 1); }
   let window = select(settings.land,settings.ocean,surface.g>0.5);
   let limit = max(1.0,settings.land.y);
@@ -57,23 +61,29 @@ struct Settings { land: vec4f, ocean: vec4f }
 export const meterShader = `
 @group(0) @binding(0) var height: texture_2d<f32>;
 @group(0) @binding(1) var<storage, read_write> meter: Meter;
-struct Meter { landBins: array<atomic<u32>,256>, oceanBins: array<atomic<u32>,256>, landLow: atomic<u32>, landHigh: atomic<u32>, depthLow: atomic<u32>, depthHigh: atomic<u32> }
+@group(0) @binding(2) var buildings: texture_2d<f32>;
+struct Meter { landBins: array<atomic<u32>,256>, oceanBins: array<atomic<u32>,256>, landLow: atomic<u32>, landHigh: atomic<u32>, depthLow: atomic<u32>, depthHigh: atomic<u32>, landToneLow: atomic<u32>, landToneHigh: atomic<u32> }
 @compute @workgroup_size(8,8)
 fn main(@builtin(global_invocation_id) id: vec3u) {
   if (id.x >= 128u || id.y >= 72u) { return; }
   let dimensions = vec2f(textureDimensions(height));
   let pixel = vec2i((vec2f(id.xy) + 0.5) / vec2f(128,72) * dimensions);
   let surface = textureLoad(height, pixel, 0).rg;
-  let elevation = surface.r;
-  if (elevation < -1e10) { return; }
-  let bin = u32(clamp((elevation + 12000.0) / 22000.0 * 256.0, 0.0, 255.0));
+  let terrainElevation = surface.r;
+  if (terrainElevation < -1e10) { return; }
+  let encodedBuilding = textureLoad(buildings,pixel,0).rg*255.0;
+  let buildingElevation = encodedBuilding.r*256.0+encodedBuilding.g;
+  let toneElevation = select(terrainElevation,terrainElevation+buildingElevation,surface.g<=0.5);
+  let bin = u32(clamp((toneElevation + 12000.0) / 22000.0 * 256.0, 0.0, 255.0));
   if (surface.g <= 0.5) {
     atomicAdd(&meter.landBins[bin],1u);
-    atomicMax(&meter.landLow,bitcast<u32>(max(0.0,20000.0-elevation)));
-    atomicMax(&meter.landHigh,bitcast<u32>(elevation+20000.0));
+    atomicMax(&meter.landLow,bitcast<u32>(max(0.0,20000.0-terrainElevation)));
+    atomicMax(&meter.landHigh,bitcast<u32>(terrainElevation+20000.0));
+    atomicMax(&meter.landToneLow,bitcast<u32>(max(0.0,20000.0-toneElevation)));
+    atomicMax(&meter.landToneHigh,bitcast<u32>(toneElevation+20000.0));
   } else {
     atomicAdd(&meter.oceanBins[bin],1u);
-    let depth = max(0.0,-elevation);
+    let depth = max(0.0,-terrainElevation);
     atomicMax(&meter.depthLow,bitcast<u32>(max(0.0,20000.0-depth)));
     atomicMax(&meter.depthHigh,bitcast<u32>(depth+1.0));
   }

@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { access, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { app, BrowserWindow, dialog, ipcMain, shell, net, Menu } from "electron";
+import { installScrollInput } from "./scrollInput";
 import { MENU_ACTION_CHANNEL, MENU_STATE_CHANNEL, type MenuAction, type MenuState } from "../shared/menu";
 import path from "node:path";
 import { parse } from "csv-parse";
@@ -631,6 +632,8 @@ const createWindow = (): void => {
   mainWindow.webContents.setUserAgent(
     `ReplayModReality/${app.getVersion()} (${process.platform}; Electron)`,
   );
+  const removeScrollInput = installScrollInput(mainWindow);
+  mainWindow.once("closed", removeScrollInput);
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("https://")) {

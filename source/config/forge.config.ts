@@ -9,13 +9,16 @@ const config: ForgeConfig = {
   hooks: {
     generateAssets: async () => {
       execFileSync(process.execPath, [path.resolve("scripts/native/build-hdr.cjs")], { stdio: "inherit" });
+      execFileSync(process.execPath, [path.resolve("scripts/native/build-scroll-input.cjs")], { stdio: "inherit" });
     },
   },
   packagerConfig: {
     name: "ReplayMod Reality",
     appBundleId: "com.replaymod.reality",
     asar: true,
-    extraResource: process.platform === "darwin" ? ["native/build/hdr-display"] : [],
+    extraResource: process.platform === "darwin"
+      ? ["native/build/hdr-display", "native/build/scroll-input.node"]
+      : [],
     executableName: "ReplayMod Reality",
   },
   makers: [
