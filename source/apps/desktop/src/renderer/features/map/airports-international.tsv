@@ -1,0 +1,1177 @@
+# source=OurAirports airports.csv (public domain) https://ourairports.com/data/
+# nameZh=Wikidata (CC0), CN only at build time; missing names are fetched on demand at runtime
+# generated=2026-11-05 filter=type:large_airport;has-code;not-duplicate
+# columns=iata	icao	name	municipality	country	latitude	longitude	kind	nameZh
+HIR	AGGH	Honiara International Airport	Honiara	SB	-9.42800	160.05499	L
+WSI	YSWS	Western Sydney International (Nancy-Bird Walton) Airport	Sydney	AU	-33.88346	150.71298	L
+LAE	AYNZ	Nadzab Tomodachi International Airport	Lae	PG	-6.56799	146.72654	L
+POM	AYPY	Port Moresby Jacksons International Airport	Port Moresby	PG	-9.44338	147.22000	L
+GOH	BGGH	Nuuk International Airport	Nuuk	GL	64.19107	-51.67914	L
+JAV	BGJN	Ilulissat Airport	Ilulissat	GL	69.24564	-51.05224	L
+AEY	BIAR	Akureyri International Airport	Akureyri	IS	65.65657	-18.07202	L
+KEF	BIKF	Keflavik International Airport	Reykjavík	IS	63.98500	-22.60560	L
+PRN	BKPR	Priština Adem Jashari International Airport	Prishtina	XK	42.57280	21.03580	L
+YEG	CYEG	Edmonton International Airport	Edmonton	CA	53.30970	-113.58000	L
+YHM	CYHM	John C. Munro Hamilton International Airport	Hamilton	CA	43.17131	-79.92942	L
+YHZ	CYHZ	Halifax / Stanfield International Airport	Halifax	CA	44.88080	-63.50860	L
+YLW	CYLW	Kelowna International Airport	Kelowna	CA	49.95610	-119.37800	L
+YOW	CYOW	Ottawa Macdonald-Cartier International Airport	Ottawa	CA	45.32250	-75.66920	L
+YQB	CYQB	Quebec Jean Lesage International Airport	Quebec	CA	46.79110	-71.39330	L
+YQG	CYQG	Windsor International Airport	Windsor	CA	42.27560	-82.95560	L
+YUL	CYUL	Montreal / Pierre Elliott Trudeau International Airport	Montréal	CA	45.46784	-73.74229	L
+YVR	CYVR	Vancouver International Airport	Vancouver	CA	49.19390	-123.18400	L
+YWG	CYWG	Winnipeg / James Armstrong Richardson International Airport	Winnipeg	CA	49.91000	-97.23990	L
+YXE	CYXE	Saskatoon John G. Diefenbaker International Airport	Saskatoon	CA	52.17072	-106.70079	L
+YYC	CYYC	Calgary International Airport	Calgary	CA	51.11882	-114.00993	L
+YYJ	CYYJ	Victoria International Airport	Victoria	CA	48.64720	-123.42779	L
+YYT	CYYT	St. John's International Airport	St. John's	CA	47.61860	-52.75190	L
+YYZ	CYYZ	Toronto Pearson International Airport	Toronto	CA	43.67594	-79.62942	L
+BJA	DAAE	Soummam–Abane Ramdane Airport	Béjaïa	DZ	36.71255	5.06991	L
+ALG	DAAG	Houari Boumediene Airport	Algiers	DZ	36.69389	3.21453	L
+DJG	DAAJ	Tiska Djanet Airport	Djanet	DZ	24.28545	9.46365	L
+TMR	DAAT	Aguenar – Hadj Bey Akhamok Airport	Tamanrasset	DZ	22.81099	5.45083	L
+GJL	DAAV	Jijel Ferhat Abbas Airport	Tahir	DZ	36.79413	5.87365	L
+AAE	DABB	Annaba Rabah Bitat Airport	Annaba	DZ	36.82678	7.81334	L
+CZL	DABC	Mohamed Boudiaf International Airport	Constantine	DZ	36.27600	6.62039	L
+BLJ	DABT	Batna Mostefa Ben Boulaid Airport	Batna	DZ	35.75210	6.30859	L
+CFK	DAOI	Chlef Aboubakr Belkaid International Airport	Chlef	DZ	36.21661	1.34111	L
+TLM	DAON	Zenata – Messali El Hadj Airport	Zenata	DZ	35.01273	-1.45712	L
+ORN	DAOO	Oran Es-Sénia (Ahmed Ben Bella) International Airport	Es-Sénia	DZ	35.62065	-0.62249	L
+BSK	DAUB	Biskra - Mohamed Khider Airport	Biskra	DZ	34.79318	5.73890	L
+COO	DBBB	Cotonou Cadjehoun International Airport	Cotonou	BJ	6.35723	2.38435	L
+OUA	DFFD	Ouagadougou Thomas Sankara International Airport	Ouagadougou	BF	12.35320	-1.51242	L
+BOY	DFOO	Bobo Dioulasso Airport	Bobo Dioulasso	BF	11.16010	-4.33097	L
+ACC	DGAA	Kotoka International Airport	Accra	GH	5.60519	-0.16679	L
+TML	DGLE	Yakubu Tali International Airport	Tamale	GH	9.55391	-0.86606	L
+KMS	DGSI	Prempeh I International Airport	Kumasi	GH	6.71456	-1.59082	L
+ABJ	DIAP	Félix-Houphouët-Boigny International Airport	Abidjan	CI	5.26139	-3.92629	L
+ASK	DIYO	Yamoussoukro International Airport	Yamoussoukro	CI	6.90317	-5.36558	L
+ABV	DNAA	Nnamdi Azikiwe International Airport	Abuja	NG	9.00679	7.26317	L
+ABB	DNAS	Asaba International Airport	Asaba	NG	6.20417	6.66528	L
+BCU	DNBC	Sir Abubakar Tafawa Balewa Bauchi State International Airport	Bauchi	NG	10.48283	9.74400	L
+ENU	DNEN	Akanu Ibiam International Airport	Enegu	NG	6.47372	7.56046	L
+ILR	DNIL	General Tunde Idiagbon International Airport	Ilorin/Ogbomosho	NG	8.44021	4.49392	L
+KAD	DNKA	Kaduna International Airport	Kaduna	NG	10.69600	7.32011	L
+KAN	DNKN	Mallam Aminu Kano International Airport	Kano	NG	12.04561	8.52357	L
+MIU	DNMA	Maiduguri International Airport	Maiduguri	NG	11.85416	13.08070	L
+LOS	DNMM	Murtala Muhammed International Airport	Lagos	NG	6.57737	3.32116	L
+PHC	DNPO	Port Harcourt International Airport	Port Harcourt	NG	5.01549	6.94959	L
+SKO	DNSO	Sadiq Abubakar III International Airport	Sokoto	NG	12.91573	5.20755	L
+NIM	DRRN	Diori Hamani International Airport	Niamey	NE	13.48150	2.18361	L
+TUN	DTTA	Tunis Carthage International Airport	Tunis	TN	36.85100	10.22720	L
+DJE	DTTJ	Djerba Zarzis International Airport	Mellita	TN	33.87372	10.77730	L
+LRL	DXNG	Niamtougou International Airport	Niamtougou	TG	9.76667	1.09094	L
+LFW	DXXX	Lomé–Tokoin International Airport	Lomé	TG	6.16561	1.25451	L
+BRU	EBBR	Brussels Airport	Zaventem	BE	50.90140	4.48444	L
+CRL	EBCI	Brussels South Charleroi Airport	Charleroi	BE	50.46196	4.45956	L
+OST	EBOS	Ostend-Bruges International Airport	Oostende	BE	51.19980	2.87467	L
+BER	EDDB	Berlin Brandenburg Airport	Berlin	DE	52.36174	13.50234	L
+DRS	EDDC	Dresden Airport	Dresden	DE	51.13412	13.76783	L
+ERF	EDDE	Erfurt-Weimar Airport	Erfurt	DE	50.97828	10.96071	L
+FRA	EDDF	Frankfurt Main Airport	Frankfurt am Main	DE	50.02671	8.55835	L
+FMO	EDDG	Münster Osnabrück Airport	Greven	DE	52.13382	7.68848	L
+HAM	EDDH	Hamburg Helmut Schmidt Airport	Hamburg	DE	53.63040	9.98823	L
+CGN	EDDK	Cologne Bonn Airport	Köln (Cologne)	DE	50.86590	7.14274	L
+DUS	EDDL	Düsseldorf Airport	Düsseldorf	DE	51.28950	6.76678	L
+MUC	EDDM	Munich Airport	Munich	DE	48.35380	11.78610	L
+NUE	EDDN	Nuremberg Airport	Nuremberg	DE	49.49870	11.07806	L
+LEJ	EDDP	Leipzig/Halle Airport	Schkeuditz	DE	51.42066	12.23270	L
+STR	EDDS	Stuttgart Airport	Stuttgart	DE	48.68990	9.22196	L
+HAJ	EDDV	Hannover Airport	Hannover	DE	52.46110	9.68508	L
+BRE	EDDW	Bremen Airport	Bremen	DE	53.04679	8.78932	L
+HHN	EDFH	Frankfurt-Hahn Airport	Frankfurt am Main (Lautzenhausen)	DE	49.94635	7.26173	L
+FMM	EDJA	Memmingen Allgau Airport	Memmingen	DE	47.98809	10.23825	L
+PAD	EDLP	Paderborn Lippstadt Airport	Büren	DE	51.61253	8.61746	L
+NRN	EDLV	Weeze (Niederrhein) Airport	Weeze	DE	51.60136	6.14123	L
+DTM	EDLW	Dortmund Airport	Dortmund	DE	51.51830	7.61224	L
+FDH	EDNY	Bodensee Airport Friedrichshafen	Friedrichshafen	DE	47.67130	9.51149	L
+FKB	EDSB	Karlsruhe Baden-Baden Airport	Rheinmünster	DE	48.77940	8.08050	L
+KSF	EDVK	Kassel Airport	Calden	DE	51.41839	9.39164	L
+TLL	EETN	Lennart Meri Tallinn Airport	Tallinn	EE	59.41325	24.83264	L
+HEL	EFHK	Helsinki Vantaa Airport	Helsinki (Vantaa)	FI	60.31836	24.96334	L
+IVL	EFIV	Ivalo Airport	Ivalo	FI	68.60730	27.40530	L
+KTT	EFKT	Kittilä International Airport	Kittilä	FI	67.70100	24.84680	L
+KUO	EFKU	Kuopio Airport	Kuopio / Siilinjärvi	FI	63.00710	27.79780	L
+LPP	EFLP	Lappeenranta Airport	Lappeenranta	FI	61.04460	28.14474	L
+OUL	EFOU	Oulu Airport	Oulu / Oulunsalo	FI	64.93010	25.35460	L
+RVN	EFRO	Rovaniemi Airport	Rovaniemi	FI	66.56333	25.82975	L
+TMP	EFTP	Tampere-Pirkkala Airport	Tampere / Pirkkala	FI	61.41410	23.60440	L
+TKU	EFTU	Turku Airport	Turku	FI	60.51410	22.26280	L
+VAA	EFVA	Vaasa Airport	Vaasa	FI	63.05023	21.76254	L
+BFS	EGAA	Belfast International Airport	Belfast	GB	54.65750	-6.21583	L
+BHX	EGBB	Birmingham Airport	Birmingham, West Midlands	GB	52.45390	-1.74803	L
+MAN	EGCC	Manchester Airport	Manchester, Greater Manchester	GB	53.34938	-2.27952	L
+CWL	EGFF	Cardiff International Airport	Cardiff	GB	51.39670	-3.34333	L
+BRS	EGGD	Bristol Airport	Bristol	GB	51.38233	-2.71645	L
+LPL	EGGP	Liverpool John Lennon Airport	Liverpool	GB	53.33486	-2.84964	L
+LTN	EGGW	London Luton Airport	Luton, Luton	GB	51.87470	-0.36833	L
+LGW	EGKK	London Gatwick Airport	London	GB	51.14874	-0.18574	L
+LHR	EGLL	London Heathrow Airport	London	GB	51.47075	-0.45991	L
+LBA	EGNM	Leeds Bradford Airport	Leeds, West Yorkshire	GB	53.86590	-1.66057	L
+IOM	EGNS	Isle of Man Airport	Castletown, Rushen	IM	54.08308	-4.62387	L
+NCL	EGNT	Newcastle International Airport	Newcastle upon Tyne, Tyne and Wear	GB	55.03796	-1.68958	L
+EMA	EGNX	East Midlands Airport	Nottingham, Leicestershire	GB	52.83110	-1.32806	L
+ABZ	EGPD	Aberdeen International Airport	Aberdeen	GB	57.20190	-2.19778	L
+GLA	EGPF	Glasgow Airport	Glasgow	GB	55.87190	-4.43306	L
+EDI	EGPH	Edinburgh Airport	Ingliston, Edinburgh	GB	55.95014	-3.37229	L
+PIK	EGPK	Glasgow Prestwick Airport	Prestwick, South Ayrshire	GB	55.50150	-4.57718	L
+STN	EGSS	London Stansted Airport	London, Essex	GB	51.88500	0.23500	L
+AMS	EHAM	Amsterdam Airport Schiphol	Amsterdam	NL	52.30860	4.76389	L
+MST	EHBK	Maastricht Aachen Airport	Maastricht	NL	50.91109	5.76940	L
+EIN	EHEH	Eindhoven Airport	Eindhoven	NL	51.45010	5.37453	L
+GRQ	EHGG	Groningen Airport Eelde	Groningen	NL	53.11911	6.57765	L
+RTM	EHRD	Rotterdam The Hague Airport	Rotterdam	NL	51.95690	4.43722	L
+ORK	EICK	Cork International Airport	Cork	IE	51.84130	-8.49111	L
+DUB	EIDW	Dublin Airport	Dublin	IE	53.42871	-6.26212	L
+NOC	EIKN	Ireland West Airport Knock	Charlestown	IE	53.91044	-8.81700	L
+SNN	EINN	Shannon Airport	Shannon	IE	52.70200	-8.92482	L
+AAR	EKAH	Aarhus Airport	Aarhus	DK	56.30333	10.61829	L
+BLL	EKBI	Billund Airport	Billund	DK	55.74034	9.15702	L
+CPH	EKCH	Copenhagen Kastrup Airport	Copenhagen	DK	55.61790	12.65600	L
+ODE	EKOD	Odense Hans Christian Andersen Airport	Odense	DK	55.47531	10.32721	L
+FAE	EKVG	Vágar Airport	Vágar	FO	62.06326	-7.27578	L
+AAL	EKYT	Aalborg Airport	Aalborg	DK	57.09476	9.84993	L
+LUX	ELLX	Luxembourg-Findel International Airport	Luxembourg	LU	49.62685	6.21213	L
+AES	ENAL	Ålesund Airport	Ålesund	NO	62.56044	6.11085	L
+BOO	ENBO	Bodø Airport	Bodø	NO	67.26920	14.36530	L
+BGO	ENBR	Bergen Airport, Flesland	Bergen	NO	60.29340	5.21814	L
+KRS	ENCN	Kristiansand Airport	Kristiansand(Kjevik)	NO	58.20420	8.08537	L
+EVE	ENEV	Harstad/Narvik Airport	Evenes	NO	68.49130	16.67810	L
+OSL	ENGM	Oslo-Gardermoen International Airport	Oslo (Gardermoen)	NO	60.19390	11.10040	L
+TOS	ENTC	Tromsø Airport	Tromsø	NO	69.68330	18.91890	L
+TRF	ENTO	Sandefjord Airport, Torp	Sandefjord(Torp)	NO	59.18670	10.25860	L
+TRD	ENVA	Trondheim Airport, Værnes	Trondheim	NO	63.45780	10.92400	L
+SVG	ENZV	Stavanger Airport, Sola	Stavanger	NO	58.87670	5.63778	L
+GDN	EPGD	Gdańsk Lech Wałęsa Airport	Gdańsk	PL	54.37760	18.46620	L
+KRK	EPKK	Kraków John Paul II International Airport	Balice	PL	50.07770	19.78480	L
+KTW	EPKT	Katowice Wojciech Korfanty International Airport	Katowice	PL	50.47601	19.08070	L
+LUZ	EPLB	Lublin Airport	Lublin	PL	51.24016	22.71346	L
+LCJ	EPLL	Łódź Władysław Reymont Airport	Łódź	PL	51.72190	19.39810	L
+WMI	EPMO	Warsaw Modlin Airport	Nowy Dwór Mazowiecki	PL	52.45110	20.65180	L
+POZ	EPPO	Poznań-Ławica Airport	Poznań	PL	52.42160	16.82336	L
+RZE	EPRZ	Rzeszów-Jasionka Airport	Jasionka	PL	50.10979	22.02416	L
+SZZ	EPSC	Solidarity Szczecin–Goleniów Airport	Szczecin(Glewice)	PL	53.58470	14.90220	L
+WAW	EPWA	Warsaw Chopin Airport	Warsaw	PL	52.16570	20.96710	L
+WRO	EPWR	Copernicus Wrocław Airport	Wrocław	PL	51.10372	16.88210	L
+GOT	ESGG	Göteborg Landvetter Airport	Göteborg	SE	57.66280	12.27980	L
+NYO	ESKN	Stockholm Skavsta Airport	Nyköping	SE	58.78966	16.91148	L
+SCR	ESKS	Scandinavian Mountains Airport	Malung-Sälen	SE	61.16508	12.83352	L
+MMX	ESMS	Malmö Sturup Airport	Malmö	SE	55.53556	13.37633	L
+KRN	ESNQ	Kiruna Airport	Kiruna	SE	67.82200	20.33680	L
+UME	ESNU	Umeå Airport	Umeå	SE	63.79180	20.28280	L
+VST	ESOW	Stockholm Västerås Airport	Stockholm / Västerås	SE	59.58940	16.63360	L
+LLA	ESPA	Luleå Airport	Luleå	SE	65.54380	22.12200	L
+ARN	ESSA	Stockholm-Arlanda Airport	Stockholm	SE	59.64849	17.92883	L
+LPI	ESSL	Linköping City Airport	Linköping	SE	58.40491	15.68450	L
+VBY	ESSV	Visby Airport	Visby	SE	57.66280	18.34620	L
+LPX	EVLA	Liepāja International Airport	Liepāja	LV	56.51750	21.09690	L
+RIX	EVRA	Riga International Airport	Riga	LV	56.92075	23.97071	L
+KUN	EYKA	Kaunas International Airport	Kaunas	LT	54.96397	24.08582	L
+PLQ	EYPA	Palanga International Airport	Palanga	LT	55.97320	21.09390	L
+VNO	EYVI	Vilnius International Airport	Vilnius	LT	54.63410	25.28580	L
+BFN	FABL	Bram Fischer International Airport	Bloemfontein	ZA	-29.09270	26.30240	L
+CPT	FACT	Cape Town International Airport	Cape Town	ZA	-33.97403	18.60433	L
+ELS	FAEL	King Phalo Airport	East London	ZA	-33.03560	27.82590	L
+GRJ	FAGG	George Airport	George	ZA	-34.00560	22.37890	L
+KIM	FAKM	Kimberley Airport	Kimberley	ZA	-28.80540	24.76487	L
+MQP	FAKN	Kruger Mpumalanga International Airport	Mbombela	ZA	-25.38333	31.10533	L
+HLA	FALA	Lanseria International Airport	Johannesburg	ZA	-25.93896	27.92664	L
+DUR	FALE	King Shaka International Airport	Durban	ZA	-29.61338	31.11794	L
+JNB	FAOR	O.R. Tambo International Airport	Johannesburg	ZA	-26.14008	28.24680	L
+PLZ	FAPE	Chief Dawid Stuurman International Airport	Gqeberha (Port Elizabeth)	ZA	-33.98971	25.61735	L
+PTG	FAPP	Polokwane International Airport	Polokwane	ZA	-23.84527	29.45862	L
+FRW	FBPM	Phillip Gaonwe Matante International Airport	Francistown	BW	-21.15918	27.46883	L
+BBK	FBKE	Kasane International Airport	Kasane	BW	-17.83165	25.16619	L
+MUB	FBMN	Maun International Airport	Maun	BW	-19.97049	23.43141	L
+GBE	FBSK	Sir Seretse Khama International Airport	Gaborone	BW	-24.55520	25.91820	L
+BZV	FCBB	Maya-Maya International Airport	Brazzaville	CG	-4.25170	15.25300	L
+PNR	FCPP	Antonio Agostinho-Neto International Airport	Pointe Noire	CG	-4.81603	11.88660	L
+SHO	FDSK	King Mswati III International Airport	Mpaka	SZ	-26.35861	31.71694	L
+BGF	FEFF	Bangui M'Poko International Airport	Bangui	CF	4.39848	18.51880	L
+BSG	FGBT	Bata International Airport	Bata	GQ	1.90547	9.80568	L
+SSG	FGSL	Malabo International Airport	Malabo	GQ	3.75527	8.70872	L
+MRU	FIMP	Sir Seewoosagur Ramgoolam International Airport	Plaine Magnien	MU	-20.43020	57.68360	L
+DLA	FKKD	Douala International Airport	Douala	CM	4.00608	9.71948	L
+GOU	FKKR	Garoua International Airport	Garoua	CM	9.33479	13.37213	L
+NSI	FKYS	Yaoundé Nsimalen International Airport	Yaoundé	CM	3.72256	11.55330	L
+LVI	FLHN	Harry Mwanga Nkumbula International Airport	Livingstone	ZM	-17.82152	25.81964	L
+LUN	FLKK	Kenneth Kaunda International Airport	Lusaka	ZM	-15.33083	28.45272	L
+MFU	FLMF	Mfuwe International Airport	Mfuwe	ZM	-13.25890	31.93660	L
+NLA	FLSK	Simon Mwansa Kapwepwe International Airport	Ndola	ZM	-12.96513	28.51562	L
+DZA	FMCZ	Dzaoudzi Pamandzi International Airport	Dzaoudzi	YT	-12.80932	45.28182	L
+RUN	FMEE	Roland Garros Airport	Sainte-Marie	RE	-20.89009	55.51889	L
+ZSE	FMEP	Saint-Pierre Pierrefonds Airport	Saint-Pierre	RE	-21.31936	55.42251	L
+TNR	FMMI	Ivato International Airport	Antananarivo	MG	-18.79690	47.47880	L
+TMM	FMMT	Toamasina Ambalamanasy Airport	Toamasina	MG	-18.11354	49.39226	L
+MJN	FMNM	Amborovy Airport	Mahajanga	MG	-15.66684	46.35123	L
+NOS	FMNN	Nosy Be International Airport	Nosy Be	MG	-13.31210	48.31480	L
+NBJ	FNBJ	Dr. Antonio Agostinho Neto International Airport	Luanda (Ícolo e Bengo)	AO	-9.05073	13.49908	L
+LAD	FNLU	Quatro de Fevereiro International Airport	Luanda	AO	-8.85837	13.23120	L
+POG	FOOG	Port Gentil International Airport	Port Gentil	GA	-0.71174	8.75438	L
+LBV	FOOL	Libreville Leon M'ba International Airport	Libreville	GA	0.45895	9.41214	L
+TMS	FPST	São Tomé International Airport	São Tomé	ST	0.37817	6.71215	L
+BEW	FQBR	Beira International Airport	Beira	MZ	-19.79640	34.90760	L
+MPM	FQMA	Maputo Airport	Maputo	MZ	-25.92080	32.57260	L
+APL	FQNP	Nampula Airport	Nampula	MZ	-15.10560	39.28180	L
+TET	FQTT	Tete Airport	Tete	MZ	-16.10480	33.64020	L
+SEZ	FSIA	Seychelles International Airport	Victoria	SC	-4.67434	55.52180	L
+NDJ	FTTJ	N'Djamena International Airport	N'Djamena	TD	12.13370	15.03400	L
+BUQ	FVJN	Joshua Mqabuko Nkomo International Airport	Bulawayo	ZW	-20.01628	28.62290	L
+VFA	FVFA	Victoria Falls International Airport	Victoria Falls	ZW	-18.09744	25.83687	L
+HRE	FVRG	Robert Gabriel Mugabe International Airport	Harare	ZW	-17.93180	31.09280	L
+BLZ	FWCL	Chileka International Airport	Blantyre	MW	-15.67719	34.97232	L
+LLW	FWKI	Kamuzu International Airport	Lumbadzi	MW	-13.78940	33.78100	L
+MSU	FXMM	Moshoeshoe I International Airport	Maseru(Mazenod)	LS	-29.45628	27.55446	L
+WVB	FYWB	Walvis Bay International Airport	Walvis Bay(Rooikop)	NA	-22.97933	14.64710	L
+WDH	FYWH	Hosea Kutako International Airport	Windhoek	NA	-22.47990	17.47090	L
+FIH	FZAA	Ndjili International Airport	Kinshasa	CD	-4.38575	15.44460	L
+FKI	FZIC	Bangoka International Airport	Kisangani	CD	0.48164	25.33800	L
+GOM	FZNA	Goma International Airport	Goma	CD	-1.66676	29.23804	L
+FBM	FZQA	Lubumbashi International Airport	Lubumbashi	CD	-11.59149	27.53075	L
+BKO	GABS	Modibo Keita International Airport	Bamako	ML	12.53350	-7.94994	L
+TOM	GATB	Tombouktou Airport	Timbuktu	ML	16.73050	-3.00758	L
+BJL	GBYD	Banjul International Airport	Banjul (Yundum)	GM	13.33800	-16.65220	L
+FUE	GCFV	Fuerteventura Airport	El Matorral	ES	28.45270	-13.86380	L
+LPA	GCLP	Gran Canaria Airport	Gran Canaria Island	ES	27.93190	-15.38660	L
+ACE	GCRR	César Manrique-Lanzarote Airport	San Bartolomé	ES	28.94550	-13.60520	L
+TFS	GCTS	Tenerife Sur Airport	Tenerife	ES	28.04450	-16.57250	L
+TFN	GCXO	Tenerife Norte-Ciudad de La Laguna Airport	Tenerife	ES	28.48275	-16.34171	L
+FNA	GFLL	Lungi International Airport	Freetown (Lungi-Town)	SL	8.61644	-13.19550	L
+OXB	GGOV	Osvaldo Vieira International Airport	Bissau	GW	11.89426	-15.65360	L
+ROB	GLRB	Roberts International Airport	Monrovia	LR	6.23379	-10.36230	L
+AGA	GMAD	Al Massira Airport	Agadir (Temsia)	MA	30.32248	-9.41200	L
+OZG	GMAZ	Zagora Airport	Zagora	MA	30.26579	-5.86081	L
+FEZ	GMFF	Fes Saïss International Airport	Saïss	MA	33.92730	-4.97796	L
+OUD	GMFO	Oujda Angads Airport	Ahl Angad	MA	34.78956	-1.92604	L
+BEM	GMMD	Beni Mellal Airport	Oulad Yaich	MA	32.40190	-6.31590	L
+RBA	GMME	Rabat-Salé Airport	Rabat	MA	34.05150	-6.75152	L
+VIL	GMMH	Dakhla Airport	Dakhla	EH	23.71830	-15.93200	L
+EUN	GMML	Laayoune Hassan I International Airport	El Aaiún	EH	27.14247	-13.22495	L
+CMN	GMMN	Mohammed V International Airport	Casablanca	MA	33.36750	-7.58997	L
+NDR	GMMW	Nador Al Aaroui International Airport	Al Aaroui	MA	34.98880	-3.02821	L
+RAK	GMMX	Marrakesh Menara Airport	Marrakesh	MA	31.60481	-8.03579	L
+OZZ	GMMZ	Ouarzazate International Airport	Ouarzazate	MA	30.93910	-6.90943	L
+TTU	GMTN	Sania Ramel Airport	Tétouan	MA	35.59430	-5.32002	L
+TNG	GMTT	Tangier Ibn Battuta Airport	Tangier	MA	35.73174	-5.92146	L
+DSS	GOBD	Blaise Diagne International Airport	Dakar	SN	14.67088	-17.07283	L
+DKR	GOOY	Léopold Sédar Senghor International Airport	Dakar	SN	14.74234	-17.47922	L
+NKC	GQNO	Nouakchott–Oumtounsy International Airport	Nouakchott	MR	18.31000	-15.96972	L
+NDB	GQPP	Nouadhibou International Airport	Nouadhibou	MR	20.93240	-17.03020	L
+CKY	GUCY	Ahmed Sékou Touré International Airport	Conakry	GN	9.57689	-13.61200	L
+SID	GVAC	Amílcar Cabral International Airport	Espargos	CV	16.74140	-22.94940	L
+BVC	GVBA	Aristides Pereira International Airport	Rabil	CV	16.13650	-22.88890	L
+RAI	GVNP	Nelson Mandela International Airport	Praia	CV	14.94113	-23.48473	L
+VXE	GVSV	Cesaria Evora International Airport	São Pedro	CV	16.83336	-25.05531	L
+ADD	HAAB	Addis Ababa Bole International Airport	Addis Ababa	ET	8.97789	38.79930	L
+DIR	HADR	Aba Tenna Dejazmach Yilma International Airport	Dire Dawa	ET	9.62355	41.85503	L
+JIJ	HAJJ	Gerad Wilwal International Airport	Jijiga	ET	9.33191	42.91181	L
+AWA	HALA	Hawassa International Airport	Hawassa	ET	7.10061	38.39646	L
+BJM	HBBA	Bujumbura Melchior Ndadaye International Airport	Bujumbura	BI	-3.32402	29.31850	L
+BSA	HCMF	Bender Qassim International Airport	Bosaso	SO	11.27524	49.13923	L
+HGA	HCMH	Egal International Airport	Hargeisa	SO	9.51408	44.08347	L
+MGQ	HCMM	Aden Adde International Airport	Mogadishu	SO	2.01444	45.30470	L
+JIB	HDAM	Djibouti-Ambouli Airport	Djibouti City	DJ	11.54730	43.15950	L
+DBB	HEAL	El Alamein International Airport	El Alamein	EG	30.92432	28.46161	L
+AAC	HEAR	El Arish International Airport	El Arish	EG	31.05532	33.82796	L
+ATZ	HEAT	Asyut International Airport	Asyut	EG	27.04596	31.01276	L
+HBE	HEAX	Alexandria International Airport	Alexandria	EG	30.93249	29.69644	L
+CAI	HECA	Cairo International Airport	Cairo	EG	30.11153	31.39669	L
+HRG	HEGN	Hurghada International Airport	Hurghada	EG	27.17678	33.79669	L
+LXR	HELX	Luxor International Airport	Luxor	EG	25.67102	32.70645	L
+RMF	HEMA	Marsa Alam International Airport	Marsa Alam	EG	25.55555	34.59245	L
+MUH	HEMM	Mersa Matruh International Airport	Marsa Matruh	EG	31.32431	27.22227	L
+PSD	HEPS	Port Said International Airport	Port Said	EG	31.27929	32.24058	L
+HMB	HESG	Suhaj International Airport	Suhaj	EG	26.34251	31.74302	L
+SSH	HESH	Sharm El Sheikh International Airport	Sharm El Sheikh	EG	27.97727	34.39472	L
+ASW	HESN	Aswan International Airport	Aswan	EG	23.96108	32.82038	L
+SPX	HESX	Sphinx International Airport	Al Jiza	EG	30.10818	30.89573	L
+JUB	HJJJ	Juba International Airport	Juba	SS	4.87201	31.60110	L
+EDL	HKEL	Eldoret International Airport	Eldoret	KE	0.40446	35.23890	L
+NBO	HKJK	Jomo Kenyatta International Airport	Nairobi	KE	-1.31889	36.92823	L
+KIS	HKKI	Kisumu International Airport	Kisumu	KE	-0.08614	34.72890	L
+MBA	HKMO	Moi International Airport	Mombasa	KE	-4.03483	39.59420	L
+SRX	HLGD	Sirt International Airport / Ghardabiya Airbase	Sirt	LY	31.05858	16.59709	L
+BEN	HLLB	Benina International Airport	Benina	LY	32.09680	20.26950	L
+MJI	HLLM	Mitiga International Airport	Tripoli	LY	32.89177	13.28788	L
+LAQ	HLLQ	Al Abraq International Airport	Al Albraq	LY	32.78904	21.95486	L
+KGL	HRYR	Kigali International Airport	Kigali	RW	-1.96863	30.13950	L
+PZU	HSPN	Port Sudan New International Airport	Port Sudan	SD	19.43456	37.23412	L
+KRT	HSSK	Khartoum International Airport	Khartoum	SD	15.58950	32.55320	L
+DAR	HTDA	Julius Nyerere International Airport	Dar es Salaam	TZ	-6.87350	39.20729	L
+JRO	HTKJ	Kilimanjaro International Airport	Arusha	TZ	-3.42705	37.07353	L
+MWZ	HTMW	Mwanza International Airport	Mwanza	TZ	-2.44656	32.93605	L
+ZNZ	HTZA	Abeid Amani Karume International Airport	Zanzibar	TZ	-6.22202	39.22490	L
+EBB	HUEN	Entebbe International Airport	Entebbe	UG	0.04239	32.44350	L
+NMI	VANM	Navi Mumbai International Airport	Navi Mumbai	IN	18.98460	73.06525	L
+DXN	VIND	Noida International Airport	Gautam Buddha Nagar	IN	28.17987	77.61184	L
+ABQ	KABQ	Albuquerque International Sunport	Albuquerque	US	35.03998	-106.60892	L
+ALB	KALB	Albany International Airport	Albany	US	42.74830	-73.80170	L
+ATL	KATL	Hartsfield Jackson Atlanta International Airport	Atlanta	US	33.63670	-84.42810	L
+AUS	KAUS	Austin Bergstrom International Airport	Austin	US	30.19753	-97.66201	L
+BDL	KBDL	Bradley International Airport	Hartford	US	41.93856	-72.68802	L
+BHM	KBHM	Birmingham-Shuttlesworth International Airport	Birmingham	US	33.56288	-86.75071	L
+BNA	KBNA	Nashville International Airport	Nashville	US	36.12450	-86.67820	L
+BOI	KBOI	Boise Air Terminal/Gowen Field	Boise	US	43.56440	-116.22300	L
+BOS	KBOS	Boston Logan International Airport	Boston	US	42.36197	-71.00790	L
+BUF	KBUF	Buffalo Niagara International Airport	Buffalo	US	42.94050	-78.73220	L
+BUR	KBUR	Hollywood Burbank/Bob Hope Airport	Burbank	US	34.20283	-118.35805	L
+BWI	KBWI	Baltimore/Washington International Thurgood Marshall Airport	Baltimore	US	39.17540	-76.66830	L
+CHS	KCHS	Charleston International Airport	Charleston	US	32.89616	-80.03815	L
+CLE	KCLE	Cleveland Hopkins International Airport	Cleveland	US	41.41170	-81.84980	L
+CLT	KCLT	Charlotte Douglas International Airport	Charlotte	US	35.21400	-80.94310	L
+CMH	KCMH	John Glenn Columbus International Airport	Columbus	US	39.99800	-82.89190	L
+COS	KCOS	City of Colorado Springs Municipal Airport	Colorado Springs	US	38.80580	-104.70100	L
+CVG	KCVG	Cincinnati Northern Kentucky International Airport	Cincinnati / Covington	US	39.04880	-84.66780	L
+DAL	KDAL	Dallas Love Field	Dallas	US	32.84478	-96.84765	L
+DCA	KDCA	Ronald Reagan Washington National Airport	Washington	US	38.85210	-77.03770	L
+DEN	KDEN	Denver International Airport	Denver	US	39.86003	-104.67379	L
+DFW	KDFW	Dallas Fort Worth International Airport	Dallas-Fort Worth	US	32.89680	-97.03800	L
+DSM	KDSM	Des Moines International Airport	Des Moines	US	41.53403	-93.65672	L
+DTW	KDTW	Detroit Metropolitan Wayne County Airport	Detroit	US	42.21377	-83.35379	L
+ELP	KELP	El Paso International Airport	El Paso	US	31.80991	-106.37561	L
+EWR	KEWR	Newark Liberty International Airport	Newark	US	40.68940	-74.17055	L
+FAT	KFAT	Fresno Yosemite International Airport	Fresno	US	36.77577	-119.71802	L
+FLL	KFLL	Fort Lauderdale Hollywood International Airport	Fort Lauderdale	US	26.07260	-80.15270	L
+GEG	KGEG	Spokane International Airport	Spokane	US	47.61990	-117.53400	L
+GRR	KGRR	Gerald R. Ford International Airport	Grand Rapids	US	42.88080	-85.52280	L
+GSO	KGSO	Piedmont Triad International Airport	Greensboro	US	36.09937	-79.93726	L
+DSY	VDDS	Dara Sakor International Airport	Ta Noun	KH	10.91424	103.22665	L
+KTI	VDTI	Techo International Airport	Phnom Penh (Boeng Khyang)	KH	11.35999	104.92127	L
+HOU	KHOU	William P. Hobby Airport	Houston	US	29.64534	-95.27681	L
+IAD	KIAD	Washington Dulles International Airport	Dulles	US	38.94450	-77.45580	L
+IAH	KIAH	George Bush Intercontinental Airport	Houston	US	29.98440	-95.34140	L
+IND	KIND	Indianapolis International Airport	Indianapolis	US	39.71730	-86.29440	L
+JAX	KJAX	Jacksonville International Airport	Jacksonville	US	30.49247	-81.68781	L
+JFK	KJFK	John F. Kennedy International Airport	New York	US	40.63945	-73.77932	L
+LAS	KLAS	Harry Reid International Airport	Las Vegas	US	36.08336	-115.15182	L
+LAX	KLAX	Los Angeles International Airport	Los Angeles	US	33.94250	-118.40800	L
+LGA	KLGA	LaGuardia Airport	New York	US	40.77720	-73.87260	L
+LGB	KLGB	Long Beach International Airport	Long Beach	US	33.81652	-118.14989	L
+MCI	KMCI	Kansas City International Airport	Kansas City	US	39.30170	-94.71389	L
+MCO	KMCO	Orlando International Airport	Orlando	US	28.42940	-81.30900	L
+MDW	KMDW	Chicago Midway International Airport	Chicago	US	41.78600	-87.75240	L
+MEM	KMEM	Frederick W. Smith International Airport	Memphis	US	35.04384	-89.97634	L
+MIA	KMIA	Miami International Airport	Miami	US	25.79601	-80.28975	L
+MKE	KMKE	General Mitchell International Airport	Milwaukee	US	42.94720	-87.89660	L
+MSP	KMSP	Minneapolis–Saint Paul International Airport / Wold–Chamberlain Field	Minneapolis	US	44.88008	-93.22174	L
+MSY	KMSY	Louis Armstrong New Orleans International Airport	New Orleans	US	29.99340	-90.26467	L
+MYR	KMYR	Myrtle Beach International Airport	Myrtle Beach	US	33.67970	-78.92830	L
+OAK	KOAK	Oakland San Francisco Bay Airport	Oakland	US	37.72008	-122.22118	L
+OKC	KOKC	OKC Will Rogers World Airport	Oklahoma City	US	35.39339	-97.59825	L
+OMA	KOMA	Eppley Airfield	Omaha	US	41.30320	-95.89410	L
+ONT	KONT	Ontario International Airport	Ontario	US	34.05600	-117.60100	L
+ORD	KORD	Chicago O'Hare International Airport	Chicago	US	41.97860	-87.90480	L
+ORF	KORF	Norfolk International Airport	Norfolk	US	36.89534	-76.20100	L
+DJT	KDJT	President Donald J. Trump International Airport	West Palm Beach	US	26.68320	-80.09560	L
+PDX	KPDX	Portland International Airport	Portland	US	45.58870	-122.59800	L
+PHL	KPHL	Philadelphia International Airport	Philadelphia	US	39.87190	-75.24110	L
+PHX	KPHX	Phoenix Sky Harbor International Airport	Phoenix	US	33.43530	-112.00590	L
+PIE	KPIE	St. Petersburg Clearwater International Airport	Pinellas Park	US	27.91020	-82.68740	L
+PIT	KPIT	Pittsburgh International Airport	Pittsburgh	US	40.49150	-80.23290	L
+PNS	KPNS	Pensacola International Airport	Pensacola	US	30.47272	-87.18664	L
+PSP	KPSP	Palm Springs International Airport	Palm Springs	US	33.82970	-116.50700	L
+PVD	KPVD	Rhode Island T. F. Green International Airport	Providence/Warwick	US	41.72504	-71.42567	L
+PWM	KPWM	Portland International Jetport	Portland	US	43.64620	-70.30930	L
+RDU	KRDU	Raleigh-Durham International Airport	Raleigh/Durham	US	35.87866	-78.78730	L
+RIC	KRIC	Richmond International Airport	Richmond	US	37.50520	-77.31970	L
+RNO	KRNO	Reno Tahoe International Airport	Reno	US	39.49910	-119.76800	L
+ROC	KROC	Frederick Douglass Greater Rochester International Airport	Rochester	US	43.11890	-77.67240	L
+RSW	KRSW	Southwest Florida International Airport	Fort Myers	US	26.53468	-81.75282	L
+SAN	KSAN	San Diego International Airport	San Diego	US	32.73360	-117.19000	L
+SAT	KSAT	San Antonio International Airport	San Antonio	US	29.53370	-98.46980	L
+SAV	KSAV	Savannah Hilton Head International Airport	Savannah	US	32.12659	-81.19998	L
+SBD	KSBD	San Bernardino International Airport	San Bernardino	US	34.09672	-117.23660	L
+SDF	KSDF	Louisville Muhammad Ali International Airport	Louisville	US	38.17060	-85.73508	L
+SEA	KSEA	Seattle–Tacoma International Airport	Seattle	US	47.44794	-122.31028	L
+SFB	KSFB	Orlando Sanford International Airport	Orlando	US	28.77428	-81.23463	L
+SFO	KSFO	San Francisco International Airport	San Francisco	US	37.61981	-122.37482	L
+SJC	KSJC	Mineta San Jose International Airport	San Jose	US	37.36245	-121.92919	L
+SLC	KSLC	Salt Lake City International Airport	Salt Lake City	US	40.78886	-111.97987	L
+SMF	KSMF	Sacramento International Airport	Sacramento	US	38.69540	-121.59100	L
+SNA	KSNA	John Wayne Orange County International Airport	Santa Ana	US	33.67506	-117.86928	L
+SRQ	KSRQ	Sarasota Bradenton International Airport	Sarasota/Bradenton	US	27.39463	-82.55436	L
+STL	KSTL	St. Louis Lambert International Airport	St Louis	US	38.74870	-90.37000	L
+SYR	KSYR	Syracuse Hancock International Airport	Syracuse	US	43.11120	-76.10630	L
+TPA	KTPA	Tampa International Airport	Tampa	US	27.97550	-82.53320	L
+TUL	KTUL	Tulsa International Airport	Tulsa	US	36.19708	-95.88622	L
+TUS	KTUS	Tucson International Airport	Tucson	US	32.11500	-110.93805	L
+TYS	KTYS	McGhee Tyson Airport	Knoxville/Maryville	US	35.81100	-83.99400	L
+TIA	LATI	Tirana International Airport Mother Teresa	Rinas	AL	41.41470	19.72060	L
+BOJ	LBBG	Burgas Airport	Burgas	BG	42.56992	27.51517	L
+PDV	LBPD	Plovdiv International Airport	Plovdiv	BG	42.06780	24.85080	L
+SOF	LBSF	Sofia Airport	Sofia	BG	42.69636	23.41767	L
+VAR	LBWN	Varna Airport	Varna	BG	43.23210	27.82510	L
+ECN	LCEN	Ercan International Airport	Tymbou (Kirklar)	CY	35.15306	33.50735	L
+LCA	LCLK	Larnaca International Airport	Larnaca	CY	34.87510	33.62490	L
+PFO	LCPH	Paphos International Airport	Paphos	CY	34.71800	32.48570	L
+DBV	LDDU	Dubrovnik Ruđer Bošković Airport	Dubrovnik	HR	42.56225	18.26554	L
+PUY	LDPL	Pula Airport	Pula	HR	44.89350	13.92220	L
+RJK	LDRI	Rijeka Airport	Rijeka(Omišalj)	HR	45.21638	14.57085	L
+SPU	LDSP	Split Saint Jerome Airport	Split	HR	43.53890	16.29800	L
+ZAG	LDZA	Zagreb Franjo Tuđman International Airport	Velika Gorica	HR	45.74290	16.06880	L
+ZAD	LDZD	Zadar Airport	Zadar	HR	44.09699	15.35356	L
+ALC	LEAL	Alicante-Elche Miguel Hernández Airport	Alicante	ES	38.28220	-0.55816	L
+OVD	LEAS	Asturias Airport	Ranón	ES	43.56360	-6.03462	L
+BIO	LEBB	Bilbao Airport	Bilbao	ES	43.30110	-2.91061	L
+BCN	LEBL	Josep Tarradellas Barcelona-El Prat Airport	Barcelona	ES	41.29710	2.07846	L
+GRO	LEGE	Girona-Costa Brava Airport	Girona	ES	41.90464	2.76177	L
+IBZ	LEIB	Ibiza Airport	Ibiza (Eivissa)	ES	38.87290	1.37312	L
+MAD	LEMD	Adolfo Suárez Madrid–Barajas Airport	Madrid	ES	40.49341	-3.57225	L
+AGP	LEMG	Málaga-Costa del Sol Airport	Málaga	ES	36.67823	-4.50021	L
+MAH	LEMH	Menorca Airport	Mahón (Maó)	ES	39.86260	4.21865	L
+RMU	LEMI	Region of Murcia International Airport	Corvera	ES	37.80285	-1.12488	L
+PMI	LEPA	Palma de Mallorca Airport	Palma de Mallorca	ES	39.55170	2.73881	L
+REU	LERS	Reus Airport	Reus	ES	41.14751	1.16835	L
+SCQ	LEST	Santiago-Rosalía de Castro Airport	Santiago de Compostela	ES	42.89630	-8.41514	L
+VLC	LEVC	Valencia Airport	Valencia	ES	39.48916	-0.48096	L
+ZAZ	LEZG	Zaragoza Airport	Zaragoza	ES	41.66620	-1.04155	L
+SVQ	LEZL	Seville Airport	Seville	ES	37.41800	-5.89311	L
+BOD	LFBD	Bordeaux–Mérignac Airport	Bordeaux	FR	44.82865	-0.71536	L
+TLS	LFBO	Toulouse-Blagnac Airport	Toulouse/Blagnac	FR	43.62910	1.36382	L
+BIA	LFKB	Bastia-Poretta International airport	Bastia	FR	42.55270	9.48373	L
+FSC	LFKF	Figari Sud-Corse Airport	Figari	FR	41.50185	9.09709	L
+CFE	LFLC	Clermont-Ferrand Auvergne airport	Clermont-Ferrand	FR	45.78670	3.16917	L
+LYS	LFLL	Lyon Saint-Exupéry Airport	Colombier-Saugnieu, Rhône	FR	45.72600	5.09014	L
+MRS	LFML	Marseille Provence Airport	Marignane, Bouches-du-Rhône	FR	43.43809	5.21250	L
+NCE	LFMN	Nice-Côte d'Azur Airport	Nice, Alpes-Maritimes	FR	43.65840	7.21587	L
+MPL	LFMT	Montpellier-Méditerranée Airport	Montpellier/Méditerranée	FR	43.57620	3.96301	L
+BVA	LFOB	Beauvais-Tillé airport	Beauvais	FR	49.45440	2.11278	L
+LBG	LFPB	Paris-Le Bourget International Airport	Paris	FR	48.96228	2.43654	L
+CDG	LFPG	Charles de Gaulle International Airport	Paris (Roissy-en-France, Val-d'Oise)	FR	49.00896	2.55412	L
+ORY	LFPO	Paris-Orly Airport	Paris (Orly, Val-de-Marne)	FR	48.72950	2.35896	L
+LIL	LFQQ	Lille Airport	Lesquin	FR	50.56656	3.10243	L
+BES	LFRB	Brest Bretagne airport	Brest	FR	48.44790	-4.41854	L
+NTE	LFRS	Nantes Atlantique Airport	Nantes	FR	47.15320	-1.61073	L
+BSL	LFSB	EuroAirport Basel–Mulhouse–Freiburg	Bâle / Mulhouse	FR	47.60068	7.52112	L
+SXB	LFST	Strasbourg Airport	Strasbourg	FR	48.53830	7.62823	L
+ATH	LGAV	Athens Eleftherios Venizelos International Airport	Spata-Artemida	GR	37.93640	23.94450	L
+HER	LGIR	Heraklion International Nikos Kazantzakis Airport	Heraklion	GR	35.33970	25.18030	L
+EFL	LGKF	Kefalonia International Airport "Anna Pollatou"	Kefallinia Island	GR	38.12010	20.50050	L
+KGS	LGKO	Kos International Airport "Ippokratis"	Kos Island	GR	36.79452	27.09115	L
+CFU	LGKR	Corfu Ioannis Kapodistrias International Airport	Kerkyra (Corfu)	GR	39.60145	19.91218	L
+KVA	LGKV	Kavala Alexander the Great International Airport	Kavala	GR	40.91330	24.61920	L
+RHO	LGRP	Rhodes International Airport "Diagoras"	Rhodes	GR	36.40540	28.08620	L
+CHQ	LGSA	Chania International Airport	Souda	GR	35.53121	24.15067	L
+JTR	LGSR	Santorini International Airport	Santorini Island	GR	36.40004	25.47864	L
+SKG	LGTS	Thessaloniki Macedonia International Airport	Thessaloniki	GR	40.51928	22.97001	L
+ZTH	LGZA	Zakynthos International Airport "Dionysios Solomos"	Zakynthos	GR	37.75090	20.88430	L
+BUD	LHBP	Budapest Liszt Ferenc International Airport	Budapest	HU	47.43018	19.26239	L
+DEB	LHDC	Debrecen International Airport	Debrecen	HU	47.48947	21.61628	L
+PEV	LHPP	Pécs-Pogány International Airport	Pécs	HU	45.98889	18.24204	L
+BRI	LIBD	Bari Karol Wojtyła International Airport	Bari	IT	41.13890	16.76060	L
+PSR	LIBP	Abruzzo Airport	Pescara	IT	42.43108	14.18298	L
+BDS	LIBR	Brindisi Airport	Brindisi	IT	40.65760	17.94700	L
+SUF	LICA	Lamezia Terme Sant'Eufemia International Airport	Lamezia Terme (CZ)	IT	38.90621	16.24601	L
+CTA	LICC	Catania-Fontanarossa Airport	Catania	IT	37.46680	15.06640	L
+PMO	LICJ	Falcone–Borsellino Airport	Palermo	IT	38.17600	13.09100	L
+CAG	LIEE	Cagliari Elmas Airport	Cagliari	IT	39.25150	9.05428	L
+OLB	LIEO	Olbia Costa Smeralda Airport	Olbia (SS)	IT	40.89895	9.51846	L
+MXP	LIMC	Milan Malpensa International Airport	Ferno (VA)	IT	45.63060	8.72811	L
+BGY	LIME	Il Caravaggio International Airport	Orio al Serio (BG)	IT	45.66936	9.70885	L
+TRN	LIMF	Turin Airport	Caselle Torinese (TO)	IT	45.20080	7.64963	L
+GOA	LIMJ	Genoa Cristoforo Colombo Airport	Genova (GE)	IT	44.41204	8.84073	L
+LIN	LIML	Milano Linate Airport	Segrate (MI)	IT	45.44510	9.27674	L
+BLQ	LIPE	Bologna Guglielmo Marconi Airport	Bologna	IT	44.53540	11.28870	L
+TSF	LIPH	Treviso Airport	Treviso (TV)	IT	45.64840	12.19440	L
+TRS	LIPQ	Trieste Airport	Ronchi dei Legionari/Trieste	IT	45.82786	13.46667	L
+RMI	LIPR	Federico Fellini International Airport	Rimini (RN)	IT	44.02002	12.61220	L
+VRN	LIPX	Verona Villafranca Valerio Catullo Airport	Caselle (VR)	IT	45.39496	10.88730	L
+VCE	LIPZ	Venice Marco Polo Airport	Venezia (VE)	IT	45.50530	12.35190	L
+CIA	LIRA	Ciampino–G. B. Pastine International Airport	Rome	IT	41.79877	12.59533	L
+FCO	LIRF	Rome–Fiumicino Leonardo da Vinci International Airport	Rome	IT	41.80453	12.25200	L
+NAP	LIRN	Naples International Airport	Napoli	IT	40.88600	14.29080	L
+PSA	LIRP	Pisa International Airport	Pisa (PI)	IT	43.68390	10.39270	L
+FLR	LIRQ	Florence Airport, Peretola	Firenze (FI)	IT	43.80856	11.20282	L
+PEG	LIRZ	Perugia San Francesco d'Assisi – Umbria International Airport	Perugia (PG)	IT	43.09590	12.51320	L
+LJU	LJLJ	Ljubljana Jože Pučnik Airport	Zgornji Brnik	SI	46.22370	14.45760	L
+JCL	LKCS	České Budějovice South Bohemian Airport	České Budějovice	CZ	48.94817	14.42832	L
+KLV	LKKV	Karlovy Vary Airport	Karlovy Vary	CZ	50.20300	12.91500	L
+OSR	LKMT	Leoš Janáček Airport Ostrava	Mošnov	CZ	49.69630	18.11110	L
+PED	LKPD	Pardubice Airport	Pardubice	CZ	50.01505	15.73981	L
+PRG	LKPR	Václav Havel Airport Prague	Prague	CZ	50.10087	14.25991	L
+TLV	LLBG	Ben Gurion International Airport	Tel Aviv	IL	32.01140	34.88670	L
+ETM	LLER	Ramon International Airport	Eilat	IL	29.72701	35.01412	L
+MLA	LMML	Malta International Airport	Valletta	MT	35.84593	14.49155	L
+GRZ	LOWG	Graz Airport	Feldkirchen bei Graz	AT	46.99110	15.43960	L
+INN	LOWI	Innsbruck Airport	Innsbruck	AT	47.26020	11.34400	L
+KLU	LOWK	Klagenfurt Airport	Klagenfurt am Wörthersee	AT	46.64250	14.33770	L
+LNZ	LOWL	Linz-Hörsching Airport	Linz	AT	48.23536	14.18813	L
+SZG	LOWS	Salzburg Airport	Salzburg	AT	47.79330	13.00430	L
+VIE	LOWW	Vienna International Airport	Vienna	AT	48.11030	16.56970	L
+FAO	LPFR	Faro - Gago Coutinho International Airport	Faro	PT	37.01591	-7.97094	L
+FNC	LPMA	Cristiano Ronaldo International Airport	Funchal	PT	32.69781	-16.77461	L
+PDL	LPPD	João Paulo II Airport	Ponta Delgada	PT	37.74120	-25.69790	L
+OPO	LPPR	Francisco de Sá Carneiro Airport	Porto	PT	41.24810	-8.68139	L
+LIS	LPPT	Lisbon Humberto Delgado Airport	Lisbon	PT	38.78130	-9.13592	L
+BNX	LQBK	Banja Luka International Airport	Mahovljani	BA	44.94140	17.29750	L
+OMO	LQMO	Mostar International Airport	Mostar	BA	43.28249	17.84610	L
+SJJ	LQSA	Sarajevo International Airport	Sarajevo	BA	43.82460	18.33150	L
+TZL	LQTZ	Tuzla International Airport	Dubrave Gornje	BA	44.45986	18.72363	L
+BCM	LRBC	Bacău George Enescu International  Airport	Bacău	RO	46.52190	26.91030	L
+BBU	LRBS	Bucharest Băneasa Aurel Vlaicu International Airport	Bucharest	RO	44.50313	26.10294	L
+GHV	LRBV	Brașov-Ghimbav International Airport	Brașov (Ghimbav)	RO	45.70558	25.52287	L
+CND	LRCK	Mihail Kogălniceanu International Airport	Constanța	RO	44.36220	28.48830	L
+CLJ	LRCL	Avram Iancu Cluj International Airport	Cluj-Napoca	RO	46.78604	23.68573	L
+CRA	LRCV	Craiova International Airport	Craiova	RO	44.31810	23.88860	L
+IAS	LRIA	Iaşi International Airport	Iaşi	RO	47.17963	27.62143	L
+OMR	LROD	Oradea International Airport	Oradea	RO	47.02530	21.90250	L
+OTP	LROP	Bucharest Henri Coandă International Airport	Otopeni	RO	44.57179	26.10328	L
+SBZ	LRSB	Sibiu International Airport	Sibiu	RO	45.78584	24.08667	L
+SCV	LRSV	Suceava Ștefan cel Mare International Airport	Suceava	RO	47.68750	26.35410	L
+TSR	LRTR	Timișoara Traian Vuia International Airport	Timişoara	RO	45.80990	21.33790	L
+GVA	LSGG	Geneva International Airport	Geneva	CH	46.23810	6.10895	L
+ZRH	LSZH	Zürich Airport	Zurich	CH	47.45806	8.54806	L
+ESB	LTAC	Esenboğa International Airport	Ankara	TR	40.12810	32.99510	L
+AYT	LTAI	Antalya International Airport	Antalya	TR	36.89870	30.80050	L
+GZT	LTAJ	Gaziantep Oğuzeli International Airport	Gaziantep	TR	36.94720	37.47870	L
+KYA	LTAN	Konya Airport	Konya	TR	37.97900	32.56190	L
+ASR	LTAU	Kayseri Erkilet International Airport	Kayseri	TR	38.77040	35.49540	L
+NAV	LTAZ	Nevşehir Kapadokya Airport	Nevşehir	TR	38.77190	34.53450	L
+ISL	LTBA	İstanbul Atatürk Airport	Istanbul(Bakırköy)	TR	40.97191	28.82371	L
+ADB	LTBJ	Adnan Menderes International Airport	Gaziemir	TR	38.29240	27.15700	L
+DLM	LTBS	Dalaman International Airport	Dalaman	TR	36.71310	28.79250	L
+AOE	LTBY	Hasan Polatkan Airport	Eskişehir	TR	39.81164	30.51927	L
+GNY	LTCS	Şanlıurfa GAP Airport	Şanlıurfa	TR	37.44566	38.89559	L
+COV	LTDB	Çukurova International Airport	Tarsus	TR	36.89148	35.07124	L
+EDO	LTFD	Balıkesir Koca Seyit Airport	Edremit	TR	39.55253	27.01019	L
+BJV	LTFE	Milas Bodrum International Airport	Bodrum	TR	37.24931	27.66401	L
+SAW	LTFJ	Istanbul Sabiha Gökçen International Airport	Pendik, Istanbul	TR	40.89860	29.30920	L
+IST	LTFM	İstanbul Airport	Istanbul	TR	41.27487	28.73214	L
+RMO	LUKK	Chişinău International Airport	Chişinău	MD	46.92774	28.93170	L
+OHD	LWOH	Ohrid St. Paul the Apostle Airport	Ohrid	MK	41.18000	20.74230	L
+SKP	LWSK	Skopje International Airport	Ilinden	MK	41.95809	21.62258	L
+GIB	LXGB	Gibraltar Airport	Gibraltar	GI	36.15168	-5.34978	L
+BEG	LYBE	Belgrade Nikola Tesla Airport	Belgrade	RS	44.81840	20.30910	L
+INI	LYNI	Niš Constantine the Great Airport	Niš	RS	43.33654	21.85624	L
+TGD	LYPG	Podgorica Airport / Podgorica Golubovci Airbase	Podgorica	ME	42.35940	19.25190	L
+BTS	LZIB	M. R. Štefánik Airport	Bratislava	SK	48.17020	17.21270	L
+PLS	MBPV	Providenciales International Airport	Providenciales	TC	21.77370	-72.26832	L
+LRM	MDLR	Casa De Campo International Airport	La Romana	DO	18.45222	-68.91111	L
+PUJ	MDPC	Punta Cana International Airport	Punta Cana	DO	18.56709	-68.36456	L
+SDQ	MDSD	Las Américas International Airport	Santo Domingo	DO	18.42970	-69.66890	L
+STI	MDST	Cibao International Airport	Santiago	DO	19.40406	-70.60443	L
+GUA	MGGT	La Aurora International Airport	Guatemala City	GT	14.58290	-90.52751	L
+SAP	MHLM	Ramón Villeda Morales International Airport	San Pedro Sula	HN	15.45260	-87.92360	L
+RTB	MHRO	Juan Manuel Gálvez International Airport	Coxen Hole	HN	16.31680	-86.52300	L
+XPL	MHPR	Palmerola International Airport	Palmerola	HN	14.38240	-87.62120	L
+KIN	MKJP	Norman Manley International Airport	Kingston	JM	17.93570	-76.78750	L
+MBJ	MKJS	Sangster International Airport	Montego Bay	JM	18.50342	-77.91323	L
+ACA	MMAA	General Juan N. Álvarez International Airport	Acapulco	MX	16.75713	-99.75311	L
+AGU	MMAS	Aguascalientes International Airport	Aguascalientes	MX	21.69959	-102.31837	L
+HUX	MMBT	Bahías de Huatulco International Airport	Huatulco	MX	15.77544	-96.26046	L
+CUL	MMCL	Bachigualato Federal International Airport	Culiacán	MX	24.76504	-107.47523	L
+CJS	MMCS	Abraham González International Airport	Ciudad Juárez	MX	31.63667	-106.42853	L
+CUU	MMCU	General Roberto Fierro Villalobos International Airport	Chihuahua	MX	28.70265	-105.96376	L
+CZM	MMCZ	Cozumel International Airport	Cozumel	MX	20.51492	-86.92854	L
+GDL	MMGL	Guadalajara International Airport	Guadalajara	MX	20.52334	-103.31011	L
+HMO	MMHO	General Ignacio L. Pesqueira International Airport	Hermosillo	MX	29.09281	-111.05302	L
+BJX	MMLO	Guanajuato International Airport	Silao	MX	20.99270	-101.48028	L
+LTO	MMLT	Loreto International Airport	Loreto	MX	25.98955	-111.34841	L
+MID	MMMD	Manuel Crescencio Rejón International Airport	Mérida	MX	20.93049	-89.64546	L
+MLM	MMMM	General Francisco J. Mujica International Airport	Morelia	MX	19.84990	-101.02500	L
+MEX	MMMX	Mexico City Benito Juárez International Airport	Mexico City	MX	19.43582	-99.07033	L
+MTY	MMMY	Monterrey International Airport	Monterrey	MX	25.77852	-100.10699	L
+MZT	MMMZ	General Rafael Buelna International Airport	Mazatlàn	MX	23.16282	-106.26452	L
+OAX	MMOX	Xoxocotlán International Airport	Oaxaca	MX	16.99877	-96.72609	L
+PBC	MMPB	Hermanos Serdán International Airport	Puebla	MX	19.15846	-98.37158	L
+PVR	MMPR	Puerto Vallarta International Airport	Puerto Vallarta	MX	20.67991	-105.25439	L
+QRO	MMQT	Querétaro Intercontinental Airport	Querétaro	MX	20.61878	-100.18645	L
+SJD	MMSD	Los Cabos International Airport	San José del Cabo	MX	23.15192	-109.72073	L
+NLU	MMSM	Felipe Ángeles International Airport	Mexico City	MX	19.74382	-99.01507	L
+TIJ	MMTJ	General Abelardo L. Rodriguez International Airport	Tijuana	MX	32.54104	-116.96998	L
+TQO	MMTL	Felipe Carrillo Puerto International Airport Tulum	Tulum	MX	20.17210	-87.66027	L
+TLC	MMTO	Adolfo López Mateos International Airport	Toluca	MX	19.33690	-99.56583	L
+CUN	MMUN	Cancún International Airport	Cancún	MX	21.04082	-86.87347	L
+VSA	MMVA	Carlos Rovirosa Pérez International Airport	Villahermosa	MX	17.99428	-92.81820	L
+VER	MMVR	General Heriberto Jara International Airport	Veracruz	MX	19.13959	-96.18860	L
+ZIH	MMZH	Ixtapa-Zihuatanejo International Airport	Ixtapa	MX	17.60177	-101.46063	L
+MGA	MNMG	Augusto C. Sandino (Managua) International Airport	Managua	NI	12.14150	-86.16820	L
+PTY	MPTO	Tocumen International Airport	Tocumen	PA	9.07136	-79.38350	L
+LIR	MRLB	Daniel Oduber Quirós International Airport	Liberia	CR	10.59330	-85.54440	L
+SJO	MROC	Juan Santamaría International Airport	San José (Alajuela)	CR	9.99386	-84.20880	L
+SAL	MSLP	El Salvador International Airport Saint Óscar Arnulfo Romero y Galdámez	San Salvador (San Luis Talpa)	SV	13.44447	-89.05578	L
+CAP	MTCH	Cap Haitien International Airport	Cap Haitien	HT	19.72555	-72.20071	L
+PAP	MTPP	Toussaint Louverture International Airport	Port-au-Prince	HT	18.58002	-72.29260	L
+CMW	MUCM	Ignacio Agramonte International Airport	Camaguey	CU	21.41991	-77.84804	L
+SCU	MUCU	Antonio Maceo International Airport	Santiago	CU	19.97474	-75.83550	L
+HAV	MUHA	José Martí International Airport	Havana	CU	22.98920	-82.40910	L
+HOG	MUHG	Frank Pais International Airport	Holguin	CU	20.78515	-76.31553	L
+SNU	MUSC	Abel Santamaria International Airport	Santa Clara	CU	22.49222	-79.94312	L
+VRA	MUVR	Juan Gualberto Gomez International Airport	Matanzas	CU	23.03440	-81.43530	L
+GCM	MWCR	Owen Roberts International Airport	George Town	KY	19.29280	-81.35770	L
+FPO	MYGF	Grand Bahama International Airport	Freeport	BS	26.55800	-78.69558	L
+NAS	MYNN	Lynden Pindling International Airport	Nassau	BS	25.03900	-77.46620	L
+ZSA	MYSM	San Salvador International Airport	San Salvador	BS	24.06304	-74.52323	L
+BZE	MZBZ	Philip S. W. Goldson International Airport	Belize City	BZ	17.53995	-88.30356	L
+RAR	NCRG	Rarotonga International Airport	Avarua	CK	-21.20270	-159.80600	L
+NAN	NFFN	Nadi International Airport	Nadi	FJ	-17.76182	177.43784	L
+SUV	NFNA	Nausori International Airport	Nausori	FJ	-18.04423	178.56149	L
+TBU	NFTF	Fua'amotu International Airport	Nuku'alofa	TO	-21.24144	-175.14916	L
+VAV	NFTV	Vava'u International Airport	Vava'u Island	TO	-18.58530	-173.96201	L
+	DNBK	Sir Ahmadu Bello International Airport	Birinin Kebbi	NG	12.47905	4.36913	L
+TRW	NGTA	Bonriki International Airport	South Tarawa	KI	1.38164	173.14700	L
+WLS	NLWW	Hihifo Airport	Wallis Island	WF	-13.23944	-176.19865	L
+PHH	VNPR	Pokhara International Airport	Pokhara	NP	28.18380	84.01470	L
+APW	NSFA	Faleolo International Airport	Apia	WS	-13.83000	-172.00800	L
+PPG	NSTU	Pago Pago International Airport	Pago Pago	AS	-14.33100	-170.71001	L
+PPT	NTAA	Fa'a'ā International Airport	Papeete	PF	-17.55347	-149.60694	L
+VLI	NVVV	Bauerfield International Airport	Port Vila	VU	-17.69930	168.32001	L
+NOU	NWWW	La Tontouta International Airport	Nouméa (La Tontouta)	NC	-22.01460	166.21300	L
+AKL	NZAA	Auckland International Airport	Auckland	NZ	-37.01199	174.78633	L
+CHC	NZCH	Christchurch International Airport	Christchurch	NZ	-43.48903	172.53206	L
+ZQN	NZQN	Queenstown Airport	Queenstown	NZ	-45.01920	168.74638	L
+WLG	NZWN	Wellington International Airport	Wellington	NZ	-41.32684	174.80686	L
+HEA	OAHR	Herat - Khwaja Abdullah Ansari International Airport	Guzara	AF	34.21000	62.22830	L
+KBL	OAKB	Kabul International Airport	Kabul	AF	34.56590	69.21230	L
+KDH	OAKN	Ahmad Shah Baba International Airport	Kandahar	AF	31.50577	65.84796	L
+MZR	OAMS	Mazar-i-Sharif International Airport	Mazar-i-Sharif	AF	36.70412	67.21046	L
+BAH	OBBI	Bahrain International Airport	Manama	BH	26.26730	50.63764	L
+OCS	FGCO	Corisco International Airport	Corisco Island	GQ	0.91094	9.33027	L
+AHB	OEAB	Abha International Airport	Abha	SA	18.24040	42.65660	L
+HOF	OEAH	Al-Ahsa International Airport	Hofuf	SA	25.28530	49.48520	L
+ULH	OEAO	Al-Ula International Airport	Al-Ula	SA	26.48363	38.11705	L
+DMM	OEDF	King Fahd International Airport	Ad Dammam	SA	26.46910	49.79821	L
+DHA	OEDR	King Abdulaziz Air Base	Dhahran	SA	26.26540	50.15200	L
+ELQ	OEGS	Prince Naif bin Abdulaziz International Airport	Qassim	SA	26.30280	43.77440	L
+HAS	OEHL	Hail International Airport	Hail	SA	27.43790	41.68630	L
+JED	OEJN	King Abdulaziz International Airport	Jeddah	SA	21.68024	39.15744	L
+MED	OEMA	Prince Mohammad Bin Abdulaziz Airport	Medina	SA	24.55340	39.70510	L
+NUM	OENN	Neom Bay Airport	Sharma	SA	27.92426	35.29358	L
+AQI	OEPA	Qaisumah–Hafar Al-Batin International Airport	Qaisumah	SA	28.33573	46.12711	L
+RUH	OERK	King Khalid International Airport	Riyadh	SA	24.95760	46.69880	L
+AJF	OESK	Al-Jawf International Airport	Al-Jawf	SA	29.78330	40.10090	L
+TUU	OETB	Prince Sultan bin Abdulaziz International Airport	Tabuk	SA	28.37110	36.62486	L
+TIF	OETF	Taif International Airport	Taif	SA	21.48474	40.54407	L
+YNB	OEYN	Prince Abdulmohsen Bin Abdulaziz International Airport	Yanbu	SA	24.14420	38.06340	L
+ABD	OIAA	Abadan Ayatollah Jami International Airport	Abadan	IR	30.36789	48.23007	L
+AWZ	OIAW	Qasem Soleimani International Airport	Ahvaz	IR	31.33640	48.76379	L
+KIH	OIBK	Kish International Airport	Kish Island	IR	26.52543	53.98046	L
+IFN	OIFM	Isfahan Shahid Beheshti International Airport	Isfahan	IR	32.75514	51.88388	L
+IKA	OIIE	Imam Khomeini International Airport	Tehran	IR	35.41610	51.15220	L
+THR	OIII	Mehrabad International Airport	Tehran	IR	35.68917	51.31439	L
+PYK	OIIP	Payam International Airport	Karaj	IR	35.77610	50.82670	L
+BND	OIKB	Bandar Abbas International Airport	Bandar Abbas	IR	27.21830	56.37780	L
+KER	OIKK	Ayatollah Hashemi Rafsanjani International Airport	Kerman	IR	30.27128	56.94969	L
+GSM	OIKQ	Qeshm International Airport	Qeshm(Dayrestan)	IR	26.75464	55.90235	L
+XBJ	OIMB	Birjand International Airport	Birjand	IR	32.89652	59.28126	L
+MHD	OIMM	Mashhad International Airport	Mashhad	IR	36.23482	59.64295	L
+SYZ	OISS	Shiraz Shahid Dastghaib International Airport	Shiraz	IR	29.53920	52.58980	L
+TBZ	OITT	Tabriz International Airport	Tabriz	IR	38.13390	46.23500	L
+ZAH	OIZH	Zahedan International Airport	Zahedan	IR	29.47570	60.90620	L
+AMM	OJAI	Queen Alia International Airport	Amman	JO	31.72260	35.99320	L
+ADJ	OJAM	Marka International (Amman Civil) Airport	Amman	JO	31.97270	35.99160	L
+AQJ	OJAQ	King Hussein International Airport	Aqaba	JO	29.61160	35.01810	L
+KWI	OKKK	Kuwait International Airport	Kuwait City	KW	29.22449	47.96981	L
+BEY	OLBA	Beirut Rafic Hariri International Airport	Beirut	LB	33.81983	35.48744	L
+DQM	OODQ	Duqm International Airport	Duqm	OM	19.50194	57.63417	L
+AUH	OMAA	Zayed International Airport	Abu Dhabi	AE	24.44097	54.64924	L
+AZI	OMAD	Al Bateen Executive Airport	Abu Dhabi	AE	24.42706	54.45987	L
+AAN	OMAL	Al Ain International Airport	Al Ain	AE	24.26170	55.60920	L
+DXB	OMDB	Dubai International Airport	Dubai	AE	25.24979	55.37099	L
+DWC	OMDW	Al Maktoum International Airport	Dubai(Jebel Ali)	AE	24.89617	55.16235	L
+FJR	OMFJ	Fujairah International Airport	Fujairah	AE	25.10841	56.32806	L
+RKT	OMRK	Ras Al Khaimah International Airport	Ras Al Khaimah	AE	25.61350	55.93880	L
+SHJ	OMSJ	Sharjah International Airport	Sharjah	AE	25.32860	55.51720	L
+MCT	OOMS	Muscat International Airport	Muscat/Seeb	OM	23.60022	58.28527	L
+SLL	OOSA	Salalah International Airport	Salalah	OM	17.03870	54.09130	L
+OHS	OOSH	Suhar International Airport	Suhar	OM	24.38604	56.62541	L
+LYP	OPFA	Faisalabad International Airport	Faisalabad	PK	31.36492	72.99532	L
+GWD	OPGW	New Gwadar International Airport	Gurandani	PK	25.29673	62.49882	L
+ISB	OPIS	Islamabad International Airport	Attock	PK	33.54900	72.82566	L
+KHI	OPKC	Jinnah International Airport	Karachi	PK	24.90650	67.16080	L
+LHE	OPLA	Allama Iqbal International Airport	Lahore	PK	31.52160	74.40360	L
+MUX	OPMT	Multan International Airport	Multan	PK	30.20320	71.41910	L
+PEW	OPPS	Bacha Khan International Airport	Peshawar	PK	33.99390	71.51460	L
+UET	OPQT	Quetta International Airport	Quetta	PK	30.25140	66.93780	L
+KDU	OPSD	Skardu International Airport	Skardu	PK	35.33866	75.53865	L
+SKT	OPST	Sialkot International Airport	Sialkot	PK	32.53594	74.36462	L
+TUK	OPTU	Turbat International Airport	Turbat	PK	25.98477	63.02886	L
+BGW	ORBI	Baghdad International Airport / New Al Muthana Air Base	Baghdad	IQ	33.26250	44.23460	L
+OSM	ORBM	Mosul International Airport	Mosul	IQ	36.30580	43.14740	L
+EBL	ORER	Erbil International Airport	Arbil	IQ	36.23605	43.94662	L
+KIK	ORKK	Kirkuk International Airport	Kirkuk	IQ	35.46950	44.34890	L
+BSR	ORMM	Basra International Airport	Basra	IQ	30.54910	47.66210	L
+NJF	ORNI	Al Najaf International Airport	Najaf	IQ	31.99112	44.40502	L
+ALP	OSAP	Aleppo International Airport	Aleppo	SY	36.18126	37.22687	L
+DAM	OSDI	Damascus International Airport	Damascus	SY	33.41150	36.51560	L
+DOH	OTHH	Hamad International Airport	Doha	QA	25.27306	51.60806	L
+ADE	OYAA	Aden International Airport	Aden	YE	12.82956	45.02998	L
+RIY	OYRN	Riyan International Airport	Mukalla(Riyan)	YE	14.66224	49.37529	L
+SAH	OYSN	Sanaa International Airport	Sanaa	YE	15.47630	44.21970	L
+GXF	OYSY	Seiyun Hadhramaut International Airport	Seiyun	YE	15.96589	48.78815	L
+ANC	PANC	Ted Stevens Anchorage International Airport	Anchorage	US	61.17900	-149.99256	L
+ROP	PGRO	Rota International Airport	Rota Island	MP	14.17327	145.24110	L
+GUM	PGUM	Antonio B. Won Pat International Airport	Hagåtña	GU	13.48500	144.79728	L
+KOA	PHKO	Ellison Onizuka Kona International Airport at Keāhole	Kailua-Kona	US	19.73878	-156.04560	L
+LIH	PHLI	Lihue Airport	Lihue, Kauai	US	21.97439	-159.33715	L
+HNL	PHNL	Daniel K. Inouye International Airport	Honolulu, Oahu	US	21.31839	-157.92567	L
+OGG	PHOG	Kahului International Airport	Kahului	US	20.89626	-156.43184	L
+MAJ	PKMJ	Marshall Islands International Airport	Majuro Atoll	MH	7.06511	171.27166	L
+CXI	PLCH	Cassidy International Airport	Kiritimati	KI	1.98628	-157.35001	L
+TKK	PTKK	Chuuk International Airport	Weno Island	FM	7.46187	151.84300	L
+ROR	PTRO	Roman Tmetuchl International Airport	Babelthuap Island	PW	7.36697	134.54408	L
+KSA	PTSA	Kosrae International Airport	Okat	FM	5.35698	162.95799	L
+YAP	PTYA	Yap International Airport	Yap Island	FM	9.49891	138.08299	L
+KHH	RCKH	Kaohsiung International Airport	Kaohsiung (Xiaogang)	TW	22.57710	120.35000	L
+RMQ	RCMQ	Taichung International Airport / Ching Chuang Kang Air Base	Taichung (Qingshui)	TW	24.26470	120.62100	L
+TNN	RCNN	Tainan International Airport / Tainan Air Base	Tainan (Rende)	TW	22.95040	120.20600	L
+MZG	RCQC	Penghu Magong Airport	Huxi	TW	23.56870	119.62800	L
+TSA	RCSS	Taipei Songshan International Airport	Taipei (Songshan)	TW	25.06724	121.55282	L
+TPE	RCTP	Taiwan Taoyuan International Airport	Taoyuan	TW	25.07770	121.23300	L
+HUN	RCYU	Hualien Chiashan Airport	Hualien City	TW	24.02316	121.61799	L
+NRT	RJAA	Narita International Airport	Narita	JP	35.76858	140.38871	L
+IBR	RJAH	Ibaraki Airport	Omitama	JP	36.18146	140.41443	L
+KIX	RJBB	Kansai International Airport	Osaka	JP	34.42730	135.24400	L
+UKB	RJBE	Kobe Airport	Kobe	JP	34.63280	135.22400	L
+CTS	RJCC	New Chitose Airport	Sapporo	JP	42.77475	141.69041	L
+HKD	RJCH	Hakodate Airport	Hakodate	JP	41.77000	140.82201	L
+FUK	RJFF	Fukuoka Airport	Fukuoka	JP	33.58590	130.45100	L
+KOJ	RJFK	Kagoshima Airport	Kagoshima	JP	31.80340	130.71899	L
+KMI	RJFM	Miyazaki Airport	Miyazaki	JP	31.87720	131.44900	L
+KKJ	RJFR	Kitakyushu Airport	Kitakyushu	JP	33.84590	131.03500	L
+HSG	RJFS	Kyushu Saga International Airport	Saga	JP	33.14970	130.30200	L
+KMJ	RJFT	Kumamoto Airport	Kumamoto	JP	32.83730	130.85500	L
+NGS	RJFU	Nagasaki Airport	Nagasaki	JP	32.91690	129.91400	L
+NGO	RJGG	Chubu Centrair International Airport	Tokoname	JP	34.85840	136.80499	L
+KMQ	RJNK	Komatsu Airport / JASDF Komatsu Air Base	Kanazawa	JP	36.39341	136.40689	L
+FSZ	RJNS	Mount Fuji Shizuoka Airport	Makinohara / Shimada	JP	34.79502	138.19098	L
+HIJ	RJOA	Hiroshima Airport	Hiroshima	JP	34.43610	132.91901	L
+OKJ	RJOB	Okayama Momotaro Airport	Okayama	JP	34.75690	133.85500	L
+KCZ	RJOK	Kochi Ryoma Airport	Nankoku	JP	33.54522	133.67017	L
+MYJ	RJOM	Matsuyama Airport	Matsuyama	JP	33.82689	132.70011	L
+ITM	RJOO	Osaka Itami International Airport	Osaka	JP	34.78085	135.44083	L
+TKS	RJOS	Tokushima Awaodori Airport / JMSDF Tokushima Air Base	Tokushima	JP	34.13256	134.60782	L
+TAK	RJOT	Takamatsu Airport	Takamatsu	JP	34.21496	134.01545	L
+AOJ	RJSA	Aomori Airport	Aomori	JP	40.73378	140.68948	L
+KIJ	RJSN	Niigata Airport	Niigata	JP	37.95417	139.11219	L
+SDJ	RJSS	Sendai Airport	Natori	JP	38.13970	140.91701	L
+HND	RJTT	Tokyo Haneda International Airport	Tokyo	JP	35.54968	139.78696	L
+MWX	RKJB	Muan International Airport	Muan (Piseo-ri)	KR	34.99141	126.38281	L
+YNY	RKNY	Yangyang International Airport	Gonghang-ro	KR	38.06048	128.66982	L
+CJU	RKPC	Jeju International Airport	Jeju City	KR	33.51206	126.49255	L
+PUS	RKPK	Gimhae International Airport	Busan	KR	35.17950	128.93800	L
+ICN	RKSI	Incheon International Airport	Seoul	KR	37.46910	126.45100	L
+GMP	RKSS	Seoul Gimpo International Airport	Seoul	KR	37.55830	126.79100	L
+TAE	RKTN	Daegu International Airport	Daegu	KR	35.89439	128.65699	L
+CJJ	RKTU	Cheongju International Airport	Cheongju	KR	36.71556	127.50029	L
+OKA	ROAH	Naha International Airport	Naha	JP	26.19244	127.63980	L
+DNA	RODN	Kadena Air Base	Okinawa	JP	26.35167	127.76944	L
+SFS	RPLB	Subic Bay International Airport / Naval Air Station Cubi Point	Olongapo	PH	14.79483	120.27188	L
+CRK	RPLC	Clark International Airport / Clark Air Base	Mabalacat	PH	15.18600	120.56000	L
+LAO	RPLI	Laoag International Airport	Laoag City	PH	18.17509	120.53101	L
+DRP	RPLK	Bicol International Airport	Legazpi	PH	13.11191	123.67683	L
+MNL	RPLL	Ninoy Aquino International Airport	Manila (Pasay)	PH	14.50860	121.02000	L
+DVO	RPMD	Francisco Bangoy International Airport	Davao	PH	7.12552	125.64600	L
+GES	RPMR	General Santos International Airport	General Santos	PH	6.05721	125.09624	L
+CGY	RPMY	Laguindingan International Airport	Laguindingan	PH	8.61220	124.45650	L
+ZAM	RPMZ	Zamboanga International Airport	Zamboanga	PH	6.92242	122.06000	L
+TAG	RPSP	Bohol-Panglao International Airport	Panglao	PH	9.57305	123.77014	L
+BCD	RPVB	Bacolod-Silay International Airport	Bacolod City	PH	10.77624	123.01888	L
+ILO	RPVI	Iloilo International Airport	Cabatuan	PH	10.83302	122.49336	L
+KLO	RPVK	Kalibo International Airport	Kalibo	PH	11.67940	122.37600	L
+CEB	RPVM	Mactan Cebu International Airport	Cebu City/Lapu-Lapu City	PH	10.30926	123.97974	L
+PPS	RPVP	Puerto Princesa International Airport / PAF Antonio Bautista Air Base	Puerto Princesa	PH	9.74204	118.75911	L
+RSI	OERS	Red Sea International Airport	Hanak	SA	25.62797	37.08891	L
+ROS	SAAR	Rosario Islas Malvinas International Airport	Rosario	AR	-32.90360	-60.78500	L
+AEP	SABE	Aeroparque Jorge Newbery	Buenos Aires	AR	-34.55942	-58.41554	L
+COR	SACO	Ingeniero Aeronáutico Ambrosio L.V. Taravella International Airport	Cordoba	AR	-31.31235	-64.20833	L
+EZE	SAEZ	Ezeiza International Airport - Ministro Pistarini	Buenos Aires (Ezeiza)	AR	-34.82220	-58.53580	L
+MDZ	SAME	Governor Francisco Gabrielli International Airport	Mendoza	AR	-32.83170	-68.79290	L
+TUC	SANT	Teniente Benjamín Matienzo International Airport	San Miguel de Tucumán	AR	-26.83740	-65.10420	L
+RES	SARE	Resistencia International Airport	Resistencia	AR	-27.44991	-59.05613	L
+SLA	SASA	Martín Miguel de Güemes International Airport	Salta	AR	-24.85600	-65.48620	L
+JUJ	SASJ	Gobernador Horacio Guzman International Airport	San Salvador de Jujuy	AR	-24.39280	-65.09780	L
+CRD	SAVC	General Enrique Mosconi International Airport	Comodoro Rivadavia	AR	-45.78694	-67.46336	L
+RGL	SAWG	Piloto Civil Norberto Fernández International Airport	Rio Gallegos	AR	-51.60879	-69.30895	L
+NQN	SAZN	Presidente Perón International Airport	Neuquén	AR	-38.94900	-68.15570	L
+BRC	SAZS	Teniente Luis Candelaria International Airport	San Carlos de Bariloche	AR	-41.15120	-71.15750	L
+BEL	SBBE	Val de Cans/Júlio Cezar Ribeiro International Airport	Belém	BR	-1.37928	-48.47621	L
+BSB	SBBR	Presidente Juscelino Kubitschek International Airport	Brasília	BR	-15.86917	-47.92083	L
+BVB	SBBV	Atlas Brasil Cantanhede International Airport	Boa Vista	BR	2.84615	-60.69065	L
+CNF	SBCF	Tancredo Neves International Airport	Belo Horizonte	BR	-19.63571	-43.96693	L
+CWB	SBCT	Curitiba-Afonso Pena International Airport	Curitiba	BR	-25.52850	-49.17580	L
+CGB	SBCY	Várzea Grande–Marechal Rondon International Airport	Cuiabá	BR	-15.65290	-56.11670	L
+MAO	SBEG	Eduardo Gomes International Airport	Manaus	BR	-3.03861	-60.04970	L
+IGU	SBFI	Cataratas International Airport	Foz do Iguaçu	BR	-25.59417	-54.48944	L
+FLN	SBFL	Hercílio Luz International Airport	Florianópolis	BR	-27.67028	-48.55250	L
+FOR	SBFZ	Pinto Martins International Airport	Fortaleza	BR	-3.77583	-38.53222	L
+GIG	SBGL	Rio de Janeiro Galeão – Tom Jobim International Airport	Rio De Janeiro	BR	-22.81000	-43.25056	L
+GYN	SBGO	Santa Genoveva International Airport	Goiânia	BR	-16.63200	-49.22070	L
+GRU	SBGR	São Paulo/Guarulhos–Governor André Franco Montoro International Airport	São Paulo	BR	-23.43127	-46.46995	L
+JPA	SBJP	Presidente Castro Pinto International Airport	João Pessoa	BR	-7.14869	-34.95055	L
+VCP	SBKP	Viracopos International Airport	Campinas	BR	-23.00740	-47.13450	L
+MCZ	SBMO	Zumbi dos Palmares International Airport	Maceió	BR	-9.51256	-35.79184	L
+NVT	SBNF	Ministro Victor Konder International Airport	Navegantes	BR	-26.87943	-48.65098	L
+POA	SBPA	Porto Alegre-Salgado Filho International Airport	Porto Alegre	BR	-29.99398	-51.16748	L
+BPS	SBPS	Porto Seguro International Airport	Porto Seguro	BR	-16.43843	-39.08058	L
+PVH	SBPV	Governador Jorge Teixeira de Oliveira International Airport	Porto Velho	BR	-8.70849	-63.90234	L
+RBR	SBRB	Rio Branco-Plácido de Castro International Airport	Rio Branco	BR	-9.86903	-67.89398	L
+REC	SBRF	Recife/Guararapes - Gilberto Freyre International Airport	Recife	BR	-8.12747	-34.92296	L
+SDU	SBRJ	Santos Dumont Airport	Rio de Janeiro	BR	-22.91040	-43.16282	L
+NAT	SBSG	Rio Grande do Norte/São Gonçalo do Amarante–Governador Aluízio Alves International Airport	Natal	BR	-5.76982	-35.36661	L
+SLZ	SBSL	Marechal Cunha Machado International Airport	São Luís	BR	-2.58639	-44.23501	L
+CGH	SBSP	Congonhas–Deputado Freitas Nobre Airport	São Paulo	BR	-23.62766	-46.65460	L
+SSA	SBSV	Deputado Luiz Eduardo Magalhães International Airport	Salvador	BR	-12.90861	-38.32250	L
+VIX	SBVT	Eurico de Aguiar Salles International Airport	Vitória	BR	-20.25800	-40.28500	L
+PUQ	SCCI	President Carlos Ibáñez International Airport	Punta Arenas	CL	-53.00260	-70.85460	L
+IQQ	SCDA	Diego Aracena International Airport	Iquique	CL	-20.53627	-70.18137	L
+SCL	SCEL	Comodoro Arturo Merino Benítez International Airport	Santiago	CL	-33.39300	-70.78580	L
+ANF	SCFA	Andrés Sabella Gálvez International Airport	Antofagasta	CL	-23.44527	-70.44523	L
+CCP	SCIE	Carriel Sur International Airport	Concepcion	CL	-36.77235	-73.06283	L
+IPC	SCIP	Mataveri International Airport	Isla De Pascua	CL	-27.16541	-109.42103	L
+ZCO	SCQP	La Araucanía International Airport	Temuco	CL	-38.92590	-72.65150	L
+PMC	SCTE	El Tepual International Airport	Puerto Montt	CL	-41.44309	-73.09407	L
+GYE	SEGU	José Joaquín de Olmedo International Airport	Guayaquil	EC	-2.15742	-79.88360	L
+UIO	SEQM	Mariscal Sucre International Airport	Quito	EC	-0.12540	-78.35431	L
+SNC	SESA	General Ulpiano Paez International Airport	Salinas/La Libertad	EC	-2.21006	-80.98507	L
+ESM	SETN	Carlos Concha Torres International Airport	Tachina	EC	0.97852	-79.62660	L
+ASU	SGAS	Silvio Pettirossi International Airport	Asunción	PY	-25.24016	-57.51923	L
+ENO	SGEN	Teniente Ramon A. Ayub Gonzalez International Airport	Encarnación	PY	-27.22754	-55.83758	L
+AGT	SGES	Guaraní International Airport	Ciudad del Este	PY	-25.45550	-54.84360	L
+BOG	SKBO	El Dorado International Airport	Bogota	CO	4.70159	-74.14690	L
+BAQ	SKBQ	Ernesto Cortissoz International Airport	Barranquilla	CO	10.88960	-74.78080	L
+CTG	SKCG	Rafael Nuñez International Airport	Cartagena	CO	10.44240	-75.51300	L
+CLO	SKCL	Alfonso Bonilla Aragon International Airport	Cali	CO	3.54272	-76.38190	L
+MDE	SKRG	Jose Maria Córdova International Airport	Medellín	CO	6.16454	-75.42310	L
+ADZ	SKSP	Gustavo Rojas Pinilla International Airport	San Andrés	CO	12.58360	-81.71120	L
+SRE	SLAL	Alcantarí International Airport	Sucre	BO	-19.24684	-65.14961	L
+CBB	SLCB	Jorge Wilsterman International Airport	Cochabamba	BO	-17.42111	-66.17710	L
+LPB	SLLP	El Alto International Airport	La Paz / El Alto	BO	-16.51027	-68.18942	L
+ORU	SLOR	Juan Mendoza International Airport	Oruro	BO	-17.95615	-67.07583	L
+UYU	SLUY	Joya Andina International Airport	Quijarro	BO	-20.44130	-66.85755	L
+VVI	SLVR	Viru Viru International Airport	Santa Cruz	BO	-17.64480	-63.13540	L
+PBM	SMJP	Johan Adolf Pengel International Airport	Paramaribo	SR	5.45283	-55.18780	L
+CAY	SOCA	Cayenne – Félix Eboué Airport	Matoury	GF	4.81996	-52.36133	L
+PCL	SPCL	Cap FAP David Abenzur Rengifo International Airport	Pucallpa	PE	-8.37806	-74.57449	L
+CIX	SPHI	Capitán FAP José A. Quiñones González International Airport	Chiclayo	PE	-6.78922	-79.82825	L
+LIM	SPJC	Jorge Chávez International Airport	Lima	PE	-12.02190	-77.11431	L
+JUL	SPJL	Inca Manco Capac International Airport	Juliaca	PE	-15.46769	-70.15653	L
+IQT	SPQT	Coronel FAP Francisco Secada Vignetta International Airport	Iquitos	PE	-3.78474	-73.30880	L
+AQP	SPQU	Rodríguez Ballón International Airport	Arequipa	PE	-16.34079	-71.56949	L
+TRU	SPRU	Capitán FAP Carlos Martínez de Pinillos International Airport	Trujillo	PE	-8.08238	-79.10882	L
+PIO	SPSO	Captain Renán Elías Olivera International Airport	Pisco	PE	-13.74490	-76.22030	L
+CUZ	SPZO	Alejandro Velasco Astete International Airport	Cusco	PE	-13.53570	-71.93880	L
+MVD	SUMU	Carrasco General Cesáreo L. Berisso International Airport	Ciudad de la Costa	UY	-34.83565	-56.02650	L
+BLA	SVBC	General José Antonio Anzoategui International Airport	Barcelona	VE	10.11111	-64.69222	L
+BRM	SVBM	Jacinto Lara International Airport	Barquisimeto	VE	10.04275	-69.35862	L
+MAR	SVMC	La Chinita International Airport	Maracaibo	VE	10.55754	-71.72931	L
+PMV	SVMG	Del Caribe Santiago Mariño International Airport	Isla Margarita	VE	10.91260	-63.96660	L
+CCS	SVMI	Maiquetía Simón Bolívar International Airport	Maiquetía	VE	10.60221	-66.99117	L
+PZO	SVPR	General Manuel Carlos Piar International Airport	Guyana City	VE	8.28853	-62.76040	L
+VLN	SVVA	Arturo Michelena International Airport	Valencia	VE	10.14973	-67.92840	L
+GEO	SYCJ	Cheddi Jagan International Airport	Georgetown	GY	6.49855	-58.25410	L
+ANU	TAPA	V. C. Bird International Airport	Osbourn	AG	17.13670	-61.79270	L
+BGI	TBPB	Grantley Adams International Airport	Bridgetown	BB	13.07467	-59.49103	L
+FDF	TFFF	Martinique Aimé Césaire International Airport	Fort-de-France	MQ	14.59100	-61.00320	L
+PTP	TFFR	Maryse Condé International Airport	Pointe-à-Pitre	GP	16.26544	-61.53275	L
+GND	TGPY	Maurice Bishop International Airport	Saint George's	GD	12.00400	-61.78530	L
+STT	TIST	Cyril E. King Airport	Charlotte Amalie	VI	18.33709	-64.97725	L
+SJU	TJSJ	Luis Munoz Marin International Airport	San Juan	PR	18.43940	-66.00180	L
+SKB	TKPK	Robert L. Bradshaw International Airport	Basseterre	KN	17.31085	-62.71912	L
+UVF	TLPL	Hewanorra International Airport	Vieux Fort	LC	13.73320	-60.95260	L
+AUA	TNCA	Queen Beatrix International Airport	Oranjestad	AW	12.50106	-70.01428	L
+BON	TNCB	Flamingo International Airport	Kralendijk	BQ	12.13100	-68.26850	L
+CUR	TNCC	Hato International Airport	Willemstad	CW	12.18890	-68.95980	L
+SXM	TNCM	Princess Juliana International Airport	Sint Maarten	SX	18.04100	-63.10890	L
+MNI	TRPG	John A. Osborne Airport	Gerald's Park	MS	16.79183	-62.19320	L
+TAB	TTCP	A.N.R. Robinson International Airport	Scarborough	TT	11.14957	-60.83130	L
+POS	TTPP	Piarco International Airport	Port of Spain	TT	10.59535	-61.33757	L
+EIS	TUPJ	Terrance B. Lettsome International Airport	Beef Island	VG	18.44549	-64.54171	L
+SVD	TVSA	Argyle International Airport	Kingstown	VC	13.15972	-61.14880	L
+BDA	TXKF	L.F. Wade International Airport	Hamilton	BM	32.36380	-64.67824	L
+ALA	UAAA	Almaty International Airport	Almaty	KZ	43.35427	77.04283	L
+NQZ	UACC	Nursultan Nazarbayev International Airport	Astana	KZ	51.02703	71.46709	L
+KOV	UACK	Kokshetau International Airport	Kokshetau	KZ	53.32910	69.59460	L
+PPK	UACP	Petropavl International Airport	Petropavl	KZ	54.77562	69.18742	L
+DMB	UADD	Taraz International Airport	Taraz	KZ	42.85360	71.30360	L
+BSZ	UCFM	Manas International Airport	Bishkek	KG	43.06130	74.47760	L
+OSS	UCFO	Osh International Airport	Osh	KG	40.60900	72.79330	L
+CIT	UAII	Shymkent International Airport	Shymkent	KZ	42.36502	69.47564	L
+HSA	UAIT	Hazrat Sultan International Airport	Turkıstan	KZ	43.31109	68.55035	L
+DZN	UAKD	Zhezkazgan National Airport	Zhezkazgan	KZ	47.70895	67.73809	L
+KGF	UAKK	Sary-Arka Airport	Karaganda	KZ	49.67080	73.33440	L
+BXY	UAOL	Baikonur Krayniy International Airport	Baikonur	KZ	45.62199	63.21077	L
+KZO	UAOO	Korkyt Ata International Airport	Kyzylorda	KZ	44.70690	65.59250	L
+URA	UARR	Manshuk Mametova International Airport	Uralsk	KZ	51.15198	51.54365	L
+UKK	UASK	Oskemen International Airport	Ust-Kamenogorsk (Oskemen)	KZ	50.03503	82.49606	L
+PWQ	UASP	Pavlodar International Airport	Pavlodar	KZ	52.19498	77.07309	L
+PLX	UASS	Semei International Airport	Semey	KZ	50.35130	80.23440	L
+SCO	UATE	Aktau International Airport	Aktau	KZ	43.86009	51.09086	L
+GUW	UATG	Atyrau International Airport	Atyrau	KZ	47.12132	51.82034	L
+AKX	UATT	Aktobe International Airport	Aktobe	KZ	50.24812	57.20414	L
+KSN	UAUU	Kostanay International Airport	Kostanay	KZ	53.20690	63.55030	L
+GYD	UBBB	Heydar Aliyev International Airport	Baku	AZ	40.47278	50.05093	L
+GNJ	UBBG	Ganja International Airport	Ganja	AZ	40.73869	46.32038	L
+NAJ	UBBN	Nakhchivan International Airport	Nakhchivan	AZ	39.18880	45.45840	L
+IKU	UCFL	Issyk-Kul International Airport	Tamchy	KG	42.58558	76.70118	L
+LWN	UDSG	Shirak International Airport	Gyumri	AM	40.75040	43.85930	L
+EVN	UDYZ	Zvartnots International Airport	Yerevan	AM	40.14894	44.39789	L
+YKS	UEEE	Platon Oyunsky Yakutsk International Airport	Yakutsk	RU	62.09330	129.77100	L
+KUT	UGKO	David the Builder Kutaisi International Airport	Kopitnari	GE	42.17745	42.48535	L
+BUS	UGSB	Alexander Kartveli Batumi International Airport	Batumi	GE	41.60939	41.60032	L
+SUI	UGSS	Vladislav Ardzinba Sukhum International Airport	Sukhumi	GE	42.85820	41.12810	L
+TBS	UGTB	Tbilisi International Airport	Tbilisi	GE	41.66920	44.95470	L
+PKC	UHPP	Yelizovo Airport	Petropavlovsk-Kamchatsky	RU	53.16872	158.45107	L
+UUS	UHSS	Yuzhno-Sakhalinsk International Airport	Yuzhno-Sakhalinsk	RU	46.88546	142.71747	L
+VVO	UHWW	Vladivostok International Airport	Artyom	RU	43.39626	132.14816	L
+HTA	UIAA	Chita-Kadala International Airport	Chita	RU	52.02484	113.30584	L
+IKT	UIII	Irkutsk International Airport	Irkutsk	RU	52.26671	104.39556	L
+UUD	UIUU	Baikal International Airport	Ulan Ude	RU	51.80861	107.43965	L
+KBP	UKBB	Boryspil International Airport	Boryspil	UA	50.34500	30.89470	L
+SIP	UKFF	Simferopol International Airport	Simferopol	UA	45.05220	33.97510	L
+LWO	UKLL	Lviv International Airport	Lviv	UA	49.81250	23.95610	L
+ODS	UKOO	Odesa International Airport	Odesa	UA	46.42720	30.67265	L
+LED	ULLI	Pulkovo Airport	St. Petersburg	RU	59.80030	30.26250	L
+MMK	ULMM	Emperor Nicholas II Murmansk Airport	Murmansk	RU	68.78170	32.75080	L
+BQT	UMBB	Brest International Airport	Brest	BY	52.10814	23.89676	L
+KGD	UMKK	Khrabrovo Airport	Kaliningrad	RU	54.89161	20.59856	L
+MSQ	UMMS	Minsk National Airport	Minsk	BY	53.88807	28.03996	L
+ABA	UNAA	Abakan International Airport	Abakan	RU	53.74000	91.38500	L
+BAX	UNBB	Barnaul Gherman Titov International Airport	Barnaul	RU	53.36129	83.53970	L
+KEJ	UNEE	Alexei Leonov Kemerovo International Airport	Kemerovo	RU	55.27010	86.10720	L
+KJA	UNKL	Krasnoyarsk International Airport	Krasnoyarsk	RU	56.17574	92.48579	L
+OVB	UNNT	Novosibirsk Tolmachevo Airport	Novosibirsk	RU	55.01976	82.61867	L
+OMS	UNOO	Omsk Central Airport	Omsk	RU	54.96312	73.31242	L
+TOF	UNTT	Tomsk Kamov Airport	Tomsk	RU	56.38030	85.20830	L
+NSK	UOOO	Alykel International Airport	Norilsk	RU	69.30795	87.32591	L
+KRR	URKK	Krasnodar Pashkovsky International Airport	Krasnodar	RU	45.03446	39.17421	L
+GRV	URMG	Akhmat Kadyrov Grozny International Airport	Grozny	RU	43.38811	45.69977	L
+MCX	URML	Makhachkala Uytash International Airport	Makhachkala	RU	42.81680	47.65230	L
+MRV	URMM	Mineralnye Vody Airport	Mineralnyye Vody	RU	44.22510	43.08190	L
+ROV	URRP	Platov International Airport	Rostov-on-Don	RU	47.49389	39.92472	L
+AER	URSS	Sochi International Airport	Sochi	RU	43.44990	39.95660	L
+ASF	URWA	Astrakhan Narimanovo Boris M. Kustodiev International Airport	Astrakhan	RU	46.28284	48.01051	L
+VOG	URWW	Volgograd International Airport	Volgograd	RU	48.78134	44.33919	L
+CEK	USCC	Kurchatov Chelyabinsk International Airport	Chelyabinsk	RU	55.30314	61.50493	L
+MQF	USCM	Magnitogorsk International Airport	Magnitogorsk	RU	53.39199	58.75523	L
+NJC	USNN	Nizhnevartovsk Airport	Nizhnevartovsk	RU	60.94930	76.48360	L
+PEE	USPP	Perm International Airport	Perm	RU	57.91450	56.02120	L
+SGC	USRR	Surgut International Airport	Surgut	RU	61.34050	73.40578	L
+SVX	USSS	Koltsovo Airport	Yekaterinburg	RU	56.74310	60.80270	L
+TJM	USTR	Roshchino International Airport	Tyumen	RU	57.17898	65.32770	L
+ASB	UTAA	Ashgabat International Airport	Ashgabat	TM	37.98680	58.36100	L
+TAZ	UTAT	Dashoguz International Airport	Daşoguz	TM	41.75985	59.83615	L
+CRZ	UTAV	Türkmenabat International Airport	Türkmenabat	TM	38.93066	63.56398	L
+DYU	UTDD	Dushanbe International Airport	Dushanbe	TJ	38.54375	68.82298	L
+TJU	UTDK	Kulob International Airport	Kulob	TJ	37.98810	69.80500	L
+LBD	UTDL	Khujand International Airport	Khujand	TJ	40.21540	69.69470	L
+KQT	UTDT	Bokhtar International Airport	Bokhtar	TJ	37.86632	68.86447	L
+NMA	UZFN	Namangan International Airport	Namangan	UZ	40.98462	71.55780	L
+NCU	UZNN	Nukus International Airport	Nukus	UZ	42.48840	59.62330	L
+UGC	UZNU	Urgench International Airport	Urgench	UZ	41.58274	60.64338	L
+BHK	UZSB	Bukhara International Airport	Bukhara	UZ	39.77532	64.48228	L
+SKD	UZSS	Samarkand International Airport	Samarkand	UZ	39.70184	66.98147	L
+TAS	UZTT	Tashkent International Airport	Tashkent	UZ	41.25790	69.28120	L
+ZIA	UUBW	Zhukovsky International Airport	Moscow	RU	55.55330	38.15000	L
+DME	UUDD	Domodedovo International Airport	Moscow	RU	55.40880	37.90630	L
+IAR	UUDL	Golden Ring Yaroslavl International Airport	Tunoshna	RU	57.56070	40.15740	L
+SVO	UUEE	Sheremetyevo International Airport	Moscow	RU	55.97749	37.38668	L
+VKO	UUWW	Vnukovo International Airport	Moscow	RU	55.59150	37.26150	L
+GOJ	UWGG	Nizhny Novgorod / Strigino International Airport	Nizhny Novgorod	RU	56.22735	43.78515	L
+KZN	UWKD	Kazan International Airport	Kazan	RU	55.60620	49.27870	L
+SKX	UWPS	Saransk International Airport	Saransk	RU	54.12513	45.21226	L
+GSV	UWSG	Gagarin International Airport	Saratov	RU	51.71278	46.17111	L
+UFA	UWUU	Ufa International Airport	Ufa	RU	54.55750	55.87440	L
+KUF	UWWW	Kurumoch International Airport	Samara	RU	53.50490	50.16430	L
+AMD	VAAH	Sardar Vallabh Patel International Airport	Ahmedabad	IN	23.07720	72.63470	L
+BOM	VABB	Chhatrapati Shivaji Maharaj International Airport	Mumbai	IN	19.08870	72.86790	L
+BDQ	VABO	Vadodara International Airport	Vadodara	IN	22.33620	73.22630	L
+BHO	VABP	Raja Bhoj International Airport	Bhopal	IN	23.28750	77.33740	L
+HSR	VAHS	Rajkot International Airport	Rajkot	IN	22.37882	71.03939	L
+IDR	VAID	Devi Ahilya Bai Holkar International Airport	Indore	IN	22.72140	75.80051	L
+NAG	VANP	Dr. Babasaheb Ambedkar International Airport	Nagpur	IN	21.09220	79.04720	L
+ISK	VAOZ	Nashik International Airport	Nashik	IN	20.11910	73.91290	L
+PNQ	VAPO	Pune International Airport	Pune	IN	18.58210	73.91970	L
+SAG	VASD	Shirdi International Airport	Kakadi	IN	19.68921	74.37365	L
+STV	VASU	Surat International Airport	Surat	IN	21.11553	72.74325	L
+CMB	VCBI	Bandaranaike International Colombo Airport	Colombo	LK	7.18076	79.88410	L
+RML	VCCC	Colombo Ratmalana International Airport	Colombo	LK	6.82164	79.88586	L
+JAF	VCCJ	Jaffna International Airport	Jaffna	LK	9.79233	80.07010	L
+PNH	VDPP	Phnom Penh International Airport	Phnom Penh (Pou Senchey)	KH	11.54716	104.84470	L
+SAI	VDSA	Siem Reap-Angkor International Airport	Siem Reap	KH	13.36974	104.22383	L
+KOS	VDSV	Sihanouk International Airport	Preah Sihanouk	KH	10.57056	103.63207	L
+IXB	VEBD	Bagdogra Airport	Siliguri	IN	26.68120	88.32860	L
+VNS	VEBN	Lal Bahadur Shastri International Airport	Varanasi	IN	25.45217	82.86255	L
+BBI	VEBS	Biju Patnaik International Airport	Bhubaneswar	IN	20.25102	85.81475	L
+CCU	VECC	Netaji Subhash Chandra Bose International Airport	Kolkata	IN	22.65401	88.44765	L
+GAU	VEGT	Lokpriya Gopinath Bordoloi International Airport	Guwahati	IN	26.10665	91.58523	L
+IMF	VEIM	Bir Tikendrajit International Airport	Imphal	IN	24.76000	93.89670	L
+CGP	VGEG	Shah Amanat International Airport	Chattogram (Chittagong)	BD	22.24960	91.81330	L
+DAC	VGHS	Hazrat Shahjalal International Airport	Dhaka	BD	23.84335	90.39778	L
+ZYL	VGSY	Osmany International Airport	Sylhet	BD	24.96399	91.86475	L
+HKG	VHHH	Hong Kong International Airport	Hong Kong	HK	22.31184	113.91486	L
+ATQ	VIAR	Sri Guru Ram Das Ji International Airport	Amritsar	IN	31.70960	74.79730	L
+IXC	VICG	Shaheed Bhagat Singh International Airport	Chandigarh	IN	30.67350	76.78850	L
+DEL	VIDP	Indira Gandhi International Airport	New Delhi	IN	28.55563	77.09519	L
+HSS	VIHR	Maharaja Agrasen International Airport	Hisar	IN	29.18606	75.74142	L
+HWR	VIHX	Halwara International Airport	Halwara	IN	30.74850	75.62980	L
+JAI	VIJP	Jaipur International Airport	Jaipur	IN	26.82420	75.81220	L
+LKO	VILK	Chaudhary Charan Singh International Airport	Lucknow	IN	26.76060	80.88930	L
+SXR	VISR	Srinagar International Airport	Srinagar	IN	33.98710	74.77420	L
+LPQ	VLLB	Luang Phabang International Airport	Luang Phabang	LA	19.90427	102.16719	L
+PKZ	VLPS	Pakse International Airport	Pakse	LA	15.13397	105.77987	L
+VTE	VLVT	Wattay International Airport	Vientiane	LA	17.98505	102.56669	L
+MFM	VMMC	Macau International Airport	Nossa Senhora do Carmo	MO	22.14960	113.59200	L
+LTH	VVLT	Long Thanh International Airport (Under Construction)	Ho Chi Minh City (Long Thanh)	VN	10.77284	107.04060	L
+BWA	VNBW	Gautam Buddha International Airport	Siddharthanagar (Bhairahawa)	NP	27.50464	83.41038	L
+KTM	VNKT	Tribhuvan International Airport	Kathmandu	NP	27.69660	85.35910	L
+BLR	VOBL	Kempegowda International Airport Bengaluru	Bengaluru	IN	13.19790	77.70630	L
+VGA	VOBZ	Vijayawada International Airport	Vijayawada	IN	16.53001	80.80489	L
+CJB	VOCB	Coimbatore International Airport	Coimbatore	IN	11.03000	77.04340	L
+COK	VOCI	Cochin International Airport	Kochi	IN	10.15105	76.40084	L
+CCJ	VOCL	Calicut International Airport	Calicut	IN	11.13600	75.95515	L
+GOX	VOGA	Manohar International Airport	Mopa	IN	15.74426	73.86062	L
+GOI	VOGO	Goa Dabolim International Airport	Vasco da Gama	IN	15.38006	73.83333	L
+HYD	VOHS	Rajiv Gandhi International Airport	Hyderabad	IN	17.23132	78.42986	L
+CNN	VOKN	Kannur International Airport	Kannur	IN	11.91634	75.54498	L
+IXE	VOML	Mangaluru International Airport	Mangaluru	IN	12.95471	74.88681	L
+MAA	VOMM	Chennai International Airport	Chennai	IN	12.99001	80.16930	L
+IXZ	VOPB	Veer Savarkar International Airport / INS Utkrosh	Port Blair	IN	11.64019	92.72902	L
+TIR	VOTP	Tirupati International Airport	Tirupati	IN	13.63199	79.53987	L
+TRZ	VOTR	Tiruchirappalli International Airport	Tiruchirappalli	IN	10.76291	78.71774	L
+TRV	VOTV	Thiruvananthapuram International Airport	Thiruvananthapuram	IN	8.48189	76.92003	L
+VTZ	VOVI	Alluri Sitarama Raju International Airport (Vizag)	Visakhapatnam	IN	17.97151	83.50362	L
+PBH	VQPR	Paro International Airport	Paro	BT	27.40320	89.42460	L
+GAN	VRMG	Gan International Airport	Gan	MV	-0.69298	73.15263	L
+HAQ	VRMH	Hanimaadhoo International Airport	Haa Dhaalu Atoll	MV	6.74324	73.16707	L
+MLE	VRMM	Velana International Airport	Malé	MV	4.19183	73.52910	L
+DMK	VTBD	Don Mueang International Airport	Bangkok	TH	13.91260	100.60700	L
+BKK	VTBS	Suvarnabhumi Airport	Bangkok	TH	13.68110	100.74700	L
+UTP	VTBU	U-Tapao–Rayong–Pattaya International Airport	Rayong	TH	12.67990	101.00500	L
+CNX	VTCC	Chiang Mai International Airport	Chiang Mai	TH	18.76680	98.96260	L
+CEI	VTCT	Mae Fah Luang - Chiang Rai International Airport	Chiang Rai	TH	19.95230	99.88290	L
+KBV	VTSG	Krabi International Airport	Krabi	TH	8.09559	98.98896	L
+USM	VTSM	Samui International Airport	Na Thon (Ko Samui Island)	TH	9.54779	100.06200	L
+HKT	VTSP	Phuket International Airport	Phuket	TH	8.11326	98.31740	L
+HDY	VTSS	Hat Yai International Airport	Hat Yai	TH	6.93321	100.39300	L
+UTH	VTUD	Udon Thani International Airport	Udon Thani	TH	17.38619	102.78858	L
+HPH	VVCI	Cat Bi International Airport	Haiphong (Hai An)	VN	20.81743	106.72432	L
+CXR	VVCR	Cam Ranh International Airport / Cam Ranh Air Base	Nha Trang/nha Trang aiurportCam Ranh	VN	11.99820	109.21900	L
+VCA	VVCT	Can Tho International Airport	Can Tho	VN	10.08340	105.70937	L
+DAD	VVDN	Da Nang International Airport	Da Nang	VN	16.04390	108.19900	L
+HAN	VVNB	Noi Bai International Airport	Hanoi (Soc Son)	VN	21.22120	105.80700	L
+HUI	VVPB	Phu Bai International Airport	Huế	VN	16.40058	107.70409	L
+PQC	VVPQ	Phú Quốc International Airport	Phu Quoc Island	VN	10.16978	103.99353	L
+SGN	VVTS	Tan Son Nhat International Airport	Ho Chi Minh City	VN	10.81880	106.65200	L
+MDL	VYMD	Mandalay International Airport	Mandalay	MM	21.70220	95.97790	L
+NYT	VYNT	Nay Pyi Taw International Airport	Naypyitaw	MM	19.62350	96.20100	L
+RGN	VYYY	Yangon International Airport	Yangon	MM	16.90730	96.13320	L
+UPG	WAAA	Sultan Hasanuddin International Airport	Makassar	ID	-5.07554	119.55370	L
+DPS	WADD	Denpasar I Gusti Ngurah Rai International Airport	Kuta, Badung	ID	-8.74841	115.16712	L
+LOP	WADL	Lombok International Airport	Mataram (Pujut, Lombok Tengah)	ID	-8.75996	116.27817	L
+YIA	WAHI	Yogyakarta International Airport	Yogyakarta	ID	-7.90534	110.05726	L
+DJJ	WAJJ	Dortheys Hiyo Eluay International Airport	Sentani	ID	-2.57963	140.51986	L
+BPN	WALL	Sultan Aji Muhammad Sulaiman Sepinggan International Airport	Balikpapan	ID	-1.26834	116.89452	L
+MDC	WAMM	Sam Ratulangi International Airport	Manado	ID	1.54859	124.92625	L
+BDJ	WAOO	Syamsudin Noor International Airport	Banjarbaru	ID	-3.44011	114.76121	L
+AMQ	WAPP	Pattimura International Airport	Ambon	ID	-3.71026	128.08900	L
+SOC	WAHQ	Adisoemarmo International Airport	Surakarta	ID	-7.51604	110.75749	L
+SUB	WARR	Juanda International Airport	Surabaya	ID	-7.37983	112.78700	L
+SRG	WAHS	Jenderal Ahmad Yani Airport	Semarang	ID	-6.97073	110.37324	L
+KCH	WBGG	Kuching International Airport	Kuching	MY	1.48736	110.35286	L
+BKI	WBKK	Kota Kinabalu International Airport	Kota Kinabalu	MY	5.93274	116.04932	L
+BWN	WBSB	Brunei International Airport	Bandar Seri Begawan	BN	4.94420	114.92800	L
+BTH	WIDD	Hang Nadim International Airport	Batam	ID	1.12103	104.11900	L
+HLP	WIHH	Halim Perdanakusuma International Airport	Jakarta	ID	-6.26699	106.89032	L
+CGK	WIII	Soekarno-Hatta International Airport	Jakarta	ID	-6.12557	106.65600	L
+KNO	WIMM	Kualanamu International Airport	Beringin	ID	3.63785	98.87057	L
+PNK	WIOO	Supadio International Airport	Pontianak	ID	-0.15226	109.40449	L
+PDG	WIEE	Minangkabau International Airport	Padang (Katapiang)	ID	-0.78596	100.28038	L
+BTJ	WITT	Sultan Iskandar Muda International Airport	Banda Aceh	ID	5.52509	95.41997	L
+IPH	WMKI	Sultan Azlan Shah Airport	Ipoh	MY	4.56733	101.09164	L
+JHB	WMKJ	Senai International Airport	Johor Bahru	MY	1.64131	103.67000	L
+KUL	WMKK	Kuala Lumpur International Airport	Sepang	MY	2.74558	101.71000	L
+LGK	WMKL	Langkawi International Airport	Langkawi	MY	6.32973	99.72870	L
+PEN	WMKP	Penang International Airport	Penang	MY	5.29630	100.27618	L
+SZB	WMSA	Sultan Abdul Aziz Shah International Airport	Subang	MY	3.13058	101.54900	L
+DIL	WPDL	Presidente Nicolau Lobato International Airport	Dili	TL	-8.54656	125.52451	L
+OEC	WPOC	Oecusse Route of the Sandalwood International Airport	Oecussi-Ambeno	TL	-9.19842	124.33787	L
+SIN	WSSS	Singapore Changi Airport	Singapore	SG	1.35019	103.99400	L
+BNE	YBBN	Brisbane International Airport	Brisbane	AU	-27.38420	153.11700	L
+OOL	YBCG	Gold Coast Airport	Gold Coast	AU	-28.16596	153.50664	L
+CNS	YBCS	Cairns International Airport	Cairns	AU	-16.87892	145.74948	L
+BME	YBRM	Broome International Airport	Broome	AU	-17.94919	122.22830	L
+MCY	YBSU	Sunshine Coast Airport	Maroochydore	AU	-26.59332	153.08319	L
+WTB	YBWW	Toowoomba Wellcamp Airport	Toowoomba	AU	-27.55833	151.79334	L
+AVV	YMAV	Melbourne Avalon International Airport	Geelong/Melbourne	AU	-38.04027	144.46720	L
+HBA	YMHB	Hobart International Airport	Hobart (Cambridge)	AU	-42.83703	147.51302	L
+MEL	YMML	Melbourne Airport	Melbourne	AU	-37.67073	144.83790	L
+ADL	YPAD	Adelaide International Airport	Adelaide	AU	-34.94751	138.53339	L
+CCK	YPCC	Cocos (Keeling) Islands Airport	West Island	CC	-12.19222	96.83410	L
+DRW	YPDN	Darwin International Airport / RAAF Darwin	Darwin	AU	-12.41497	130.88185	L
+PHE	YPPD	Port Hedland International Airport	Port Hedland	AU	-20.38279	118.62979	L
+PER	YPPH	Perth International Airport	Perth	AU	-31.94030	115.96700	L
+SYD	YSSY	Sydney Kingsford Smith International Airport	Sydney (Mascot)	AU	-33.94610	151.17700	L
+NTL	YWLM	Newcastle Airport	Williamtown	AU	-32.79611	151.83503	L
+PEK	ZBAA	Beijing Capital International Airport	Beijing	CN	40.07735	116.59670	L	北京首都国际机场
+PKX	ZBAD	Beijing Daxing International Airport	Beijing	CN	39.50129	116.41397	L	北京大兴国际机场
+DSN	ZBDS	Ordos Ejin Horo International Airport	Ordos	CN	39.49351	109.85990	L	鄂尔多斯机场
+DAT	ZBDT	Datong Yungang International Airport	Datong	CN	40.06139	113.48051	L	大同云冈国际机场
+HET	ZBHH	Hohhot Baita International Airport	Hohhot	CN	40.84966	111.82460	L	呼和浩特白塔国际机场
+HLD	ZBLA	Hulunbuir Hailar Airport	Hailar	CN	49.20862	119.82230	L	呼伦贝尔海拉尔机场
+BAV	ZBOW	Baotou Donghe International Airport	Baotou	CN	40.56000	109.99700	L	包头东河机场
+SJW	ZBSJ	Shijiazhuang Zhengding International Airport	Shijiazhuang	CN	38.28070	114.69700	L	石家庄正定国际机场
+TSN	ZBTJ	Tianjin Binhai International Airport	Tianjin	CN	39.12440	117.34600	L	天津滨海国际机场
+YCU	ZBYC	Yuncheng Yanhu International Airport	Yuncheng (Yanhu)	CN	35.11782	111.03402	L	运城盐湖国际机场
+TYN	ZBYN	Taiyuan Wusu International Airport	Taiyuan	CN	37.74690	112.62800	L	太原武宿国际机场
+DYG	ZGDY	Zhangjiajie Hehua International Airport	Zhangjiajie (Yongding)	CN	29.10475	110.44279	L	张家界荷花国际机场
+CAN	ZGGG	Guangzhou Baiyun International Airport	Guangzhou (Huadu)	CN	23.39240	113.29900	L	广州白云国际机场
+CSX	ZGHA	Changsha Huanghua International Airport	Changsha (Changsha)	CN	28.18920	113.22000	L	长沙黄花国际机场
+KWL	ZGKL	Guilin Liangjiang International Airport	Guilin (Lingui)	CN	25.21983	110.03955	L	桂林两江国际机场
+NNG	ZGNN	Nanning Wuxu International Airport	Nanning (Jiangnan)	CN	22.59807	108.18192	L	南宁吴圩国际机场
+SWA	ZGOW	Jieyang Chaoshan International Airport	Jieyang (Rongcheng)	CN	23.55200	116.50330	L	揭阳潮汕机场
+ZUH	ZGSD	Zhuhai Jinwan Airport	Zhuhai (Jinwan)	CN	22.00640	113.37600	L	珠海机场
+SZX	ZGSZ	Shenzhen Bao'an International Airport	Shenzhen	CN	22.63947	113.80326	L	深圳宝安国际机场
+ZHA	ZGZJ	Zhanjiang Wuchuan International Airport	Zhanjiang	CN	21.48167	110.59028	L	湛江机场
+CGO	ZHCC	Zhengzhou Xinzheng International Airport	Zhengzhou	CN	34.52650	113.84916	L	郑州新郑国际机场
+EHU	ZHEC	Ezhou Huahu International Airport	Ezhou	CN	30.34118	115.03926	L	鄂州花湖机场
+WUH	ZHHH	Wuhan Tianhe International Airport	Wuhan (Huangpi)	CN	30.77480	114.21372	L	武汉天河国际机场
+LYA	ZHLY	Luoyang Beijiao Airport	Luoyang (Laocheng)	CN	34.74110	112.38800	L	洛阳北郊机场
+HAK	ZJHK	Haikou Meilan International Airport	Haikou (Meilan)	CN	19.93490	110.45900	L	海口美兰国际机场
+SYX	ZJSY	Sanya Phoenix International Airport	Sanya (Tianya)	CN	18.30290	109.41200	L	三亚凤凰国际机场
+FNJ	ZKPY	Pyongyang Sunan International Airport	Pyongyang	KP	39.22410	125.67000	L
+DNH	ZLDH	Dunhuang Mogao International Airport	Dunhuang	CN	40.16195	94.81283	L	敦煌机场
+INC	ZLIC	Yinchuan Hedong International Airport	Yinchuan	CN	38.32276	106.39321	L	银川河东机场
+JGN	ZLJQ	Jiayuguan International Airport	Jiayuguan	CN	39.85905	98.33934	L	嘉峪关机场
+LHW	ZLLL	Lanzhou Zhongchuan International Airport	Lanzhou (Yongdeng)	CN	36.51520	103.62000	L	兰州中川机场
+XNN	ZLXN	Xining Caojiabao International Airport	Haidong (Huzhu Tu Autonomous County)	CN	36.52775	102.04022	L	西宁曹家堡机场
+XIY	ZLXY	Xi'an Xianyang International Airport	Xi'an	CN	34.44221	108.76238	L	西安咸阳国际机场
+UBN	ZMCK	Ulaanbaatar Chinggis Khaan International Airport	Ulaanbaatar (Sergelen)	MN	47.64692	106.81983	L
+ULN	ZMUB	Buyant-Ukhaa International Airport	Ulaanbaatar	MN	47.84310	106.76700	L
+JHG	ZPJH	Xishuangbanna Gasa International Airport	Jinghong (Gasa)	CN	21.97465	100.76222	L	西双版纳嘎洒机场
+LJG	ZPLJ	Lijiang Sanyi International Airport	Lijiang	CN	26.67748	100.24494	L	丽江三义机场
+KMG	ZPPP	Kunming Changshui International Airport	Kunming	CN	25.11031	102.93674	L	昆明长水国际机场
+XMN	ZSAM	Xiamen Gaoqi International Airport	Xiamen	CN	24.54389	118.12745	L	厦门高崎国际机场
+KHN	ZSCN	Nanchang Changbei International Airport	Nanchang	CN	28.86482	115.90271	L	南昌昌北国际机场
+FOC	ZSFZ	Fuzhou Changle International Airport	Fuzhou (Changle)	CN	25.92925	119.67252	L	福州长乐国际机场
+HGH	ZSHC	Hangzhou Xiaoshan International Airport	Hangzhou	CN	30.23609	120.42887	L	杭州萧山国际机场
+TNA	ZSJN	Jinan Yaoqiang International Airport	Jinan (Licheng)	CN	36.85720	117.21600	L	济南遥墙国际机场
+LYG	ZSLG	Lianyungang Huaguoshan International Airport	Lianyungang	CN	34.41406	119.17899	L	连云港花果山国际机场
+NGB	ZSNB	Ningbo Lishe International Airport	Ningbo	CN	29.82670	121.46200	L	宁波栎社国际机场
+NKG	ZSNJ	Nanjing Lukou International Airport	Nanjing	CN	31.73503	118.86595	L	南京禄口国际机场
+HFE	ZSOF	Hefei Xinqiao International Airport	Hefei	CN	31.98779	116.97690	L	合肥新桥国际机场
+PVG	ZSPD	Shanghai Pudong International Airport	Shanghai (Pudong)	CN	31.14340	121.80500	L	上海浦东国际机场
+TAO	ZSQD	Qingdao Jiaodong International Airport	Qingdao (Jiaozhou)	CN	36.36195	120.08817	L	青岛胶东国际机场
+JJN	ZSQZ	Quanzhou Jinjiang International Airport	Quanzhou	CN	24.79585	118.58860	L	泉州晋江机场
+HIA	ZSSH	Huai'an Lianshui Airport	Huai'an	CN	33.79271	119.12666	L	淮安涟水机场
+SHA	ZSSS	Shanghai Hongqiao International Airport	Shanghai (Minhang)	CN	31.19810	121.33426	L	上海虹桥国际机场
+TXN	ZSTX	Huangshan Tunxi International Airport	Huangshan	CN	29.73330	118.25600	L	黄山屯溪机场
+WUX	ZSWX	Sunan Shuofang International Airport	Wuxi	CN	31.49695	120.43038	L	无锡硕放机场
+WNZ	ZSWZ	Wenzhou Longwan International Airport	Wenzhou (Longwan)	CN	27.91057	120.85346	L	温州龙湾国际机场
+YNZ	ZSYN	Yancheng Nanyang International Airport	Yancheng (Tinghu)	CN	33.42832	120.20545	L	盐城机场
+YNT	ZSYT	Yantai Penglai International Airport	Yantai	CN	37.65972	120.97812	L	烟台蓬莱国际机场
+YIW	ZSYW	Yiwu Airport	Yiwu/Jinhua	CN	29.34210	120.03116	L	义乌机场
+HSN	ZSZS	Zhoushan Putuoshan International Airport	Zhoushan	CN	29.93387	122.36231	L	舟山普陀山机场
+CKG	ZUCK	Chongqing Jiangbei International Airport	Chongqing	CN	29.71225	106.65189	L	重庆江北国际机场
+KWE	ZUGY	Guiyang Longdongbao International Airport	Guiyang (Nanming)	CN	26.54181	106.80402	L	贵阳龙洞堡国际机场
+LXA	ZULS	Lhasa Gonggar International Airport	Shannan (Gonggar)	CN	29.29800	90.91195	L	拉萨贡嘎国际机场
+RKZ	ZURK	Xigaze Peace Airport / Shigatse Air Base	Xigazê (Samzhubzê)	CN	29.35088	89.29916	L	日喀则和平机场
+TFU	ZUTF	Chengdu Tianfu International Airport	Chengdu (Jianyang)	CN	30.31252	104.44128	L	成都天府国际机场
+CTU	ZUUU	Chengdu Shuangliu International Airport	Chengdu (Shuangliu)	CN	30.55826	103.94597	L	成都双流国际机场
+KHG	ZWSH	Kashgar Laining International Airport	Kashgar	CN	39.54227	76.02023	L	喀什徕宁国际机场
+URC	ZWWW	Ürümqi Tianshan International Airport	Ürümqi	CN	43.91358	87.47937	L	乌鲁木齐天山国际机场
+CGQ	ZYCC	Changchun Longjia International Airport	Changchun	CN	43.99620	125.68500	L	长春龙嘉国际机场
+HRB	ZYHB	Harbin Taiping International Airport	Harbin	CN	45.62340	126.25000	L	哈尔滨太平国际机场
+NDG	ZYQQ	Qiqihar Sanjiazi Airport	Qiqihar	CN	47.22997	123.91418	L	齐齐哈尔三家子机场
+DLC	ZYTL	Dalian Zhoushuizi International Airport	Dalian (Ganjingzi)	CN	38.96572	121.53848	L	大连周水子国际机场
+SHE	ZYTX	Shenyang Taoxian International Airport	Shenyang	CN	41.63980	123.48367	L	沈阳桃仙国际机场
