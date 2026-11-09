@@ -61,41 +61,95 @@ async function loadElevationDEM(request: {url: string}, controller: {signal: Abo
 }
 maplibregl.addProtocol("elevation-dem",loadElevationDEM);
 
-export async function sampleTerrainProfile(coordinates: readonly MapCoordinate[], apiKey: string, signal: AbortSignal): Promise<TerrainProfilePoint[]> {
-  if (coordinates.length === 0) return [];
+interface TerrainTileTarget { coordinate: MapCoordinate; tileX: number; tileY: number; u: number; v: number }
+
+async function loadTerrainMetadata(apiKey: string, signal: AbortSignal): Promise<{tileUrl:string;zoom:number}> {
   const metadataUrl=`https://api.maptiler.com/tiles/terrain-rgb-v2/tiles.json?key=${encodeURIComponent(apiKey)}`;
   const metadataBytes=window.replaymod?new Uint8Array(await window.replaymod.loadMapResource(metadataUrl)):new Uint8Array(await (await fetch(metadataUrl,{signal})).arrayBuffer());
   signal.throwIfAborted();
   const metadata=JSON.parse(new TextDecoder().decode(metadataBytes)) as {tiles:string[];maxzoom?:number};
   if(!metadata.tiles[0])throw new Error("地形服务未返回图块地址");
+  return {tileUrl:metadata.tiles[0],zoom:Math.min(12,metadata.maxzoom??12)};
+}
+
+function terrainTileTarget(coordinate: MapCoordinate, zoom: number): TerrainTileTarget {
+  const longitude=((coordinate[0]+180)%360+360)%360-180;
+  const latitude=Math.max(-85.05112878,Math.min(85.05112878,coordinate[1]));
+  const scale=2**zoom;
+  const worldX=(longitude+180)/360*scale;
+  const worldY=(1-Math.asinh(Math.tan(latitude*Math.PI/180))/Math.PI)/2*scale;
+  return {coordinate,tileX:Math.floor(worldX),tileY:Math.floor(worldY),u:worldX-Math.floor(worldX),v:worldY-Math.floor(worldY)};
+}
+
+/**
+ * 采样每个坐标正下方的裸地高程（米，EGM96 海拔），与输入坐标逐一对齐。
+ * 同一 z12 图块只下载解码一次；点数量不受剖面图 500 点上限约束，供全量
+ * 打点筛查使用。
+ */
+export async function sampleGroundElevations(
+  coordinates: readonly MapCoordinate[],
+  apiKey: string,
+  signal: AbortSignal,
+  onTileProgress?: (completed: number, total: number) => void,
+): Promise<Float64Array> {
+  const elevations=new Float64Array(coordinates.length);
+  if (coordinates.length === 0) return elevations;
+  const {tileUrl,zoom}=await loadTerrainMetadata(apiKey,signal);
+  const targets=coordinates.map(coordinate=>terrainTileTarget(coordinate,zoom));
+  const groups=new Map<string,{url:string;points:Array<{index:number;u:number;v:number}>}>();
+  targets.forEach((target,index)=>{
+    const key=`${target.tileX}/${target.tileY}`;
+    let group=groups.get(key);
+    if(!group){group={url:tileUrl.replace("{z}",String(zoom)).replace("{x}",String(target.tileX)).replace("{y}",String(target.tileY)),points:[]};groups.set(key,group);}
+    group.points.push({index,u:target.u,v:target.v});
+  });
+  const unique=[...groups.values()];
+  let completedTiles=0;
+  onTileProgress?.(0,unique.length);
+  // 先完成全部点的图块规划与去重，再小批量预取。每张图块解码后
+  // 立即分发给其覆盖的所有点并释放像素，避免数千个 bitmap 同时驻留。
+  for(let start=0;start<unique.length;start+=16){
+    signal.throwIfAborted();
+    const batch=unique.slice(start,start+16);
+    let bytesList: Uint8Array[];
+    if(window.replaymod){
+      try{
+        bytesList=await window.replaymod.loadMapResources(batch.map(group=>group.url));
+      }catch(error){
+        // 开发期间 renderer/preload 会热更新，老主进程可能尚未注册批量 IPC。
+        // 此时按当前小批次调用旧接口，仍不会操爆 256 项全局队列。
+        if(!(error instanceof Error) || !error.message.includes("No handler registered"))throw error;
+        bytesList=await Promise.all(batch.map(group=>window.replaymod!.loadMapResource(group.url)));
+      }
+    }else{
+      bytesList=await Promise.all(batch.map(async group=>new Uint8Array(await (await fetch(group.url,{signal})).arrayBuffer())));
+    }
+    for(let offset=0;offset<batch.length;offset+=1){
+      signal.throwIfAborted();
+      const bitmap=await createImageBitmap(new Blob([new Uint8Array(bytesList[offset])]));
+      try{
+        const canvas=document.createElement("canvas");canvas.width=bitmap.width;canvas.height=bitmap.height;
+        const context=canvas.getContext("2d");if(!context)throw new Error("无法读取海拔图块");
+        context.drawImage(bitmap,0,0);const data=context.getImageData(0,0,canvas.width,canvas.height).data;
+        for(const point of batch[offset].points){
+          const x=Math.min(canvas.width-1,Math.floor(point.u*canvas.width)),y=Math.min(canvas.height-1,Math.floor(point.v*canvas.height)),pixel=(y*canvas.width+x)*4;
+          elevations[point.index]=-10000+(data[pixel]*65536+data[pixel+1]*256+data[pixel+2])*0.1;
+        }
+      }finally{bitmap.close();}
+      completedTiles+=1;
+      onTileProgress?.(completedTiles,unique.length);
+    }
+  }
+  return elevations;
+}
+
+export async function sampleTerrainProfile(coordinates: readonly MapCoordinate[], apiKey: string, signal: AbortSignal): Promise<TerrainProfilePoint[]> {
+  if (coordinates.length === 0) return [];
   const sampleCount = Math.min(500, coordinates.length);
   const indexes = Array.from({length:sampleCount},(_,index)=>Math.round(index*(coordinates.length-1)/Math.max(1,sampleCount-1)));
-  const zoom = Math.min(12,metadata.maxzoom??12), scale = 2 ** zoom;
-  const samples = indexes.map(index => {
-    const coordinate=coordinates[index],longitude=((coordinate[0]+180)%360+360)%360-180,latitude=Math.max(-85.05112878,Math.min(85.05112878,coordinate[1]));
-    const worldX=(longitude+180)/360*scale;
-    const worldY=(1-Math.asinh(Math.tan(latitude*Math.PI/180))/Math.PI)/2*scale;
-    return {coordinate,tileX:Math.floor(worldX),tileY:Math.floor(worldY),u:worldX-Math.floor(worldX),v:worldY-Math.floor(worldY)};
-  });
-  const tiles=new Map<string,Promise<{width:number;height:number;data:Uint8ClampedArray}>>();
-  const loadTile=(x:number,y:number)=>{
-    const key=`${x}/${y}`;
-    let tile=tiles.get(key);
-    if(!tile){tile=(async()=>{
-      const url=metadata.tiles[0].replace("{z}",String(zoom)).replace("{x}",String(x)).replace("{y}",String(y));
-      const bytes=window.replaymod?new Uint8Array(await window.replaymod.loadMapResource(url)):new Uint8Array(await (await fetch(url,{signal})).arrayBuffer());
-      signal.throwIfAborted();
-      const bitmap=await createImageBitmap(new Blob([bytes]));
-      try{const canvas=document.createElement("canvas");canvas.width=bitmap.width;canvas.height=bitmap.height;const context=canvas.getContext("2d");if(!context)throw new Error("无法读取海拔图块");context.drawImage(bitmap,0,0);return {width:canvas.width,height:canvas.height,data:context.getImageData(0,0,canvas.width,canvas.height).data};}finally{bitmap.close();}
-    })();tiles.set(key,tile);}
-    return tile;
-  };
-  return Promise.all(samples.map(async sample=>{
-    const tile=await loadTile(sample.tileX,sample.tileY);signal.throwIfAborted();
-    const x=Math.min(tile.width-1,Math.floor(sample.u*tile.width)),y=Math.min(tile.height-1,Math.floor(sample.v*tile.height)),offset=(y*tile.width+x)*4;
-    const elevation=-10000+(tile.data[offset]*65536+tile.data[offset+1]*256+tile.data[offset+2])*0.1;
-    return [sample.coordinate[0],sample.coordinate[1],elevation];
-  }));
+  const selected = indexes.map(index=>coordinates[index]);
+  const elevations = await sampleGroundElevations(selected,apiKey,signal);
+  return indexes.map((index,sampleIndex)=>[coordinates[index][0],coordinates[index][1],elevations[sampleIndex]]);
 }
 
 export function elevationRamp(range: ElevationRange, ocean = false): ExpressionSpecification {

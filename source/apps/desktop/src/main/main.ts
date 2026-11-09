@@ -7,6 +7,7 @@ import { access, readdir, readFile, rename, stat, writeFile } from "node:fs/prom
 import { app, BrowserWindow, dialog, ipcMain, shell, net, Menu } from "electron";
 import { installScrollInput } from "./scrollInput";
 import { MENU_ACTION_CHANNEL, MENU_STATE_CHANNEL, type MenuAction, type MenuState } from "../shared/menu";
+import { buildAirportNameZhQueryUrl, pickChineseNameFromCsv } from "../shared/airportNameZh";
 import path from "node:path";
 import { parse } from "csv-parse";
 import type {
@@ -30,6 +31,8 @@ declare const MAIN_WINDOW_VITE_NAME: string;
 
 const OPEN_LOCATION_CSV_CHANNEL = "data:open-location-csv";
 const LOAD_DEFAULT_LOCATION_CSV_CHANNEL = "data:load-default-location-csv";
+const AIRPORTS_URL = "https://davidmegginson.github.io/ourairports-data/airports.csv";
+const AIRPORTS_CACHE_KEY = "airports-ourairports-v1";
 const OPEN_MEDIA_CHANNEL = "media:open";
 const TRANSCRIBE_MEDIA_CHANNEL = "media:transcribe";
 const SAVE_SUBTITLES_CHANNEL = "media:save-subtitles";
@@ -62,21 +65,68 @@ ipcMain.on("workspace:save", (event, state: Record<string, unknown>) => {
 });
 ipcMain.handle("cache:open", () => shell.openPath(storage.paths.cache));
 const mapRequests = new Map<string, Promise<Uint8Array>>();
-ipcMain.handle("cache:map", async (_event, rawUrl: string) => {
+// All MapLibre instances share Chromium's network service. Bound downloads
+// globally, including body consumption, rather than per map or per hostname.
+let activeMapDownloads = 0;
+const mapDownloadQueue: Array<() => void> = [];
+async function downloadMap(url: string): Promise<Uint8Array> {
+  if (activeMapDownloads >= 8) {
+    if (mapDownloadQueue.length >= 256) throw new Error("地图请求繁忙，请稍后重试");
+    await new Promise<void>(resolve => mapDownloadQueue.push(resolve));
+  } else {
+    activeMapDownloads++;
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
+  try {
+    const response = await net.fetch(url, { signal: controller.signal });
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new Error(`地图请求失败 (${response.status})`);
+    }
+    return new Uint8Array(await response.arrayBuffer());
+  } finally {
+    clearTimeout(timeout);
+    const next = mapDownloadQueue.shift();
+    if (next) next(); // Transfer this slot directly to the next waiter.
+    else activeMapDownloads--;
+  }
+}
+async function downloadMapDirect(url: string): Promise<Uint8Array> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
+  try {
+    const response = await net.fetch(url, { signal: controller.signal });
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new Error(`地图请求失败 (${response.status})`);
+    }
+    return new Uint8Array(await response.arrayBuffer());
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+const validatedMapUrl = (rawUrl: string): URL => {
   const url = new URL(rawUrl);
   if (url.protocol !== "https:" || url.hostname !== "api.maptiler.com" || url.port || url.username || url.password) {
     throw new Error("不支持的地图资源地址");
   }
+  return url;
+};
+
+const loadMapResource = async (rawUrl: string, direct = false): Promise<Uint8Array> => {
+  const url = validatedMapUrl(rawUrl);
   const key = createHash("sha256").update(url.href).digest("hex");
   let request = mapRequests.get(key);
   if (!request) {
     request = (async () => {
       const saved = await storage.maps.read<{ at: number; data: Uint8Array }>(key);
-      if (saved && Date.now() - saved.at < 7 * 86400_000) return saved.data;
+      // 飞行识别的批处理图块是可重用的离线计算输入：只要磁盘缓存存在就不重拉。
+      // 交互地图资源仍保留 7 天刷新周期。
+      if (saved && (direct || Date.now() - saved.at < 7 * 86400_000)) return saved.data;
       try {
-        const response = await net.fetch(url.href);
-        if (!response.ok) throw new Error(`地图请求失败 (${response.status})`);
-        const data = new Uint8Array(await response.arrayBuffer());
+        const data = await (direct ? downloadMapDirect(url.href) : downloadMap(url.href));
         if (data.byteLength <= 32 * 1024 * 1024) {
           await storage.maps.write(key, { at: Date.now(), data }).catch(console.warn);
         }
@@ -90,6 +140,67 @@ ipcMain.handle("cache:map", async (_event, rawUrl: string) => {
     void request.finally(() => mapRequests.delete(key)).catch(() => {});
   }
   return request;
+};
+
+ipcMain.handle("cache:map", async (_event, rawUrl: string) => loadMapResource(rawUrl));
+ipcMain.handle("cache:map-batch", async (_event, rawUrls: readonly string[]) => {
+  if (!Array.isArray(rawUrls) || rawUrls.length > 64 || rawUrls.some(url => typeof url !== "string")) {
+    throw new Error("地形图块批次无效");
+  }
+  const unique = [...new Set(rawUrls)];
+  const results = new Map<string, Uint8Array>();
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(4, unique.length) }, async () => {
+    while (cursor < unique.length) {
+      const url = unique[cursor++];
+      results.set(url, await loadMapResource(url, true));
+    }
+  });
+  await Promise.all(workers);
+  return rawUrls.map(url => results.get(url)!);
+});
+
+// 固定拉取 OurAirports 全量机场 CSV（Public Domain）。成功后写入地图磁盘
+// 缓存，离线或请求失败时回退缓存；force 用于用户手动更新。内置临时表在
+// 渲染进程，这里只负责在线全量数据。
+ipcMain.handle("data:airports", async (_event, force = false) => {
+  const saved = await storage.maps.read<{ at: number; data: Uint8Array }>(AIRPORTS_CACHE_KEY);
+  if (saved && !force && Date.now() - saved.at < 30 * 86400_000) {
+    return new TextDecoder().decode(saved.data);
+  }
+  try {
+    const response = await net.fetch(AIRPORTS_URL);
+    if (!response.ok) throw new Error(`机场数据请求失败 (${response.status})`);
+    const data = new Uint8Array(await response.arrayBuffer());
+    if (data.byteLength <= 32 * 1024 * 1024) {
+      await storage.maps.write(AIRPORTS_CACHE_KEY, { at: Date.now(), data }).catch(console.warn);
+    }
+    return new TextDecoder().decode(data);
+  } catch (error) {
+    if (saved) return new TextDecoder().decode(saved.data);
+    throw error;
+  }
+});
+
+// 随用随拉单个机场的中文名（Wikidata，CC0）。仅当界面显示到缺少内置中文名
+// 的机场时才请求，一个 ICAO 一条缓存，绝不批量拉取。查无结果做短期负缓存，
+// 网络错误不缓存并抛出，由界面静默回退英文名。
+const AIRPORT_ZH_TTL_MS = 30 * 86400_000;
+const AIRPORT_ZH_NEGATIVE_TTL_MS = 7 * 86400_000;
+ipcMain.handle("data:airport-name-zh", async (_event, icao: string) => {
+  const key = `airport-zh:${icao}`;
+  const saved = await storage.maps.read<{ at: number; name: string | null }>(key).catch(() => null);
+  if (saved) {
+    const ttl = saved.name === null ? AIRPORT_ZH_NEGATIVE_TTL_MS : AIRPORT_ZH_TTL_MS;
+    if (Date.now() - saved.at < ttl) return saved.name;
+  }
+  const response = await net.fetch(buildAirportNameZhQueryUrl(icao), {
+    headers: { Accept: "text/csv", "User-Agent": "replaymod-reality" },
+  });
+  if (!response.ok) throw new Error(`机场中文名请求失败 (${response.status})`);
+  const name = pickChineseNameFromCsv(await response.text());
+  await storage.maps.write(key, { at: Date.now(), name }).catch(console.warn);
+  return name;
 });
 
 const openedMediaPaths = new Set<string>();
@@ -159,11 +270,11 @@ const readLocationCsv = async (
   mainFilePath: string,
   photoFilePath: string | null = null,
 ): Promise<PointDataset> => {
-  const signature = await Promise.all([mainFilePath, photoFilePath].map(async file => {
+  const signature = ["point-parser-v2-accuracy-100m", ...await Promise.all([mainFilePath, photoFilePath].map(async file => {
     if (!file) return null;
     const info = await stat(file);
     return [file, info.size, info.mtimeMs];
-  }));
+  }))];
   const key = createHash("sha256").update(JSON.stringify(signature)).digest("hex");
   const saved = await storage.snapshots.read<PointDataset>(key);
   if (saved) {
@@ -197,6 +308,8 @@ const readLocationCsv = async (
       const latitude = Number(record.latitude);
       const stepType = Number(record.stepType);
       const timestamp = Number(record.dataTime) * 1000;
+      const rawAccuracy = record.accuracy?.trim() ?? "";
+      const accuracy = Number(rawAccuracy);
 
       if (
         !Number.isFinite(longitude) ||
@@ -208,6 +321,12 @@ const readLocationCsv = async (
         record.dataTime.trim() === "" ||
         !Number.isFinite(timestamp)
       ) {
+        skippedRowCount += 1;
+        continue;
+      }
+      // accuracy 是水平定位误差（米）；大于 100 m 的点不进入显示与识别时间线。
+      // 缺失、0 或负值是不同数据源的“未知”哨兵值，不因此删除。
+      if (rawAccuracy !== "" && Number.isFinite(accuracy) && accuracy > 100) {
         skippedRowCount += 1;
         continue;
       }

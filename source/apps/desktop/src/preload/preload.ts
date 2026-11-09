@@ -29,6 +29,7 @@ export interface DesktopBridge {
   openCacheDirectory(): Promise<string>;
   loadCachedMedia(): Promise<MediaSource | null>;
   loadMapResource(url: string): Promise<Uint8Array>;
+  loadMapResources(urls: readonly string[]): Promise<Uint8Array[]>;
   loadAnnotations(): Promise<{name:string; content:string} | null>;
   openAnnotations(): Promise<{name:string; content:string} | null>;
   saveAnnotations(content: string): Promise<void>;
@@ -37,6 +38,8 @@ export interface DesktopBridge {
   readonly appVersion: string;
   loadDefaultLocationCsv(): Promise<PointDataset | null>;
   openLocationCsv(): Promise<PointDataset | null>;
+  loadAirports(force?: boolean): Promise<string>;
+  loadAirportNameZh(icao: string): Promise<string | null>;
   openMedia(): Promise<MediaSource | null>;
   transcribeMedia(sourcePath: string): Promise<SubtitleTrack>;
   saveSubtitles(sourcePath: string, track: SubtitleTrack): Promise<SavedSubtitleTrack>;
@@ -64,6 +67,7 @@ const bridge: DesktopBridge = Object.freeze({
   openCacheDirectory: () => ipcRenderer.invoke("cache:open"),
   loadCachedMedia: () => ipcRenderer.invoke("cache:media"),
   loadMapResource: (url: string) => ipcRenderer.invoke("cache:map", url),
+  loadMapResources: (urls: readonly string[]) => ipcRenderer.invoke("cache:map-batch", urls),
   loadAnnotations: () => ipcRenderer.invoke("annotations:load"),
   openAnnotations: () => ipcRenderer.invoke("annotations:open"),
   saveAnnotations: (content: string) => ipcRenderer.invoke("annotations:save", content),
@@ -76,6 +80,10 @@ const bridge: DesktopBridge = Object.freeze({
     ) as Promise<PointDataset | null>,
   openLocationCsv: () =>
     ipcRenderer.invoke(OPEN_LOCATION_CSV_CHANNEL) as Promise<PointDataset | null>,
+  loadAirports: (force = false) =>
+    ipcRenderer.invoke("data:airports", force) as Promise<string>,
+  loadAirportNameZh: (icao: string) =>
+    ipcRenderer.invoke("data:airport-name-zh", icao) as Promise<string | null>,
   openMedia: () => ipcRenderer.invoke(OPEN_MEDIA_CHANNEL) as Promise<MediaSource | null>,
   transcribeMedia: (sourcePath: string) =>
     ipcRenderer.invoke(TRANSCRIBE_MEDIA_CHANNEL, sourcePath) as Promise<SubtitleTrack>,
