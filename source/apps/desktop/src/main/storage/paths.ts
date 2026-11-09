@@ -8,6 +8,7 @@ export function storagePaths(platform: NodeJS.Platform, home: string, appData: s
   return Object.freeze({
     data, cache,
     config: path.join(data, "config.json"),
+    archive: path.join(data, "user-archive.json"),
     state: path.join(data, "state-v1"),
     annotations: path.join(data, "annotations.json"),
     snapshots: path.join(cache, "snapshots-v1"),

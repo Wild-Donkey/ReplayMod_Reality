@@ -3,6 +3,7 @@ import { storagePaths } from "./paths";
 import { LocalCache } from "./snapshots";
 import { SettingsStore } from "./settings";
 import { upgradeStorage } from "./upgrade";
+import { UserArchiveStore } from "./archive";
 
 // One owner for every application storage path. No build mode, URL or cwd input.
 export class AppStorage {
@@ -11,6 +12,7 @@ export class AppStorage {
   readonly state: LocalCache;
   readonly snapshots: LocalCache;
   readonly maps: LocalCache;
+  readonly archive: UserArchiveStore;
 
   constructor(platform: NodeJS.Platform, home: string, appData: string, env: NodeJS.ProcessEnv) {
     this.paths = storagePaths(platform, home, appData, env);
@@ -20,6 +22,7 @@ export class AppStorage {
     this.state = new LocalCache(this.paths.state);
     this.snapshots = new LocalCache(this.paths.snapshots);
     this.maps = new LocalCache(this.paths.maps);
+    this.archive = new UserArchiveStore(this.paths.archive);
     upgradeStorage(this.paths.data, this.paths.config, this.state, this.settings);
   }
 }

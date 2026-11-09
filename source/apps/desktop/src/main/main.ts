@@ -8,6 +8,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell, net, Menu } from "electron"
 import { installScrollInput } from "./scrollInput";
 import { MENU_ACTION_CHANNEL, MENU_STATE_CHANNEL, type MenuAction, type MenuState } from "../shared/menu";
 import { buildAirportNameZhQueryUrl, pickChineseNameFromCsv } from "../shared/airportNameZh";
+import { defaultUserArchive, type UserArchive } from "../shared/userArchive";
 import path from "node:path";
 import { parse } from "csv-parse";
 import type {
@@ -45,21 +46,33 @@ app.setPath("userData", storage.paths.data);
 app.setPath("sessionData", storage.paths.session);
 app.commandLine.appendSwitch("disk-cache-dir", storage.paths.http);
 app.commandLine.appendSwitch("disk-cache-size", String(512 * 1024 * 1024));
-let workspace = storage.state.readSync<Record<string, unknown>>("workspace") ?? {};
+const legacySettings = storage.settings.read();
+let userArchive: UserArchive = storage.archive.read() ?? {
+  ...defaultUserArchive(legacySettings),
+  workspace: storage.state.readSync<Record<string, unknown>>("workspace") ?? {},
+  lastDatasetSource: storage.state.readSync("last-dataset-source") ?? undefined,
+  lastMedia: storage.state.readSync("last-media") ?? undefined,
+  migrations: {legacyImportedAt:new Date().toISOString()},
+};
+if (!storage.archive.read()) storage.archive.write(userArchive);
+const updateUserArchive = (change: (current: UserArchive) => UserArchive) => {
+  userArchive = change(userArchive);
+  storage.archive.write(userArchive);
+};
 ipcMain.on("storage:bootstrap", event => {
-  event.returnValue = { state: workspace, directory: storage.paths.cache, settings: storage.settings.read() };
+  event.returnValue = { state: userArchive.workspace, directory: storage.paths.cache, settings: userArchive.settings };
 });
 ipcMain.on("settings:save", (event, value: unknown) => {
   try {
-    storage.settings.save(value);
+    const settings=storage.settings.validate(value);
+    updateUserArchive(current=>({...current,settings}));
     event.returnValue = null;
   } catch { event.returnValue = "配置保存失败，请检查配置格式及应用数据目录权限。"; }
 });
 ipcMain.on("workspace:save", (event, state: Record<string, unknown>) => {
   try {
     if (!state || typeof state !== "object" || Array.isArray(state)) throw new Error("缓存状态无效");
-    storage.state.writeSync("workspace", state);
-    workspace = state;
+    updateUserArchive(current=>({...current,workspace:state}));
     event.returnValue = null;
   } catch (error) { event.returnValue = String(error); }
 });
@@ -255,10 +268,9 @@ interface CachedDatasetSource {
 const rememberDatasetSource = async (
   mainFilePath: string,
   photoFilePath: string | null,
-) => storage.state.write("last-dataset-source", {
-  mainFilePath,
-  photoFilePath,
-} satisfies CachedDatasetSource).catch(console.warn);
+) => {
+  updateUserArchive(current=>({...current,lastDatasetSource:{mainFilePath,photoFilePath}}));
+};
 
 const isPhotoDataFile = (filePath: string) =>
   path.basename(filePath).toLowerCase().includes("photo");
@@ -492,7 +504,7 @@ const findLatestRawDataCsvPair = async (): Promise<CsvPair | null> => {
 let defaultDatasetPromise: Promise<PointDataset | null> | null = null;
 
 const findDefaultCsvPair = async (): Promise<CsvPair | null> => {
-  const source = await storage.state.read<CachedDatasetSource>("last-dataset-source");
+  const source = userArchive.lastDatasetSource;
 
   if (source?.mainFilePath) {
     try {
@@ -571,7 +583,7 @@ ipcMain.handle(
 );
 
 ipcMain.handle("cache:media", async () => {
-  const source = await storage.state.read<MediaSource>("last-media");
+  const source = userArchive.lastMedia as MediaSource | undefined;
   if (!source) return null;
   try { await access(source.sourcePath); } catch { return null; }
   openedMediaPaths.add(source.sourcePath);
@@ -589,7 +601,7 @@ ipcMain.handle(OPEN_MEDIA_CHANNEL, async (): Promise<MediaSource | null> => {
   if (result.canceled || !selectedFilePath) return null;
   openedMediaPaths.add(selectedFilePath);
   const source = await probeMediaFile(selectedFilePath);
-  await storage.state.write("last-media", source).catch(console.warn);
+  updateUserArchive(current=>({...current,lastMedia:source}));
   return source;
 });
 
@@ -634,9 +646,9 @@ ipcMain.handle("annotations:load", async () => {
 
   if (sourceContent !== null) {
     const signature = createHash("sha256").update(sourceContent).digest("hex");
-    const previousSignature = storage.state.readSync<string>("annotations-source-signature");
+    const previousSignature = userArchive.migrations?.annotationsSourceSignature;
     if (signature !== previousSignature) {
-      storage.state.writeSync("annotations-source-signature", signature);
+      updateUserArchive(current=>({...current,migrations:{...current.migrations,annotationsSourceSignature:signature}}));
       return { name: "摩旅/自驾", content: sourceContent };
     }
   }

@@ -20,7 +20,7 @@ export class SettingsStore {
     renameSync(`${this.file}.tmp`, this.file);
   }
 
-  private validate(value: unknown): AppSettings {
+  validate(value: unknown): AppSettings {
     if (!value || typeof value !== "object" || !("maptilerApiKey" in value) ||
         typeof value.maptilerApiKey !== "string" || value.maptilerApiKey.length > 4096) {
       throw new Error("应用配置格式无效");
