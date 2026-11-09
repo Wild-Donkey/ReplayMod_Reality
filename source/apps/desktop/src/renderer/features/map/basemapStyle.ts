@@ -2,16 +2,17 @@ import type { ExpressionSpecification, LayerSpecification, Map } from "maplibre-
 
 // Public cartography is achromatic. Colour is reserved for user-owned data.
 export const BUILDING_HEIGHT_SCALE = 10;
-export const ROAD_OPACITY_SCALE = 0.52;
+export const ROAD_OPACITY_SCALE = 0.36;
 
 type RoadLevel = 1 | 2 | 3 | 4 | 5;
 
+// L1–L3 share a gray value; widths carry their hierarchy. L3–L5 step down in brightness.
 const ROAD_APPEARANCE: Record<RoadLevel, {opacity: number; width: number; compositeColor: string}> = {
-  1: {opacity: 0.80, width: 7.0, compositeColor: "#ffffff"},
-  2: {opacity: 0.62, width: 5.0, compositeColor: "#e8e8e8"},
-  3: {opacity: 0.44, width: 2.6, compositeColor: "#c6c6c6"},
-  4: {opacity: 0.27, width: 1.2, compositeColor: "#929292"},
-  5: {opacity: 0.14, width: 0.55, compositeColor: "#686868"},
+  1: {opacity: 0.65, width: 7.0, compositeColor: "#b8b8b8"},
+  2: {opacity: 0.65, width: 5.0, compositeColor: "#b8b8b8"},
+  3: {opacity: 0.65, width: 2.6, compositeColor: "#b8b8b8"},
+  4: {opacity: 0.40, width: 1.2, compositeColor: "#858585"},
+  5: {opacity: 0.22, width: 0.55, compositeColor: "#5c5c5c"},
 };
 
 const roadLevel = (layer: LayerSpecification): RoadLevel => {
@@ -70,6 +71,7 @@ export function addCompositeRoadLayers(map: Map) {
     [2, ["primary"]],
     [3, ["secondary", "tertiary"]],
     [4, ["minor", "residential", "living_street"]],
+    [5, ["service", "path", "track", "pedestrian", "cycleway", "footway"]],
   ];
   for (const [level, classes] of groups) {
     const appearance = ROAD_APPEARANCE[level];
@@ -99,7 +101,7 @@ export function hideRoadLayers(map: Map) {
   }
 }
 
-const buildingHeight: ExpressionSpecification = [
+export const buildingHeight: ExpressionSpecification = [
   "max", 3,
   ["to-number", ["coalesce", ["get", "height"], ["get", "render_height"],
     ["*",3,["to-number",["coalesce",["get","levels"],["get","building:levels"],1]]],3]],
@@ -121,6 +123,14 @@ export const buildingOpacity: ExpressionSpecification = [
   9000, 0.82,
 ];
 
+// Store the final opacity in the red channel of an opaque mask. Overlapping
+// polygons replace the value instead of blending white into the map again.
+export const buildingMaskPaint = {
+  "fill-color": ["rgba", ["*", 255, buildingOpacity], 0, 0, 1] as ExpressionSpecification,
+  "fill-opacity": 1,
+  "fill-antialias": false,
+} as const;
+
 export function addElevationBuildings(map: Map) {
   const layers = map.getStyle().layers ?? [];
   const candidates = layers.filter(layer =>
@@ -140,11 +150,7 @@ export function addElevationBuildings(map: Map) {
     // provider style's minzoom/filter creates the exact one-level hole where
     // buildings disappear even though the source still has usable geometry.
     minzoom: 7,
-    paint: {
-      "fill-color": "#ffffff",
-      "fill-opacity": buildingOpacity,
-      "fill-antialias": false,
-    },
+    paint: buildingMaskPaint,
   }, firstSymbol);
   return true;
 }

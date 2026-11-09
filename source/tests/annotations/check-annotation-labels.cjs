@@ -53,6 +53,18 @@ console.log('Label layout passed: separated, overlap, long names, vertical spaci
 const React = require('react');
 const {renderToStaticMarkup} = require('react-dom/server');
 let previousGroups = [];
+const visibilityHook = {exports: {}};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('apps/desktop/src/renderer/render-engine/useReplayVisibility.ts', 'utf8'), {
+  compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022},
+}).outputText, {exports: visibilityHook.exports, require});
+const annotationsHook = {exports: {}}, geometryModule = {exports: {}};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('apps/desktop/src/renderer/render-engine/useReplayAnnotations.ts', 'utf8'), {
+  compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022},
+}).outputText, {exports: annotationsHook.exports, require});
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('apps/desktop/src/renderer/render-engine/AnnotationGeometry.ts', 'utf8'), {
+  compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022},
+}).outputText, {exports: geometryModule.exports, require: name => name === '../features/annotations/annotations' ? {} : require(name)});
+const scene = {current: {visibility: {annotations: true}}, subscribe: () => () => {}};
 const labelComponent = {exports: {}};
 const componentCode = ts.transpileModule(fs.readFileSync('apps/desktop/src/renderer/features/annotations/AnnotationLabels.tsx', 'utf8'), {
   compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX},
@@ -60,15 +72,25 @@ const componentCode = ts.transpileModule(fs.readFileSync('apps/desktop/src/rende
 vm.runInNewContext(componentCode, {exports: labelComponent.exports, require: name => {
   if (name === 'react') return {...React, useState: () => [previousGroups, () => {}], useEffect: () => {}};
   if (name === './annotation-label-layout') return mod.exports;
+  if (name === '../../render-engine/useReplayVisibility') return visibilityHook.exports;
+  if (name === '../../render-engine/useReplayAnnotations') return annotationsHook.exports;
+  if (name === '../../render-engine/AnnotationGeometry') return geometryModule.exports;
   if (name === 'maplibre-gl') return {};
   return require(name);
 }});
-const renderLabels = points => renderToStaticMarkup(React.createElement(labelComponent.exports.AnnotationLabels, {
-  map: {}, points, selectedId: null, drawing: false, onSelect: () => {},
-}));
+const renderLabels = points => {
+  scene.current = {...scene.current, annotationGeometry: {type:'FeatureCollection',features:points.map(point=>({type:'Feature',id:point.id,properties:{id:point.id,name:point.name,color:point.color,selected:false},geometry:{type:'Point',coordinates:point.coordinates[0]}}))}};
+  return renderToStaticMarkup(React.createElement(labelComponent.exports.AnnotationLabels, {
+    scene, map: {}, drawing: false, onSelect: () => {},
+  }));
+};
 const visiblePoint = {id:'a', name:'保留地点', coordinates:[[0,0]], color:'#ffffff'};
 previousGroups = layoutAnnotationLabels([point('a',0,0)], measure);
 assert.match(renderLabels([visiblePoint]), /保留地点/);
+scene.current = {visibility: {annotations: false}};
+assert.equal(renderLabels([visiblePoint]), '', 'Scene visibility hides labels before layout effects run');
+scene.current = {visibility: {annotations: true}};
+assert.match(renderLabels([visiblePoint]), /保留地点/, 'Scene visibility restores labels');
 assert.doesNotThrow(() => renderLabels([]));
 assert(!renderLabels([]).includes('annotation-map-label'));
 previousGroups = overlap;

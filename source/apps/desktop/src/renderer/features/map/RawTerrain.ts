@@ -50,6 +50,12 @@ export class RawTerrain {
   private lastFrame = 0;
   private animationFrame: number | null = null;
   private disposed = false;
+  private visible = true;
+  setVisible(visible: boolean) {
+    this.visible = visible;
+    this.canvas.style.visibility = visible ? "visible" : "hidden";
+    if (visible) this.map.triggerRepaint();
+  }
   private failed = false;
   private outputMode = "";
   private stopDisplay = () => {};
@@ -195,7 +201,7 @@ export class RawTerrain {
     compose.setPipeline(this.composePipeline); compose.setBindGroup(0,this.composeBinding); compose.draw(3); compose.end();
   }
   private render(matrix: number[]) {
-    if (this.disposed || this.failed) return;
+    if (this.disposed || this.failed || !this.visible) return;
     try {
       this.resize();
       const now = performance.now();

@@ -14,15 +14,20 @@ const localizedName = (field: string): ExpressionSpecification => field === "nam
   ? ["get", "name"]
   : ["coalesce", ["get", field], ["get", "name"]];
 
-const localizeExpression = (value: unknown, field: string): unknown => {
+const taiwanLabel = (name: ExpressionSpecification): ExpressionSpecification =>
+  ["case", ["all", ["==", ["get", "class"], "country"], ["==", ["get", "iso_a2"], "TW"]], "中国台湾", name];
+
+const localizeExpression = (value: unknown, field: string, overrideTaiwan: boolean): unknown => {
   if (typeof value === "string") {
+    if (overrideTaiwan && /^\{name(?::[^}]+)?\}$/.test(value)) return taiwanLabel(["get", field]);
     return value.replace(/\{name(?::[^}]+)?\}/g, `{${field}}`);
   }
   if (!Array.isArray(value)) return value;
   if (value[0] === "get" && typeof value[1] === "string" && value[1].startsWith("name")) {
-    return localizedName(field);
+    const name = localizedName(field);
+    return overrideTaiwan ? taiwanLabel(name) : name;
   }
-  return value.map(item => localizeExpression(item, field));
+  return value.map(item => localizeExpression(item, field, overrideTaiwan));
 };
 
 export function applyMapLanguage(map: MapLibreMap, language: MapLanguage) {
@@ -31,6 +36,7 @@ export function applyMapLanguage(map: MapLibreMap, language: MapLanguage) {
     if (layer.type !== "symbol" || !layer.layout?.["text-field"]) continue;
     const textField = layer.layout["text-field"];
     if (!JSON.stringify(textField).includes("name")) continue;
-    map.setLayoutProperty(layer.id, "text-field", localizeExpression(textField, field));
+    const overrideTaiwan = layer["source-layer"] === "place" && field === "name:zh";
+    map.setLayoutProperty(layer.id, "text-field", localizeExpression(textField, field, overrideTaiwan));
   }
 }

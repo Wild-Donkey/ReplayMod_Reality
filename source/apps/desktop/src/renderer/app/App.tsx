@@ -1,6 +1,6 @@
 import { HDRSettings } from "../features/settings/HDRSettings";
 import { defaultTimelineMetrics, type TimelineMetricsSettings } from "../features/timeline/metrics";
-import { useCachedState, readCached, cacheError } from "../shared/cache";
+import { useCachedState, readCached, writeCached, cacheError } from "../shared/cache";
 import type { AnnotationProject, MapCoordinate } from "../../../../../packages/data/src";
 import type { TerrainProfilePoint } from "../features/map/elevation";
 import type { AppSettings, MapLanguage } from "../../shared/settings";
@@ -14,10 +14,17 @@ import { MapTokenSetup, MapViewport } from "../features/map/MapViewport";
 import { OverlayExport } from "../features/export/OverlayExport";
 import { SubtitleEditor } from "../features/subtitles/SubtitleEditor";
 import { FlightPanel } from "../features/flights/FlightPanel";
+import { defaultLayerVisibility, renderLayerLabels, type RenderLayerId } from "../render-engine/LayerVisibility";
 import {
   Timeline,
   type TimelineFocusRequest,
 } from "../features/timeline/Timeline";
+import { ReplayScene } from "../render-engine/ReplayScene";
+import { ReplayPlayback } from "../render-engine/ReplayPlayback";
+import { compileAnnotationGeometry } from "../render-engine/AnnotationGeometry";
+import { ReplayRenderSurface } from "../render-engine/ReplayRenderSurface";
+import { TrajectoryBuffer } from "../render-engine/buffers/TrajectoryBuffer";
+import type { FlightRouteSegment } from "../features/map/flights";
 
 type WorkspaceTab = "annotations" | "sources" | "flights" | "export" | "settings";
 const tabs: {id: WorkspaceTab; label: string; path: string}[] = [
@@ -53,11 +60,23 @@ const PanelHeader = ({
 );
 
 export function App() {
+  const [layerVisibility, setLayerVisibility] = useCachedState("render-layer-visibility", defaultLayerVisibility);
+  const replaySceneRef = useRef<ReplayScene | null>(null);
+  if (!replaySceneRef.current) replaySceneRef.current = new ReplayScene();
+  const replayScene = replaySceneRef.current;
+  useEffect(() => replayScene.setVisibility(layerVisibility), [replayScene, layerVisibility]);
+  const syncReplayMapView = useCallback((viewState: import("../render-engine/ReplayCamera").ReplayCamera) => {
+    replayScene.setMapViewState(viewState);
+  }, [replayScene]);
+  const syncReplayTimelineHover = useCallback((timestamp: number | null) => {
+    replayScene.setCursorTime("timeline", timestamp);
+  }, [replayScene]);
   const [mapLegendContainer, setMapLegendContainer] = useState<HTMLDivElement | null>(null);
   const [timelineMetrics, setTimelineMetrics] = useCachedState<TimelineMetricsSettings>("timeline-metrics", defaultTimelineMetrics);
   const [activeTab, setActiveTab] = useCachedState<WorkspaceTab>("workspace-tab", "annotations");
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useCachedState("left-panel-collapsed", false);
   const [bottomPanelCollapsed, setBottomPanelCollapsed] = useCachedState("bottom-panel-collapsed", false);
+  useEffect(() => { if (bottomPanelCollapsed) replayScene.setCursor(null); }, [bottomPanelCollapsed, replayScene]);
   const [keyDraft, setKeyDraft] = useState("");
   const [settingsStatus, setSettingsStatus] = useState("");
   const [annotations, setAnnotations] = useState<AnnotationProject>(emptyAnnotations());
@@ -65,12 +84,20 @@ export function App() {
   const [annotationStatus,setAnnotationStatus] = useState("正在载入地图标注…");
   const [annotationSelectedId,setAnnotationSelectedId] = useCachedState<string|null>("annotationSelectedId", null);
   const [annotationFocus,setAnnotationFocus] = useState<{id:string;sequence:number}|null>(null);
-  const [annotationHoverCoordinate,setAnnotationHoverCoordinate] = useState<TerrainProfilePoint|null>(null);
+  const syncElevationHover = useCallback((coordinate: TerrainProfilePoint | null) => {
+    replayScene.setCursor(coordinate ? {
+      source: "elevation", timestamp: null, trajectoryIndex: null,
+      coordinate: [coordinate[0], coordinate[1]],
+    } : null);
+  }, [replayScene]);
   const [annotationElevationProfile,setAnnotationElevationProfile] = useState<TerrainProfilePoint[]|null|undefined>(undefined);
   const selectedRoute = annotations.nodes.find(node => node.id === annotationSelectedId && node.kind === "route");
-  useEffect(()=>setAnnotationHoverCoordinate(null),[annotationSelectedId]);
+  useEffect(()=>{replayScene.setCursor(null);},[annotationSelectedId, replayScene]);
   const [drawMode,setDrawMode] = useCachedState<"select"|"point"|"route">("drawMode", "select");
   const [draftCoordinates,setDraftCoordinates] = useCachedState<MapCoordinate[]>("draftCoordinates", []);
+  useEffect(() => {
+    replayScene.setAnnotationGeometry(compileAnnotationGeometry(annotations, annotationSelectedId, draftCoordinates));
+  }, [annotations, annotationSelectedId, draftCoordinates, replayScene]);
   useEffect(()=>{
     let active=true;
     if(!window.replaymod){setAnnotationStatus("请在桌面应用中打开地图标注");return;}
@@ -93,7 +120,7 @@ export function App() {
     setAnnotationSelectedId(id);
     setCurrentTime(null);
     setTimelineFocusRequest(null);
-    if(!id)setAnnotationHoverCoordinate(null);
+    if(!id)replayScene.setCursor(null);
   };
   const focusAnnotation = (id:string) => setAnnotationFocus({id,sequence:Date.now()});
   const addAnnotation = (coordinates:MapCoordinate[],kind:"point"|"route") => {
@@ -105,7 +132,41 @@ export function App() {
   };
   const finishRoute = () => {if(draftCoordinates.length>=2)addAnnotation(draftCoordinates,"route");};
   const [pointDataset, setPointDataset] = useState<PointDataset | null>(null);
-  const [currentTime, setCurrentTime] = useCachedState<number | null>("currentTime", null);
+  const [flightRoutes, setFlightRoutes] = useState<readonly (readonly [number, number])[][]>([]);
+  const [flightRouteSegments, setFlightRouteSegments] = useState<readonly FlightRouteSegment[]>([]);
+  const [flightAirports, setFlightAirports] = useState<readonly (readonly [number, number])[]>([]);
+  useEffect(() => {
+    setFlightRoutes([]);
+    setFlightRouteSegments([]);
+    setFlightAirports([]);
+  }, [pointDataset, replayScene]);
+  useEffect(() => {
+    replayScene.setTrajectory(pointDataset
+      ? TrajectoryBuffer.fromPointDatasetWithFlightRoutes(pointDataset, flightRouteSegments)
+      : null);
+  }, [pointDataset, flightRouteSegments, replayScene]);
+  const [currentTime, displayCurrentTime] = useState<number | null>(() => readCached("currentTime", null));
+  const [playing, setPlaying] = useState(false);
+  const playbackRef = useRef<ReplayPlayback | null>(null);
+  const setCurrentTime = useCallback((time: number | null) => {
+    playbackRef.current?.pause();
+    replayScene.clock.setTime(time);
+  }, [replayScene]);
+  useEffect(() => {
+    replayScene.clock.setTime(readCached("currentTime", null));
+    const unsubscribe = replayScene.clock.subscribe(snapshot => {
+      displayCurrentTime(snapshot.time);
+      setPlaying(snapshot.mode === "playback");
+      writeCached("currentTime", snapshot.time);
+    });
+    return () => { unsubscribe(); };
+  }, [replayScene]);
+  useEffect(() => {
+    if (!pointDataset) return;
+    const playback = new ReplayPlayback(replayScene.clock, pointDataset.timeBounds);
+    playbackRef.current = playback;
+    return () => { playback.destroy(); playbackRef.current = null; };
+  }, [pointDataset, replayScene]);
   const [exportRange, setExportRange] = useCachedState<TimeBounds | null>("exportRange", null);
   const [timelineFocusRequest, setTimelineFocusRequest] =
     useState<TimelineFocusRequest | null>(null);
@@ -188,7 +249,7 @@ export function App() {
 
   const selectMapPoint = useCallback((timestamp: number) => {
     setAnnotationSelectedId(null);
-    setAnnotationHoverCoordinate(null);
+    replayScene.setCursor(null);
     timelineFocusSequenceRef.current += 1;
     setCurrentTime(timestamp);
     setTimelineFocusRequest({
@@ -352,6 +413,7 @@ export function App() {
       <div className="map-background">
         {maptilerKey ? (
           <MapViewport
+            scene={replayScene}
             legendContainer={mapLegendContainer}
             apiKey={maptilerKey}
             mapLanguage={mapLanguage}
@@ -360,12 +422,14 @@ export function App() {
             onPointSelect={selectMapPoint}
             onPointerLocation={setPointerLocation}
             pointDataset={pointDataset}
-            currentTime={currentTime}
+            flightRoutes={flightRoutes}
+            flightRouteSegments={flightRouteSegments}
+            flightAirports={flightAirports}
+            onMapViewStateChange={syncReplayMapView}
             onMoveAnnotationCoordinate={(id,index,coordinate)=>setAnnotations(p=>({...p,nodes:p.nodes.map(n=>n.id===id?{...n,coordinates:n.coordinates.map((c,i)=>i===index?coordinate:c)}:n)}))}
             annotations={annotations}
             annotationSelectedId={annotationSelectedId}
             annotationFocus={annotationFocus}
-            annotationHoverCoordinate={annotationHoverCoordinate}
             onAnnotationElevationProfile={setAnnotationElevationProfile}
             onAnnotationSelect={selectAnnotation}
             onAnnotationFocus={focusAnnotation}
@@ -379,6 +443,7 @@ export function App() {
           <MapTokenSetup onSave={saveMaptilerKey} />
         )}
       </div>
+      <ReplayRenderSurface scene={replayScene}/>
 
       <header className="titlebar">
         <div className="brand">
@@ -397,6 +462,12 @@ export function App() {
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
         </button>
         <nav className="titlebar-map-tools" aria-label="地图工具">
+          <div className="render-layer-toggles" aria-label="图层开关">
+            {(Object.keys(renderLayerLabels) as RenderLayerId[]).map(id => <button
+              key={id} type="button" aria-pressed={layerVisibility[id]}
+              onClick={() => setLayerVisibility(previous => ({...previous, [id]: !previous[id]}))}
+            >{renderLayerLabels[id]}</button>)}
+          </div>
           {([
             {mode: "select", label: "选择", path: "M5 3l14 9-7 1-3 7Z"},
             {mode: "point", label: "标点", path: "M12 21s7-6 7-12a7 7 0 1 0-14 0c0 6 7 12 7 12Z M15 9a3 3 0 1 1-6 0 3 3 0 0 1 6 0"},
@@ -515,6 +586,9 @@ export function App() {
               active={activeTab === "flights"}
               mapLanguage={mapLanguage}
               systemLanguageIsZh={(navigator.languages?.[0] ?? navigator.language).toLowerCase().startsWith("zh")}
+              onFlightRoutesChange={setFlightRoutes}
+              onFlightRouteSegmentsChange={setFlightRouteSegments}
+              onFlightAirportsChange={setFlightAirports}
             />
           </div>
           <div className="workspace-page" hidden={activeTab !== "export"}>
@@ -593,10 +667,15 @@ export function App() {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={bottomPanelCollapsed ? "m5 15 7-7 7 7" : "m5 9 7 7 7-7"}/></svg>
             </button>
             <div className="bottom-panel-content">
-              {selectedRoute ? <ElevationProfile coordinates={annotationElevationProfile} routeName={selectedRoute.name} onHover={setAnnotationHoverCoordinate}/> : <Timeline
+              {selectedRoute ? <ElevationProfile scene={replayScene} coordinates={annotationElevationProfile} routeName={selectedRoute.name} onHover={syncElevationHover}/> : <Timeline
+                scene={replayScene}
                 dataset={pointDataset}
                 currentTime={currentTime}
                 onCurrentTimeChange={setCurrentTime}
+                playing={playing}
+                onTogglePlayback={() => playing ? playbackRef.current?.pause() : playbackRef.current?.play()}
+                onStepFrame={direction => playbackRef.current?.step(direction)}
+                onHoverTimeChange={syncReplayTimelineHover}
                 focusRequest={timelineFocusRequest}
                 selectionRange={exportRange}
                 metrics={timelineMetrics}

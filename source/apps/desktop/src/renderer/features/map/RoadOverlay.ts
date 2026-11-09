@@ -1,5 +1,5 @@
 import maplibregl, {type Map as GLMap, type StyleSpecification} from "maplibre-gl";
-import {addCompositeRoadLayers} from "./basemapStyle";
+import {addCompositeRoadLayers, ROAD_OPACITY_SCALE} from "./basemapStyle";
 import {cachedMapRequest} from "../../shared/cache";
 
 // Roads are first composed opaquely into their own canvas. Applying opacity to
@@ -9,13 +9,22 @@ export class RoadOverlay {
   readonly container = document.createElement("div");
   private overlay: GLMap;
   private disposed = false;
+  private visible = true;
+  private previousFrame: readonly number[] | null = null;
+  setVisible(visible: boolean) {
+    if (this.disposed || this.visible === visible) return;
+    this.visible = visible;
+    this.previousFrame = null;
+    this.container.style.display = visible ? "" : "none";
+    if (visible) this.synchronize();
+  }
   private syncing = false;
   private sync = () => this.synchronize();
 
   constructor(private base: GLMap, style: StyleSpecification) {
     this.container.dataset.roadComposite = "true";
     Object.assign(this.container.style, {
-      position: "absolute", inset: "0", pointerEvents: "none", opacity: "0.52",
+      position: "absolute", inset: "0", pointerEvents: "none", opacity: String(ROAD_OPACITY_SCALE),
       mixBlendMode: "screen", visibility: "hidden",
     });
     this.base.getCanvasContainer().before(this.container);
@@ -43,15 +52,24 @@ export class RoadOverlay {
   }
 
   private synchronize() {
-    if (this.disposed || this.syncing) return;
+    if (this.disposed || this.syncing || !this.visible) return;
     this.syncing = true;
     try {
       const terrain = this.base.getContainer().querySelector<HTMLCanvasElement>("canvas[data-terrain-precision]");
-      if (terrain) terrain.after(this.container);
-      else this.base.getCanvasContainer().before(this.container);
+      if (terrain) {
+        if (this.container.previousSibling !== terrain) terrain.after(this.container);
+      } else {
+        const canvasContainer = this.base.getCanvasContainer();
+        if (canvasContainer.previousSibling !== this.container) canvasContainer.before(this.container);
+      }
       const center = this.base.getCenter();
-      this.overlay.jumpTo({center: [center.lng, center.lat], zoom: this.base.getZoom(), bearing: this.base.getBearing(), pitch: this.base.getPitch()});
-      this.overlay.resize();
+      const frame = [center.lng, center.lat, this.base.getZoom(), this.base.getBearing(), this.base.getPitch(), this.base.getContainer().clientWidth, this.base.getContainer().clientHeight];
+      const previous = this.previousFrame;
+      if (!previous || frame.slice(0, 5).some((value, index) => value !== previous[index])) {
+        this.overlay.jumpTo({center: [frame[0], frame[1]], zoom: frame[2], bearing: frame[3], pitch: frame[4]});
+      }
+      if (!previous || frame[5] !== previous[5] || frame[6] !== previous[6]) this.overlay.resize();
+      this.previousFrame = frame;
     } finally { this.syncing = false; }
   }
 

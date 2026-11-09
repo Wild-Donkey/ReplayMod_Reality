@@ -29,12 +29,14 @@ bash source/scripts/tools/with-local-tools.sh npm --prefix source start
 ```bash
 npm --prefix source run check
 npm --prefix source run check:annotations
+npm --prefix source run check:picking:gpu
 npm --prefix source run package
 npm --prefix source run make
 ```
 
 - `check`：类型、存储、缓存、标签布局与背景检查，不需要个人原始数据。
 - `check:annotations`：JSON / KML 往返检查，需要本机 `RawData/annotations/annotations.json`。
+- `check:picking:gpu`：独立 Electron 窗口验证 18 万点拾取、DPR 1/2/3、可见标注与曲线、背景交接、图层隐藏恢复和离屏尺寸；需要可正常启动 Electron 与 WebGL2 的图形会话，无法由普通类型检查代替。
 - `package`：构建当前平台应用，产物位于根目录 `out/`。
 - `make`：通过 Forge 生成当前平台配置的分发产物。打包不等于已经配置签名、公证或跨平台构建环境。
 

@@ -1,3 +1,7 @@
+import type { ReplayScene } from "../../render-engine/ReplayScene";
+import { useReplayVisual } from "../../render-engine/useReplayVisual";
+import { densityBinColor, type DensityBins, type TimelineDensity } from "../../render-engine/TimelineDensity";
+import { useHDRState } from "../../shared/displayHDR";
 import { presentHDR } from "../../shared/hdr";
 import { createPortal } from "react-dom";
 import { timelineWheelRange } from "./gestures";
@@ -209,66 +213,73 @@ const formatTickLabel = (timestamp: number, scale: TickScale) => {
   });
 };
 
-const drawDensityStrip = (context: CanvasRenderingContext2D, timestamps: readonly number[], start: number, end: number, width: number, top: number, color: readonly [number, number, number]) => {
-  const { counts, peak } = pixelDensity(timestamps, start, end, width);
-  context.save();
-  counts.forEach((count, x) => {
-    const intensity = peak > 0 ? Math.log1p(count) / Math.log1p(peak) : 0;
-    // Black -> map point color -> white; both ends have zero saturation.
-    const rgb = color.map(channel => Math.round(intensity <= 0.5
-      ? channel * intensity * 2
-      : channel + (255 - channel) * (intensity * 2 - 1)));
-    context.fillStyle = `rgb(${rgb.join(",")})`;
-    context.fillRect(x, top, 1, 2);
-  });
-  context.restore();
-};
-
-function DensityStrip({ timestamps, viewRange, width, photo }: {
-  timestamps: readonly number[]; viewRange: TimeBounds; width: number; photo: boolean;
-}) {
+function DensityStrip({ bins, kind }: {bins: DensityBins; kind: keyof TimelineDensity}) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const canvas = ref.current;
-    if (!canvas || width <= 0) return;
+    if (!canvas) return;
     const ratio = window.devicePixelRatio || 1;
-    canvas.width = Math.round(width * ratio);
+    canvas.width = Math.round(bins.counts.length * ratio);
     canvas.height = Math.round(2 * ratio);
     const context = canvas.getContext("2d");
     if (!context) return;
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
-    drawDensityStrip(context, timestamps, viewRange[0], viewRange[1], width, 0, photo ? [255, 227, 110] : [185, 245, 197]);
+    bins.counts.forEach((count, x) => {
+      context.fillStyle = `rgb(${densityBinColor(count, bins.peak, kind).join(",")})`;
+      context.fillRect(x, 0, 1, 2);
+    });
     const hdr = presentHDR(canvas);
     return () => hdr.dispose();
-  }, [timestamps, viewRange, width, photo]);
-  return <div style={{ position: "relative", height: 2, minHeight: 0, overflow: "hidden", background: "#000" }}><canvas ref={ref} style={{ position: "absolute", inset: 0, display: "block", width: "100%", height: 2, minHeight: 0 }} /></div>;
+  }, [bins, kind]);
+  return <div className="timeline-density-fallback"><canvas ref={ref} /></div>;
 }
 
 interface TimelineCanvasProps {
+  scene: ReplayScene;
   dataset: PointDataset | null;
   viewRange: TimeBounds | null;
   currentTime: number | null;
   onCurrentTimeChange: (timestamp: number) => void;
+  onHoverTimeChange?: (timestamp: number | null) => void;
   selectionRange: TimeBounds | null;
   metrics: TimelineMetricsSettings;
   axisContainer: RefObject<HTMLDivElement | null>;
 }
 
 function TimelineCanvas({
+  scene,
   dataset,
   viewRange,
   currentTime,
   onCurrentTimeChange,
+  onHoverTimeChange,
   selectionRange,
   metrics,
   axisContainer,
 }: TimelineCanvasProps) {
   const [stripHover, setStripHover] = useState<{ x: number; y: number; label: string; count: number; peak: number; start: number; end: number } | null>(null);
   const speedMetrics = useMemo(() => ({ ...metrics, mode: "speed" as const }), [metrics]);
-  useEffect(() => setStripHover(null), [dataset, viewRange]);
+  useEffect(() => {
+    setStripHover(null);
+    onHoverTimeChange?.(null);
+    return () => onHoverTimeChange?.(null);
+  }, [dataset, viewRange, onHoverTimeChange]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
+  const hdrActive = useHDRState().active;
+  const engineDensity = useReplayVisual(scene, "timeline-density");
+  const density = useMemo(() => {
+    if (!dataset || !viewRange || size.width === 0) return null;
+    const [start, end] = viewRange;
+    return {
+      footprint: pixelDensity(dataset.footprintTimestamps, start, end, size.width),
+      photo: pixelDensity(dataset.photoTimestamps, start, end, size.width),
+    };
+  }, [dataset, viewRange, size.width]);
+  useEffect(() => {
+    if (density && !hdrActive) return scene.registerTimelineDensity(density);
+  }, [scene, density, hdrActive]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -404,14 +415,18 @@ function TimelineCanvas({
         event.currentTarget.setPointerCapture(event.pointerId);
         updateCurrentTime(event);
       }}
-      onPointerLeave={() => setStripHover(null)}
+      onPointerLeave={() => { setStripHover(null); onHoverTimeChange?.(null); }}
       onPointerMove={(event) => {
         const bounds = event.currentTarget.getBoundingClientRect();
+        if (dataset && viewRange) {
+          const ratio = Math.min(Math.max((event.clientX - bounds.left) / Math.max(1, bounds.width), 0), 1);
+          onHoverTimeChange?.(viewRange[0] + ratio * (viewRange[1] - viewRange[0]));
+        }
         const y = event.clientY - bounds.top;
-        if (dataset && viewRange && y >= bounds.height - 5) {
+        if (density && viewRange && y >= bounds.height - 5 && y < bounds.height - 1) {
           const photo = y >= bounds.height - 3;
-          const { counts, peak } = pixelDensity(photo ? dataset.photoTimestamps : dataset.footprintTimestamps, viewRange[0], viewRange[1], size.width);
-          const x = Math.max(0, Math.min(counts.length - 1, Math.floor(event.clientX - bounds.left)));
+          const {counts, peak} = photo ? density.photo : density.footprint;
+          const x = Math.max(0, Math.min(counts.length - 1, Math.floor((event.clientX - bounds.left) / bounds.width * counts.length)));
           const span = viewRange[1] - viewRange[0];
           setStripHover({ x: event.clientX, y: bounds.top, label: photo ? "照片密度" : "足迹密度", count: counts[x], peak, start: viewRange[0] + x / counts.length * span, end: viewRange[0] + (x + 1) / counts.length * span });
         } else setStripHover(null);
@@ -424,15 +439,13 @@ function TimelineCanvas({
       }}
     >
       <canvas ref={canvasRef} className="timeline-canvas" />
-      <div style={{ position: "absolute", top: 18, bottom: 5, left: 0, right: 0, minHeight: 0, minWidth: 0 }}><MetricChart dataset={dataset} viewRange={viewRange} metrics={speedMetrics} axisContainer={axisContainer} /></div>
-      {dataset && viewRange && <>
-        <div style={{ position: "absolute", left: 0, right: 0, bottom: 3, height: 2, overflow: "hidden", pointerEvents: "none", zIndex: 2 }}>
-          <DensityStrip timestamps={dataset.footprintTimestamps} viewRange={viewRange} width={size.width} photo={false} />
-        </div>
-        <div style={{ position: "absolute", left: 0, right: 0, bottom: 1, height: 2, overflow: "hidden", pointerEvents: "none", zIndex: 2 }}>
-          <DensityStrip timestamps={dataset.photoTimestamps} viewRange={viewRange} width={size.width} photo />
-        </div>
-      </>}
+      <div style={{ position: "absolute", top: 18, bottom: 5, left: 0, right: 0, minHeight: 0, minWidth: 0 }}><MetricChart scene={scene} dataset={dataset} viewRange={viewRange} metrics={speedMetrics} axisContainer={axisContainer} /></div>
+      {density && <div className="timeline-density-strips" aria-hidden="true">
+        {(!engineDensity || hdrActive) && <>
+          <DensityStrip bins={density.footprint} kind="footprint" />
+          <DensityStrip bins={density.photo} kind="photo" />
+        </>}
+      </div>}
       {stripHover && createPortal(<div role="tooltip" style={{ position: "fixed", left: Math.max(8, Math.min(window.innerWidth - 330, stripHover.x + 12)), top: Math.max(8, stripHover.y - 68), zIndex: 10000, pointerEvents: "none", padding: "7px 10px", background: "#18202af5", color: "#edf4ff", border: "1px solid #566575", borderRadius: 4, fontSize: 11, lineHeight: "18px" }}>
         <div>{stripHover.label}：{stripHover.count} 点/像素 · 当前峰值 {stripHover.peak} 点/像素</div>
         <div>{new Date(stripHover.start).toLocaleString("zh-CN", { hour12: false })} – {new Date(stripHover.end).toLocaleString("zh-CN", { hour12: false })}</div>
@@ -449,9 +462,14 @@ function TimelineCanvas({
 }
 
 interface TimelineProps {
+  scene: ReplayScene;
+  playing: boolean;
+  onTogglePlayback: () => void;
+  onStepFrame: (direction: -1 | 1) => void;
   dataset: PointDataset | null;
   currentTime: number | null;
   onCurrentTimeChange: (timestamp: number) => void;
+  onHoverTimeChange?: (timestamp: number | null) => void;
   focusRequest: TimelineFocusRequest | null;
   selectionRange: TimeBounds | null;
   metrics: TimelineMetricsSettings;
@@ -463,13 +481,20 @@ export interface TimelineFocusRequest {
 }
 
 export function Timeline({
+  scene,
+  playing,
+  onTogglePlayback,
+  onStepFrame,
   dataset,
   currentTime,
   onCurrentTimeChange,
+  onHoverTimeChange,
   focusRequest,
   selectionRange,
   metrics,
 }: TimelineProps) {
+  const engineMetric = useReplayVisual(scene, "timeline");
+  const engineDensity = useReplayVisual(scene, "timeline-density");
   const timelineRef = useRef<HTMLElement>(null);
   const axisContainer = useRef<HTMLDivElement>(null);
   const pressedPanKeysRef = useRef(new Set<"q" | "e">());
@@ -675,16 +700,16 @@ export function Timeline({
   }, [dataset]);
 
   return (
-    <section ref={timelineRef} className="timeline">
+    <section ref={timelineRef} className="timeline" data-replay-renderer={engineMetric ? "engine" : undefined} data-density-renderer={engineDensity ? "engine" : undefined}>
       <header className="timeline-toolbar">
         <div className="playback-controls">
-          <button type="button" aria-label="上一帧">
+          <button type="button" aria-label="上一帧" disabled={!dataset} onClick={() => onStepFrame(-1)}>
             |&lt;
           </button>
-          <button className="play-button" type="button" aria-label="播放">
-            &gt;
+          <button className="play-button" type="button" aria-label={playing ? "暂停" : "播放"} disabled={!dataset} onClick={onTogglePlayback}>
+            {playing ? "Ⅱ" : ">"}
           </button>
-          <button type="button" aria-label="下一帧">
+          <button type="button" aria-label="下一帧" disabled={!dataset} onClick={() => onStepFrame(1)}>
             &gt;|
           </button>
         </div>
@@ -704,10 +729,12 @@ export function Timeline({
       <div className="timeline-body">
         <div ref={axisContainer} className="timeline-y-axis" style={{ position: "relative", marginTop: 18, marginBottom: 5, minWidth: 0 }} />
         <TimelineCanvas
+          scene={scene}
           dataset={dataset}
           viewRange={viewRange}
           currentTime={currentTime}
           onCurrentTimeChange={onCurrentTimeChange}
+          onHoverTimeChange={onHoverTimeChange}
           selectionRange={selectionRange}
           metrics={metrics}
           axisContainer={axisContainer}

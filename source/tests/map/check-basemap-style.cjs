@@ -3,9 +3,9 @@ const mod={exports:{}};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync('apps/desktop/src/renderer/features/map/basemapStyle.ts','utf8'),{
   compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
 }).outputText,{exports:mod.exports});
-const {BUILDING_HEIGHT_SCALE,ROAD_OPACITY_SCALE,isRoadLayer,buildingOpacity,styleRoadLayers,hideRoadLayers,addElevationBuildings}=mod.exports;
+const {BUILDING_HEIGHT_SCALE,ROAD_OPACITY_SCALE,isRoadLayer,buildingOpacity,styleRoadLayers,hideRoadLayers,addElevationBuildings,addCompositeRoadLayers}=mod.exports;
 assert.equal(BUILDING_HEIGHT_SCALE,10);
-assert.equal(ROAD_OPACITY_SCALE,0.52);
+assert.equal(ROAD_OPACITY_SCALE,0.36);
 assert(isRoadLayer({id:'Road primary',type:'line',source:'planet','source-layer':'transportation'}));
 assert(!isRoadLayer({id:'Rail',type:'line',source:'planet','source-layer':'transportation'}));
 assert.equal(buildingOpacity[2][0],'*');
@@ -24,8 +24,8 @@ assert(paints.get('Road motorway:line-opacity')>paints.get('Road residential:lin
 assert(paints.get('Road motorway:line-width')[4]>paints.get('Road residential:line-width')[4]);
 styleRoadLayers(map,true);
 assert.equal(paints.get('Road motorway:line-opacity'),1);
-assert.equal(paints.get('Road motorway:line-color'),'#ffffff');
-assert.equal(paints.get('Road residential:line-color'),'#929292');
+assert.equal(paints.get('Road motorway:line-color'),'#b8b8b8');
+assert.equal(paints.get('Road residential:line-color'),'#858585');
 assert.equal(paints.get('Road motorway:line-dasharray'),null);
 hideRoadLayers(map);
 assert.equal(layouts.get('Road motorway:visibility'),'none');
@@ -36,4 +36,14 @@ assert.equal(added[0].layer['source-layer'],'building');
 assert(!('fill-outline-color' in added[0].layer.paint));
 assert.equal(added[0].layer.minzoom,7);
 assert.equal(added[0].before,'City label');
-console.log('Basemap style passed: white road hierarchy and 10x 2D building height shading.');
+added.length=0;
+assert(addCompositeRoadLayers(map));
+const roads=added.map(entry=>entry.layer);
+assert.equal(roads.length,5);
+assert.equal(roads[0].paint['line-color'],roads[1].paint['line-color']);
+assert.equal(roads[1].paint['line-color'],roads[2].paint['line-color']);
+assert(roads[0].paint['line-width'][4]>roads[1].paint['line-width'][4]);
+assert(roads[1].paint['line-width'][4]>roads[2].paint['line-width'][4]);
+assert(roads[2].paint['line-color']>roads[3].paint['line-color']);
+assert(roads[3].paint['line-color']>roads[4].paint['line-color']);
+console.log('Basemap style passed: dim achromatic roads, L1–L3 width hierarchy, L3–L5 brightness hierarchy and building shading.');
