@@ -1,3 +1,6 @@
+import { OfflineExportManager } from "./offlineExport";
+import { OfflineFramePlan, type OfflineExportOptions } from "../shared/overlayExport";
+import { findTransparentVideoEncoder } from "../../../../packages/media/src/raw-video";
 import { installDisplayHDR } from "./displayHDR";
 import { AppStorage } from "./storage";
 import { windowBackgroundOptions } from "./windowBackground";
@@ -38,6 +41,35 @@ const AIRPORTS_CACHE_KEY = "airports-ourairports-v1";
 const OPEN_MEDIA_CHANNEL = "media:open";
 const TRANSCRIBE_MEDIA_CHANNEL = "media:transcribe";
 const SAVE_SUBTITLES_CHANNEL = "media:save-subtitles";
+
+const offlineExports = new OfflineExportManager();
+let offlineEncoder: Promise<string | null> | null = null;
+const getOfflineEncoder = () => offlineEncoder ??= findTransparentVideoEncoder();
+ipcMain.handle("export:offline-available", async () => Boolean(await getOfflineEncoder()));
+ipcMain.handle("export:offline-begin", async (event, options: OfflineExportOptions) => {
+  new OfflineFramePlan(options);
+  const encoder = await getOfflineEncoder();
+  if (!encoder) throw new Error("未找到支持透明 VP9 的 FFmpeg。");
+  const result = await dialog.showSaveDialog({title: "导出透明 WebM", defaultPath: "轨迹叠加.webm", filters: [{name: "WebM", extensions: ["webm"]}]});
+  if (result.canceled || !result.filePath || event.sender.isDestroyed()) return null;
+  return offlineExports.begin(event.sender.id, options, result.filePath, encoder);
+});
+ipcMain.handle("export:offline-frame", (event, id: string, segment: number, frame: number, rgba: Uint8Array) => offlineExports.write(event.sender.id, id, segment, frame, rgba));
+ipcMain.handle("export:offline-segment", (event, id: string, segment: number) => offlineExports.finishSegment(event.sender.id, id, segment));
+ipcMain.handle("export:offline-complete", (event, id: string) => offlineExports.complete(event.sender.id, id));
+ipcMain.handle("export:offline-cancel", (event, id: string) => offlineExports.cancel(event.sender.id, id));
+app.on("web-contents-created", (_event, contents) => {
+  const cancel = () => { void offlineExports.cancelOwner(contents.id); };
+  contents.once("destroyed", cancel);
+  contents.on("render-process-gone", cancel);
+  contents.on("did-start-navigation", (_navigation, _url, inPlace, mainFrame) => { if (mainFrame && !inPlace) cancel(); });
+});
+let quittingOfflineExports = false;
+app.on("before-quit", event => {
+  if (quittingOfflineExports || !offlineExports.active) return;
+  event.preventDefault(); quittingOfflineExports = true;
+  void offlineExports.cancelAll().then(() => app.quit(), () => app.quit());
+});
 
 app.setName("ReplayMod Reality");
 process.title = "ReplayMod Reality";

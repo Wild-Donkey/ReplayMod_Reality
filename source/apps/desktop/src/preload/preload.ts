@@ -1,3 +1,4 @@
+import type { OfflineExportOptions, OfflineExportSession, OfflineExportSegment } from "../shared/overlayExport";
 import type { DisplayHDRInfo } from "../shared/display";
 import { contextBridge, ipcRenderer } from "electron";
 import type { AppSettings } from "../shared/settings";
@@ -18,6 +19,12 @@ const TRANSCRIBE_MEDIA_CHANNEL = "media:transcribe";
 const SAVE_SUBTITLES_CHANNEL = "media:save-subtitles";
 
 export interface DesktopBridge {
+  canExportOffline(): Promise<boolean>;
+  beginOfflineExport(options: OfflineExportOptions): Promise<OfflineExportSession | null>;
+  writeOfflineExportFrame(id: string, segment: number, frame: number, rgba: Uint8Array): Promise<void>;
+  finishOfflineExportSegment(id: string, segment: number): Promise<OfflineExportSegment>;
+  completeOfflineExport(id: string): Promise<string[]>;
+  cancelOfflineExport(id: string): Promise<void>;
   getDisplayHDR(): Promise<DisplayHDRInfo | null>;
   readonly settings: AppSettings;
   saveSettings(settings: AppSettings): string | null;
@@ -55,6 +62,12 @@ export interface DesktopBridge {
 
 const bootstrap = ipcRenderer.sendSync("storage:bootstrap");
 const bridge: DesktopBridge = Object.freeze({
+  canExportOffline: () => ipcRenderer.invoke("export:offline-available"),
+  beginOfflineExport: (options: OfflineExportOptions) => ipcRenderer.invoke("export:offline-begin", options),
+  writeOfflineExportFrame: (id: string, segment: number, frame: number, rgba: Uint8Array) => ipcRenderer.invoke("export:offline-frame", id, segment, frame, rgba),
+  finishOfflineExportSegment: (id: string, segment: number) => ipcRenderer.invoke("export:offline-segment", id, segment),
+  completeOfflineExport: (id: string) => ipcRenderer.invoke("export:offline-complete", id),
+  cancelOfflineExport: (id: string) => ipcRenderer.invoke("export:offline-cancel", id),
   getDisplayHDR: () => ipcRenderer.invoke("display:hdr"),
   settings: bootstrap.settings,
   saveSettings: (settings: AppSettings) => ipcRenderer.sendSync("settings:save", settings),

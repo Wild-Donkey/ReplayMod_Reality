@@ -20,12 +20,14 @@
     "check:backdrop": "node tests/backdrop/check-backdrop.cjs && node tests/map/check-basemap-style.cjs",
     "check:timeline": "node tests/timeline/check-metrics.cjs",
     "check:engine": "node tests/engine/check-render-engine.cjs && node tests/engine/check-metric-projection.cjs",
+    "check:export:gpu": "electron tests/engine/check-export-capture.cjs",
     "check:terrain": "node tests/map/check-footprint-exposure.cjs && node tests/map/check-terrain-exposure.cjs && node tests/map/check-hdr-settings.cjs && node tests/map/check-display-ui.cjs",
     "check:terrain:gpu": "electron tests/map/check-raw-terrain.cjs",
     "check:buildings:gpu": "electron tests/map/check-building-composite.cjs",
     "check:footprint:gpu": "electron tests/map/check-footprint-density.cjs",
     "check:display:gpu": "electron tests/map/check-display-gray.cjs",
-    "check:picking:gpu": "electron tests/engine/check-trajectory-picking.cjs"
+    "check:picking:gpu": "electron tests/engine/check-trajectory-picking.cjs",
+    "check:export:encoder": "node tests/engine/check-offline-export.cjs"
   },
   "author": "",
   "license": "UNLICENSED",

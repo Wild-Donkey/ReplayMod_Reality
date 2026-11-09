@@ -606,7 +606,7 @@ export function App() {
             {exportRange && <code>{new Date(exportRange[0]).toLocaleString("zh-CN")}<br />— {new Date(exportRange[1]).toLocaleString("zh-CN")}</code>}
           </section>
           {pointDataset && exportRange ? (
-            <OverlayExport dataset={pointDataset} range={exportRange} apiKey={maptilerKey} />
+            <OverlayExport dataset={pointDataset} range={exportRange} apiKey={maptilerKey} scene={replayScene} />
           ) : (
             <div className="inspector-empty"><div className="inspector-icon">i</div><p>载入轨迹后可输出透明视频。</p></div>
           )}
