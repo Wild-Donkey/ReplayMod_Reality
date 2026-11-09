@@ -13,15 +13,17 @@ import type { MediaSource, SubtitleTrack } from "../../../../../packages/media/s
 import { MapTokenSetup, MapViewport } from "../features/map/MapViewport";
 import { OverlayExport } from "../features/export/OverlayExport";
 import { SubtitleEditor } from "../features/subtitles/SubtitleEditor";
+import { FlightPanel } from "../features/flights/FlightPanel";
 import {
   Timeline,
   type TimelineFocusRequest,
 } from "../features/timeline/Timeline";
 
-type WorkspaceTab = "annotations" | "sources" | "export" | "settings";
+type WorkspaceTab = "annotations" | "sources" | "flights" | "export" | "settings";
 const tabs: {id: WorkspaceTab; label: string; path: string}[] = [
   {id: "annotations", label: "地图标注", path: "M12 21s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12Z M15 9a3 3 0 1 1-6 0 3 3 0 0 1 6 0"},
   {id: "sources", label: "数据与视频", path: "M3 7h7l2 2h9v11H3Z M3 7V4h7l2 3 M10 12l5 3-5 3Z"},
+  {id: "flights", label: "航行", path: "M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5Z"},
   {id: "export", label: "叠加导出", path: "M4 14v6h16v-6 M12 16V3 M7 8l5-5 5 5"},
   {id: "settings", label: "设置", path: "M4 6h16 M4 12h16 M4 18h16 M8 3v6 M16 9v6 M10 15v6"},
 ];
@@ -505,6 +507,15 @@ export function App() {
             {isLoadingMedia ? "正在检查视频..." : "载入 DJI 视频"}
           </button>
           {dataError && <div className="data-error">{dataError}</div>}
+          </div>
+          <div className="workspace-page" hidden={activeTab !== "flights"}>
+            <FlightPanel
+              dataset={pointDataset}
+              apiKey={maptilerKey}
+              active={activeTab === "flights"}
+              mapLanguage={mapLanguage}
+              systemLanguageIsZh={(navigator.languages?.[0] ?? navigator.language).toLowerCase().startsWith("zh")}
+            />
           </div>
           <div className="workspace-page" hidden={activeTab !== "export"}>
             <p className="page-intro">将轨迹与仪表导出为透明视频，叠加到拍摄素材上。</p>

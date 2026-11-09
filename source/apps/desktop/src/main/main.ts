@@ -3,11 +3,12 @@ import { AppStorage } from "./storage";
 import { windowBackgroundOptions } from "./windowBackground";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { access, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { access, mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { app, BrowserWindow, dialog, ipcMain, shell, net, Menu } from "electron";
 import { installScrollInput } from "./scrollInput";
 import { MENU_ACTION_CHANNEL, MENU_STATE_CHANNEL, type MenuAction, type MenuState } from "../shared/menu";
 import { buildAirportNameZhQueryUrl, pickChineseNameFromCsv } from "../shared/airportNameZh";
+import type { ConfirmedFlightRecord, ConfirmedFlightsFile, FlightScreeningCache } from "../shared/confirmedFlight";
 import { defaultUserArchive, type UserArchive } from "../shared/userArchive";
 import path from "node:path";
 import { parse } from "csv-parse";
@@ -179,6 +180,9 @@ ipcMain.handle("cache:map-batch", async (_event, rawUrls: readonly string[]) => 
 ipcMain.handle("data:airports", async (_event, force = false) => {
   const saved = await storage.maps.read<{ at: number; data: Uint8Array }>(AIRPORTS_CACHE_KEY);
   if (saved && !force && Date.now() - saved.at < 30 * 86400_000) {
+    if (!userArchive.services.airportsUpdatedAt) {
+      updateUserArchive(current=>({...current,services:{...current.services,airportsUpdatedAt:new Date(saved.at).toISOString()}}));
+    }
     return new TextDecoder().decode(saved.data);
   }
   try {
@@ -188,6 +192,7 @@ ipcMain.handle("data:airports", async (_event, force = false) => {
     if (data.byteLength <= 32 * 1024 * 1024) {
       await storage.maps.write(AIRPORTS_CACHE_KEY, { at: Date.now(), data }).catch(console.warn);
     }
+    updateUserArchive(current=>({...current,services:{...current.services,airportsUpdatedAt:new Date().toISOString()}}));
     return new TextDecoder().decode(data);
   } catch (error) {
     if (saved) return new TextDecoder().decode(saved.data);
@@ -581,6 +586,98 @@ ipcMain.handle(
     );
   },
 );
+
+const confirmedFlightsPath = async (): Promise<string> => {
+  const pair = await findDefaultCsvPair();
+  if (!pair) throw new Error("未找到 RawData 轨迹数据目录。");
+  const sourceDirectory = path.dirname(pair.mainFilePath);
+  const rawDataDirectory = path.basename(sourceDirectory).toLowerCase() === "footprint"
+    ? path.dirname(sourceDirectory)
+    : sourceDirectory;
+  const directory = path.join(rawDataDirectory, "flights");
+  await mkdir(directory, { recursive: true });
+  return path.join(directory, "confirmed-flights.json");
+};
+
+const readConfirmedFlights = async (): Promise<ConfirmedFlightsFile> => {
+  if (userArchive.flights) return userArchive.flights;
+  const target = await confirmedFlightsPath();
+  try {
+    const parsed = JSON.parse(await readFile(target, "utf8")) as ConfirmedFlightsFile;
+    if (parsed.format !== "replaymod.confirmed-flights" || parsed.version !== 1 || !Array.isArray(parsed.flights)) {
+      throw new Error("已确认航班文件格式无效。");
+    }
+    updateUserArchive(current=>({...current,flights:parsed}));
+    return parsed;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    return { format: "replaymod.confirmed-flights", version: 1, updatedAt: new Date(0).toISOString(), flights: [] };
+  }
+};
+
+const writeConfirmedFlights = (document: ConfirmedFlightsFile): string => {
+  updateUserArchive(current=>({...current,flights:document}));
+  return storage.paths.archive;
+};
+
+ipcMain.handle("flights:confirmed-list", async () => (await readConfirmedFlights()).flights);
+// 旧版渲染进程仍可能只认 confirmed-ids；两个 handler 同源并存，热更新期间不出现空窗。
+ipcMain.handle("flights:confirmed-ids", async () => (await readConfirmedFlights()).flights.map(flight => flight.id));
+let confirmedFlightSaveQueue: Promise<string> = Promise.resolve("");
+ipcMain.handle("flights:confirm", async (_event, value: ConfirmedFlightRecord): Promise<string> => {
+  if (!value || typeof value !== "object" || typeof value.id !== "string" || value.id.length > 200
+    || !Number.isFinite(value.startTime) || !Number.isFinite(value.endTime)
+    || !Array.isArray(value.departure?.coordinate) || !Array.isArray(value.arrival?.coordinate)) {
+    throw new Error("航班确认数据无效。");
+  }
+  const save = confirmedFlightSaveQueue.catch(() => "").then(async () => {
+    const current = await readConfirmedFlights();
+    const flights = [...current.flights.filter(flight => flight.id !== value.id), value]
+      .sort((a, b) => a.startTime - b.startTime);
+    const document: ConfirmedFlightsFile = {
+      format: "replaymod.confirmed-flights",
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      flights,
+      screening: current.screening,
+    };
+    return writeConfirmedFlights(document);
+  });
+  confirmedFlightSaveQueue = save;
+  return save;
+});
+ipcMain.handle("flights:delete-confirmed", async (_event, id: string): Promise<void> => {
+  if (typeof id !== "string" || id.length === 0 || id.length > 200) throw new Error("航班标识无效。");
+  const save = confirmedFlightSaveQueue.catch(() => "").then(async () => {
+    const current = await readConfirmedFlights();
+    const document: ConfirmedFlightsFile = {
+      format: "replaymod.confirmed-flights",
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      flights: current.flights.filter(flight => flight.id !== id),
+      screening: current.screening,
+    };
+    return writeConfirmedFlights(document);
+  });
+  confirmedFlightSaveQueue = save;
+  await save;
+});
+ipcMain.handle("flights:screening-cache", async () => (await readConfirmedFlights()).screening ?? null);
+ipcMain.handle("flights:save-screening-cache", async (_event, cache: FlightScreeningCache): Promise<void> => {
+  if (!cache || !Number.isFinite(cache.datasetStartTime) || !Number.isInteger(cache.pointCount)
+    || cache.pointCount < 0 || !Number.isFinite(cache.throughTimestamp)
+    || typeof cache.throughDay !== "string" || !Array.isArray(cache.groundElevations)
+    || cache.groundElevations.length !== cache.pointCount || cache.pointCount > 20_000_000) {
+    throw new Error("飞行识别进度无效。");
+  }
+  const save = confirmedFlightSaveQueue.catch(() => "").then(async () => {
+    const current = await readConfirmedFlights();
+    const document: ConfirmedFlightsFile = { ...current, updatedAt: new Date().toISOString(), screening: cache };
+    return writeConfirmedFlights(document);
+  });
+  confirmedFlightSaveQueue = save;
+  await save;
+});
 
 ipcMain.handle("cache:media", async () => {
   const source = userArchive.lastMedia as MediaSource | undefined;

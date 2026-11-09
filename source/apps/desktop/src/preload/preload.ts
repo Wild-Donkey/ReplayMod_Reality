@@ -1,6 +1,7 @@
 import type { DisplayHDRInfo } from "../shared/display";
 import { contextBridge, ipcRenderer } from "electron";
 import type { AppSettings } from "../shared/settings";
+import type { ConfirmedFlightRecord, FlightScreeningCache } from "../shared/confirmedFlight";
 import { SCROLL_SOURCE_CHANNEL, type ScrollSource } from "../shared/scrollInput";
 import { MENU_ACTION_CHANNEL, MENU_STATE_CHANNEL, type MenuAction, type MenuState } from "../shared/menu";
 import type { PointDataset } from "../../../../packages/data/src";
@@ -40,6 +41,13 @@ export interface DesktopBridge {
   openLocationCsv(): Promise<PointDataset | null>;
   loadAirports(force?: boolean): Promise<string>;
   loadAirportNameZh(icao: string): Promise<string | null>;
+  loadConfirmedFlights(): Promise<ConfirmedFlightRecord[]>;
+  /** @deprecated 旧桥兼容，等同 loadConfirmedFlights 后取 id；新代码用前者。 */
+  loadConfirmedFlightIds(): Promise<string[]>;
+  confirmFlight(flight: ConfirmedFlightRecord): Promise<string>;
+  deleteConfirmedFlight(id: string): Promise<void>;
+  loadFlightScreeningCache(): Promise<FlightScreeningCache | null>;
+  saveFlightScreeningCache(cache: FlightScreeningCache): Promise<void>;
   openMedia(): Promise<MediaSource | null>;
   transcribeMedia(sourcePath: string): Promise<SubtitleTrack>;
   saveSubtitles(sourcePath: string, track: SubtitleTrack): Promise<SavedSubtitleTrack>;
@@ -84,6 +92,12 @@ const bridge: DesktopBridge = Object.freeze({
     ipcRenderer.invoke("data:airports", force) as Promise<string>,
   loadAirportNameZh: (icao: string) =>
     ipcRenderer.invoke("data:airport-name-zh", icao) as Promise<string | null>,
+  loadConfirmedFlights: () => ipcRenderer.invoke("flights:confirmed-list") as Promise<ConfirmedFlightRecord[]>,
+  loadConfirmedFlightIds: () => ipcRenderer.invoke("flights:confirmed-ids") as Promise<string[]>,
+  confirmFlight: (flight: ConfirmedFlightRecord) => ipcRenderer.invoke("flights:confirm", flight) as Promise<string>,
+  deleteConfirmedFlight: (id: string) => ipcRenderer.invoke("flights:delete-confirmed", id) as Promise<void>,
+  loadFlightScreeningCache: () => ipcRenderer.invoke("flights:screening-cache") as Promise<FlightScreeningCache | null>,
+  saveFlightScreeningCache: (cache: FlightScreeningCache) => ipcRenderer.invoke("flights:save-screening-cache", cache) as Promise<void>,
   openMedia: () => ipcRenderer.invoke(OPEN_MEDIA_CHANNEL) as Promise<MediaSource | null>,
   transcribeMedia: (sourcePath: string) =>
     ipcRenderer.invoke(TRANSCRIBE_MEDIA_CHANNEL, sourcePath) as Promise<SubtitleTrack>,
