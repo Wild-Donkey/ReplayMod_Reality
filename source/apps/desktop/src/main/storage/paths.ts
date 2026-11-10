@@ -4,17 +4,15 @@ const APP_DIRECTORY = "ReplayMod Reality";
 
 export function storagePaths(platform: NodeJS.Platform, home: string, appData: string, env: NodeJS.ProcessEnv) {
   const data = path.join(appData, APP_DIRECTORY);
-  const cache = systemCacheDirectory(platform, home, appData, env);
+  const legacyCache = systemCacheDirectory(platform, home, appData, env);
+  const cache = path.join(data, "resource-cache-v1");
   return Object.freeze({
-    data, cache,
+    data, cache, legacyCache,
     config: path.join(data, "config.json"),
     archive: path.join(data, "user-archive.json"),
     state: path.join(data, "state-v1"),
     annotations: path.join(data, "annotations.json"),
-    snapshots: path.join(cache, "snapshots-v1"),
-    maps: path.join(cache, "maps-v1"),
-    session: path.join(cache, "browser", "session"),
-    http: path.join(cache, "browser", "http"),
+    session: path.join(legacyCache, "browser", "session"),
   });
 }
 

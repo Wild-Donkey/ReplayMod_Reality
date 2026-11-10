@@ -3,9 +3,10 @@ import { OfflineFramePlan, type OfflineExportOptions } from "../shared/overlayEx
 import { findTransparentVideoEncoder } from "../../../../packages/media/src/raw-video";
 import { installDisplayHDR } from "./displayHDR";
 import { AppStorage } from "./storage";
+import { storagePaths } from "./storage/paths";
 import { windowBackgroundOptions } from "./windowBackground";
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { createReadStream, mkdirSync } from "node:fs";
 import { access, mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { app, BrowserWindow, dialog, ipcMain, shell, net, Menu } from "electron";
 import { installScrollInput } from "./scrollInput";
@@ -74,31 +75,65 @@ app.on("before-quit", event => {
 app.setName("ReplayMod Reality");
 process.title = "ReplayMod Reality";
 
-const storage = new AppStorage(process.platform, app.getPath("home"), app.getPath("appData"), process.env);
-app.setPath("userData", storage.paths.data);
-app.setPath("sessionData", storage.paths.session);
-app.commandLine.appendSwitch("disk-cache-dir", storage.paths.http);
-app.commandLine.appendSwitch("disk-cache-size", String(512 * 1024 * 1024));
-const legacySettings = storage.settings.read();
-let userArchive: UserArchive = storage.archive.read() ?? {
-  ...defaultUserArchive(legacySettings),
+const { platform, env } = process;
+const home = app.getPath("home");
+const appData = app.getPath("appData");
+const paths = storagePaths(platform, home, appData, env);
+mkdirSync(paths.data, { recursive: true, mode: 0o700 });
+app.setPath("userData", paths.data);
+if (!app.requestSingleInstanceLock()) process.exit(0);
+
+const storage = new AppStorage(platform, home, appData, env);
+app.setPath("sessionData", paths.session);
+app.commandLine.appendSwitch("disable-http-cache");
+
+const existingArchive = storage.archive.read();
+let userArchive: UserArchive = existingArchive ? {
+  ...existingArchive,
+  settings: storage.settings.validate(existingArchive.settings),
+} : {
+  ...defaultUserArchive(storage.settings.read()),
   workspace: storage.state.readSync<Record<string, unknown>>("workspace") ?? {},
   lastDatasetSource: storage.state.readSync("last-dataset-source") ?? undefined,
   lastMedia: storage.state.readSync("last-media") ?? undefined,
   migrations: {legacyImportedAt:new Date().toISOString()},
 };
-if (!storage.archive.read()) storage.archive.write(userArchive);
+if (!existingArchive) storage.archive.write(userArchive);
+const resources = storage.openResourceCache(userArchive.settings.cacheLimitMB);
 const updateUserArchive = (change: (current: UserArchive) => UserArchive) => {
-  userArchive = change(userArchive);
-  storage.archive.write(userArchive);
+  const next = change(userArchive);
+  storage.archive.write(next);
+  userArchive = next;
 };
+let cacheDrained = false;
+app.on("will-quit", event => {
+  if (cacheDrained) return;
+  event.preventDefault();
+  void screeningMigration.then(() => resources.drain()).finally(() => {
+    cacheDrained = true;
+    app.quit();
+  });
+});
+app.on("second-instance", () => {
+  const window = BrowserWindow.getAllWindows()[0];
+  if (!window) {
+    if (app.isReady()) createWindow();
+    return;
+  }
+  if (window.isMinimized()) window.restore();
+  window.focus();
+});
 ipcMain.on("storage:bootstrap", event => {
   event.returnValue = { state: userArchive.workspace, directory: storage.paths.cache, settings: userArchive.settings };
 });
 ipcMain.on("settings:save", (event, value: unknown) => {
   try {
     const settings=storage.settings.validate(value);
+    const previousLimit = userArchive.settings.cacheLimitMB;
     updateUserArchive(current=>({...current,settings}));
+    if (settings.cacheLimitMB !== previousLimit) {
+      void resources.setLimit(settings.cacheLimitMB * 1024 * 1024).catch(console.warn);
+    }
     event.returnValue = null;
   } catch { event.returnValue = "配置保存失败，请检查配置格式及应用数据目录权限。"; }
 });
@@ -110,6 +145,23 @@ ipcMain.on("workspace:save", (event, state: Record<string, unknown>) => {
   } catch (error) { event.returnValue = String(error); }
 });
 ipcMain.handle("cache:open", () => shell.openPath(storage.paths.cache));
+ipcMain.handle("cache:usage", () => resources.usage());
+
+const buildingCachePrefix = (source: string) => {
+  if (typeof source !== "string" || source.length > 64 * 1024) throw new Error("建筑数据源无效");
+  return createHash("sha256").update(source).digest("hex") + "-";
+};
+ipcMain.handle("cache:buildings-list", (_event, source: string) =>
+  resources.recentKeys("buildings", buildingCachePrefix(source), userArchive.settings.buildingCacheLimitMB * 1024 * 1024));
+ipcMain.handle("cache:buildings-read", (_event, source: string, key: string) => {
+  if (typeof key !== "string" || !/^[a-f0-9]{64}$/.test(key)) throw new Error("建筑缓存键无效");
+  return resources.read<string>("buildings", buildingCachePrefix(source) + key);
+});
+ipcMain.handle("cache:buildings-write", (_event, source: string, batch: string) => {
+  if (typeof batch !== "string" || Buffer.byteLength(batch) > 1024 * 1024) throw new Error("建筑缓存批次无效");
+  const key = buildingCachePrefix(source) + createHash("sha256").update(batch).digest("hex");
+  return resources.write("buildings", key, batch);
+});
 const mapRequests = new Map<string, Promise<Uint8Array>>();
 // All MapLibre instances share Chromium's network service. Bound downloads
 // globally, including body consumption, rather than per map or per hostname.
@@ -167,14 +219,14 @@ const loadMapResource = async (rawUrl: string, direct = false): Promise<Uint8Arr
   let request = mapRequests.get(key);
   if (!request) {
     request = (async () => {
-      const saved = await storage.maps.read<{ at: number; data: Uint8Array }>(key);
+      const saved = await resources.read<{ at: number; data: Uint8Array }>("maps", key);
       // 飞行识别的批处理图块是可重用的离线计算输入：只要磁盘缓存存在就不重拉。
       // 交互地图资源仍保留 7 天刷新周期。
       if (saved && (direct || Date.now() - saved.at < 7 * 86400_000)) return saved.data;
       try {
         const data = await (direct ? downloadMapDirect(url.href) : downloadMap(url.href));
         if (data.byteLength <= 32 * 1024 * 1024) {
-          await storage.maps.write(key, { at: Date.now(), data }).catch(console.warn);
+          await resources.write("maps", key, { at: Date.now(), data }).catch(console.warn);
         }
         return data;
       } catch (error) {
@@ -210,7 +262,7 @@ ipcMain.handle("cache:map-batch", async (_event, rawUrls: readonly string[]) => 
 // 缓存，离线或请求失败时回退缓存；force 用于用户手动更新。内置临时表在
 // 渲染进程，这里只负责在线全量数据。
 ipcMain.handle("data:airports", async (_event, force = false) => {
-  const saved = await storage.maps.read<{ at: number; data: Uint8Array }>(AIRPORTS_CACHE_KEY);
+  const saved = await resources.read<{ at: number; data: Uint8Array }>("maps", AIRPORTS_CACHE_KEY);
   if (saved && !force && Date.now() - saved.at < 30 * 86400_000) {
     if (!userArchive.services.airportsUpdatedAt) {
       updateUserArchive(current=>({...current,services:{...current.services,airportsUpdatedAt:new Date(saved.at).toISOString()}}));
@@ -222,7 +274,7 @@ ipcMain.handle("data:airports", async (_event, force = false) => {
     if (!response.ok) throw new Error(`机场数据请求失败 (${response.status})`);
     const data = new Uint8Array(await response.arrayBuffer());
     if (data.byteLength <= 32 * 1024 * 1024) {
-      await storage.maps.write(AIRPORTS_CACHE_KEY, { at: Date.now(), data }).catch(console.warn);
+      await resources.write("maps", AIRPORTS_CACHE_KEY, { at: Date.now(), data }).catch(console.warn);
     }
     updateUserArchive(current=>({...current,services:{...current.services,airportsUpdatedAt:new Date().toISOString()}}));
     return new TextDecoder().decode(data);
@@ -238,19 +290,26 @@ ipcMain.handle("data:airports", async (_event, force = false) => {
 const AIRPORT_ZH_TTL_MS = 30 * 86400_000;
 const AIRPORT_ZH_NEGATIVE_TTL_MS = 7 * 86400_000;
 ipcMain.handle("data:airport-name-zh", async (_event, icao: string) => {
-  const key = `airport-zh:${icao}`;
-  const saved = await storage.maps.read<{ at: number; name: string | null }>(key).catch(() => null);
+  const code = typeof icao === "string" ? icao.toUpperCase() : "";
+  const url = buildAirportNameZhQueryUrl(code);
+  const key = `airport-zh-${code.toLowerCase()}`;
+  const saved = await resources.read<{ at: number; name: string | null }>("maps", key);
   if (saved) {
     const ttl = saved.name === null ? AIRPORT_ZH_NEGATIVE_TTL_MS : AIRPORT_ZH_TTL_MS;
     if (Date.now() - saved.at < ttl) return saved.name;
   }
-  const response = await net.fetch(buildAirportNameZhQueryUrl(icao), {
-    headers: { Accept: "text/csv", "User-Agent": "replaymod-reality" },
-  });
-  if (!response.ok) throw new Error(`机场中文名请求失败 (${response.status})`);
-  const name = pickChineseNameFromCsv(await response.text());
-  await storage.maps.write(key, { at: Date.now(), name }).catch(console.warn);
-  return name;
+  try {
+    const response = await net.fetch(url, {
+      headers: { Accept: "text/csv", "User-Agent": "replaymod-reality" },
+    });
+    if (!response.ok) throw new Error(`机场中文名请求失败 (${response.status})`);
+    const name = pickChineseNameFromCsv(await response.text());
+    await resources.write("maps", key, { at: Date.now(), name }).catch(console.warn);
+    return name;
+  } catch (error) {
+    if (saved) return saved.name;
+    throw error;
+  }
 });
 
 const openedMediaPaths = new Set<string>();
@@ -297,16 +356,11 @@ interface CsvPair {
   readonly photoFilePath: string | null;
 }
 
-interface CachedDatasetSource {
-  readonly mainFilePath: string;
-  readonly photoFilePath: string | null;
-}
-
-const rememberDatasetSource = async (
-  mainFilePath: string,
-  photoFilePath: string | null,
-) => {
-  updateUserArchive(current=>({...current,lastDatasetSource:{mainFilePath,photoFilePath}}));
+const rememberDatasetSource = (mainFilePath: string, photoFilePath: string | null, key: string) => {
+  const current = userArchive.lastDatasetSource;
+  if (current?.mainFilePath === mainFilePath && current.photoFilePath === photoFilePath
+    && userArchive.lastDatasetCacheKey === key) return;
+  updateUserArchive(archive => ({ ...archive, lastDatasetSource: {mainFilePath, photoFilePath}, lastDatasetCacheKey: key }));
 };
 
 const isPhotoDataFile = (filePath: string) =>
@@ -325,10 +379,9 @@ const readLocationCsv = async (
     return [file, info.size, info.mtimeMs];
   }))];
   const key = createHash("sha256").update(JSON.stringify(signature)).digest("hex");
-  const saved = await storage.snapshots.read<PointDataset>(key);
+  const saved = await resources.read<PointDataset>("snapshots", key);
   if (saved) {
-    await storage.state.write("last-dataset", saved).catch(console.warn);
-    await rememberDatasetSource(mainFilePath, photoFilePath);
+    rememberDatasetSource(mainFilePath, photoFilePath, key);
     return saved;
   }
   const footprintPoints: TimedCoordinate[] = [];
@@ -464,9 +517,8 @@ const readLocationCsv = async (
     bounds,
     timeBounds,
   };
-  await storage.snapshots.write(key, dataset).catch(console.warn);
-  await storage.state.write("last-dataset", dataset).catch(console.warn);
-  await rememberDatasetSource(mainFilePath, photoFilePath);
+  await resources.write("snapshots", key, dataset).catch(console.warn);
+  rememberDatasetSource(mainFilePath, photoFilePath, key);
   return dataset;
 };
 
@@ -569,11 +621,19 @@ ipcMain.handle(
   LOAD_DEFAULT_LOCATION_CSV_CHANNEL,
   (): Promise<PointDataset | null> => {
     defaultDatasetPromise ??= (async () => {
+      const source = userArchive.lastDatasetSource;
+      const key = userArchive.lastDatasetCacheKey;
+      if (source && key) {
+        const available = await Promise.all([source.mainFilePath, source.photoFilePath].map(file =>
+          file ? access(file).then(() => true, () => false) : true));
+        if (available.includes(false)) {
+          const saved = await resources.read<PointDataset>("snapshots", key);
+          if (saved) return saved;
+        }
+      }
       const pair = await findDefaultCsvPair();
-      return pair
-        ? readLocationCsv(pair.mainFilePath, pair.photoFilePath)
-        : null;
-    })();
+      return pair ? readLocationCsv(pair.mainFilePath, pair.photoFilePath) : null;
+    })().finally(() => { defaultDatasetPromise = null; });
 
     return defaultDatasetPromise;
   },
@@ -639,6 +699,7 @@ const readConfirmedFlights = async (): Promise<ConfirmedFlightsFile> => {
     if (parsed.format !== "replaymod.confirmed-flights" || parsed.version !== 1 || !Array.isArray(parsed.flights)) {
       throw new Error("已确认航班文件格式无效。");
     }
+    if (userArchive.flights) return userArchive.flights;
     updateUserArchive(current=>({...current,flights:parsed}));
     return parsed;
   } catch (error) {
@@ -694,7 +755,27 @@ ipcMain.handle("flights:delete-confirmed", async (_event, id: string): Promise<v
   confirmedFlightSaveQueue = save;
   await save;
 });
-ipcMain.handle("flights:screening-cache", async () => (await readConfirmedFlights()).screening ?? null);
+const SCREENING_KEY = "last-run";
+async function migrateScreeningCache() {
+  const current = userArchive.flights;
+  if (!current?.screening) return;
+  const saved = await resources.read<FlightScreeningCache>("screening", SCREENING_KEY);
+  if (!saved && !await resources.write("screening", SCREENING_KEY, current.screening)) return;
+  if (userArchive.flights === current) {
+    const { screening, ...flights } = current;
+    writeConfirmedFlights(flights);
+  }
+}
+const screeningMigration = migrateScreeningCache().catch(console.warn);
+ipcMain.handle("flights:screening-cache", async () => {
+  await screeningMigration;
+  const saved = await resources.read<FlightScreeningCache>("screening", SCREENING_KEY);
+  if (saved) return saved;
+  // Some installations still have a standalone confirmed-flights.json.
+  const { screening } = await readConfirmedFlights();
+  if (screening) await migrateScreeningCache().catch(console.warn);
+  return screening ?? null;
+});
 ipcMain.handle("flights:save-screening-cache", async (_event, cache: FlightScreeningCache): Promise<void> => {
   if (!cache || !Number.isFinite(cache.datasetStartTime) || !Number.isInteger(cache.pointCount)
     || cache.pointCount < 0 || !Number.isFinite(cache.throughTimestamp)
@@ -703,9 +784,11 @@ ipcMain.handle("flights:save-screening-cache", async (_event, cache: FlightScree
     throw new Error("飞行识别进度无效。");
   }
   const save = confirmedFlightSaveQueue.catch(() => "").then(async () => {
-    const current = await readConfirmedFlights();
-    const document: ConfirmedFlightsFile = { ...current, updatedAt: new Date().toISOString(), screening: cache };
-    return writeConfirmedFlights(document);
+    await screeningMigration;
+    await readConfirmedFlights();
+    await migrateScreeningCache();
+    await resources.write("screening", SCREENING_KEY, cache);
+    return storage.paths.cache;
   });
   confirmedFlightSaveQueue = save;
   await save;

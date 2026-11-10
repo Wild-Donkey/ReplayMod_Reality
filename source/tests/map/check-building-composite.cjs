@@ -62,10 +62,17 @@ app.whenReady().then(async () => {
       const {BuildingHeightOverlay} = load('BuildingHeightOverlay');
       const tiles = ${JSON.stringify(tiles)};
       const requested = new Set();
+      const batches = [];
+      window.replaymod = {
+        listBuildingCache: async () => batches.map((_, index) => String(index)),
+        readBuildingCache: async (_source, key) => batches[Number(key)],
+        writeBuildingCache: async (_source, batch) => { batches.push(batch); return true; },
+      };
+      let online = true;
       maplibregl.addProtocol('building-fixture', async ({url}) => {
         const [zoom, x, y] = url.slice('building-fixture://'.length).split('/').map(Number);
         const center = 2 ** (zoom - 1);
-        if (x !== center || y !== center) return {data: new ArrayBuffer(0)};
+        if (!online || x !== center || y !== center) return {data: new ArrayBuffer(0)};
         requested.add(zoom);
         return {data: new Uint8Array(tiles[zoom]).buffer};
       });
@@ -84,11 +91,12 @@ app.whenReady().then(async () => {
       await new Promise(resolve => map.once('load', resolve));
       let remembered = 0;
       window.addEventListener('building-cache-stats', event => { remembered = event.detail.features; });
-      const overlay = new BuildingHeightOverlay(map, {
+      const style = {
         version: 8,
         sources: {planet: {type: 'vector', minzoom: 12, maxzoom: 14, tiles: ['building-fixture://{z}/{x}/{y}']}},
         layers: [{id: 'Building', type: 'fill', source: 'planet', 'source-layer': 'building'}],
-      });
+      };
+      const overlay = new BuildingHeightOverlay(map, style);
       const snapshot = document.createElement('canvas');
       snapshot.width = 256;
       snapshot.height = 128;
@@ -129,8 +137,14 @@ app.whenReady().then(async () => {
       const withoutCache = sample();
       overlay.dispose();
       const disposed = sample();
+      online = false;
+      map.jumpTo({zoom: 11});
+      const reopened = new BuildingHeightOverlay(map, style);
+      await until(() => remembered >= 3 && reopened.map.loaded() && sample()[3] > 0);
+      const reopenedOffline = sample();
+      reopened.dispose();
       map.remove();
-      return {current, intermediate, coarse, cached, hidden, restored, withoutCache, disposed};
+      return {current, intermediate, coarse, cached, hidden, restored, withoutCache, disposed, reopenedOffline};
     })()`);
     assert(Math.abs(result.current[0] - 18) <= 1, 'original opacity for a low building');
     assert(Math.abs(result.current[3] - 87) <= 1, 'original opacity for a tall building');
@@ -143,6 +157,7 @@ app.whenReady().then(async () => {
     assert.deepEqual(result.restored, result.cached);
     assert.deepEqual(result.withoutCache, result.current, 'the active provider footprints render with no memory budget');
     assert.deepEqual(result.disposed, result.hidden);
+    assert.deepEqual(result.reopenedOffline, result.cached, 'saved footprints restore without provider tiles');
     console.log('Building composite passed:', result);
   } finally {
     window.destroy();

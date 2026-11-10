@@ -35,6 +35,10 @@ export interface DesktopBridge {
   readonly cacheDirectory: string;
   saveWorkspaceState(state: Record<string, unknown>): string | null;
   openCacheDirectory(): Promise<string>;
+  getCacheUsage(): Promise<{ bytes: number; entries: number }>;
+  listBuildingCache(source: string): Promise<string[]>;
+  readBuildingCache(source: string, key: string): Promise<string | null>;
+  writeBuildingCache(source: string, batch: string): Promise<boolean>;
   loadCachedMedia(): Promise<MediaSource | null>;
   loadMapResource(url: string): Promise<Uint8Array>;
   loadMapResources(urls: readonly string[]): Promise<Uint8Array[]>;
@@ -86,6 +90,10 @@ const bridge: DesktopBridge = Object.freeze({
   cacheDirectory: bootstrap.directory,
   saveWorkspaceState: (state: Record<string, unknown>) => ipcRenderer.sendSync("workspace:save", state),
   openCacheDirectory: () => ipcRenderer.invoke("cache:open"),
+  getCacheUsage: () => ipcRenderer.invoke("cache:usage"),
+  listBuildingCache: (source: string) => ipcRenderer.invoke("cache:buildings-list", source),
+  readBuildingCache: (source: string, key: string) => ipcRenderer.invoke("cache:buildings-read", source, key),
+  writeBuildingCache: (source: string, batch: string) => ipcRenderer.invoke("cache:buildings-write", source, batch),
   loadCachedMedia: () => ipcRenderer.invoke("cache:media"),
   loadMapResource: (url: string) => ipcRenderer.invoke("cache:map", url),
   loadMapResources: (urls: readonly string[]) => ipcRenderer.invoke("cache:map-batch", urls),

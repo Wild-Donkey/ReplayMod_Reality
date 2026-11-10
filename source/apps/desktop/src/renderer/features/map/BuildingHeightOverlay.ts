@@ -6,7 +6,17 @@ import {addElevationBuildings, buildingHeight, buildingMaskPaint} from "./basema
 const MEMORY_SOURCE = "building-height-memory";
 const MEMORY_LAYER = "building-height-memory-buffer";
 const PROVIDER_LAYER = "elevation-buildings";
-type Building = {feature: Feature<Polygon | MultiPolygon>; bytes: number};
+type Footprint = Feature<Polygon | MultiPolygon>;
+type Building = {feature: Footprint; bytes: number};
+const MAX_BATCH_BYTES = 1024 * 1024;
+const encoder = new TextEncoder();
+
+function buildingKey({id, properties, geometry}: Footprint) {
+  // Tile-local IDs can collide. Keep distinct clipped geometry so the
+  // coarse mask can reconstruct footprints that span tile edges.
+  const height = properties?.height ?? properties?.render_height ?? properties?.levels ?? properties?.["building:levels"] ?? 0;
+  return `${id ?? ""}:${height}:${JSON.stringify(geometry)}`;
+}
 
 function createMaskProgram(gl: WebGLRenderingContext | WebGL2RenderingContext) {
   const vertex = gl.createShader(gl.VERTEX_SHADER)!;
@@ -48,6 +58,8 @@ export class BuildingHeightOverlay {
   private readonly map: GLMap;
   private readonly layer: CustomLayerInterface;
   private readonly providerSource: string | undefined;
+  private readonly cacheSource: string | undefined;
+  private restoring = false;
   private visible = true;
   private disposed = false;
   private synchronizing = false;
@@ -60,6 +72,7 @@ export class BuildingHeightOverlay {
     const templates = style.layers.filter(layer => "source-layer" in layer && layer["source-layer"] === "building");
     const template = templates.find(layer => layer.type === "fill" || layer.type === "fill-extrusion") ?? templates[0];
     this.providerSource = template && "source" in template ? template.source : undefined;
+    this.cacheSource = this.providerSource ? JSON.stringify(style.sources[this.providerSource]) : undefined;
 
     Object.assign(this.container.style, {position: "absolute", inset: "0", pointerEvents: "none", opacity: "0"});
     base.getCanvasContainer().before(this.container);
@@ -124,7 +137,16 @@ export class BuildingHeightOverlay {
       this.map.on("render", this.frameRendered);
       this.map.on("idle", this.capture);
       this.map.on("sourcedata", this.captureSource);
-      this.capture();
+      this.restoring = true;
+      void this.restoreMemory().catch(console.warn).finally(() => {
+        this.restoring = false;
+        if (this.disposed) return;
+        if (this.remembered.size) {
+          this.publishMask();
+          this.publishStats();
+        }
+        this.capture();
+      });
     });
     base.on("movestart", this.capture);
     base.on("move", this.synchronize);
@@ -163,33 +185,78 @@ export class BuildingHeightOverlay {
     if (event.sourceId === this.providerSource) this.capture();
   };
 
+  private async restoreMemory() {
+    const bridge = window.replaymod;
+    const source = this.cacheSource;
+    if (!bridge?.listBuildingCache || !source) return;
+    const keys = await bridge.listBuildingCache(source);
+    for (const key of keys) {
+      if (this.disposed) return;
+      const batch = await bridge.readBuildingCache(source, key);
+      if (this.disposed) return;
+      if (!batch) continue;
+      try {
+        for (const feature of JSON.parse(batch) as Footprint[]) {
+          const key = buildingKey(feature);
+          if (this.remembered.has(key)) continue;
+          const bytes = encoder.encode(JSON.stringify(feature)).byteLength;
+          this.remembered.set(key, {feature, bytes});
+          this.memoryBytes += bytes;
+        }
+        this.trimMemory();
+      } catch (error) {
+        console.warn("建筑缓存读取失败", error);
+      }
+    }
+  }
+
+  private persistFootprints(entries: {json: string; bytes: number}[]) {
+    const bridge = window.replaymod;
+    const source = this.cacheSource;
+    if (!bridge?.writeBuildingCache || !source) return;
+    let batch: string[] = [];
+    let bytes = 2; // JSON array delimiters
+    const save = () => {
+      if (batch.length) void bridge.writeBuildingCache(source, `[${batch.join(",")}]`).catch(console.warn);
+      batch = [];
+      bytes = 2;
+    };
+    for (const entry of entries) {
+      if (entry.bytes + 2 > MAX_BATCH_BYTES) continue;
+      if (bytes + entry.bytes + 1 > MAX_BATCH_BYTES) save();
+      bytes += entry.bytes + (batch.length ? 1 : 0);
+      batch.push(entry.json);
+    }
+    save();
+  }
+
   private capture = () => {
-    if (this.disposed || !this.visible || !this.providerSource || !this.map.getSource(MEMORY_SOURCE)) return;
+    if (this.disposed || this.restoring || !this.visible || !this.providerSource || !this.map.getSource(MEMORY_SOURCE)) return;
     const current = new Map<string, Building>();
-    let memoryChanged = false;
+    const additions: {json: string; bytes: number}[] = [];
     for (const feature of this.map.querySourceFeatures(this.providerSource, {sourceLayer: "building"})) {
       const geometry = feature.geometry;
       if (geometry.type !== "Polygon" && geometry.type !== "MultiPolygon") continue;
-      const properties = feature.properties;
-      // Tile-local IDs can collide. Distinct clipped geometry must survive so
-      // the coarse cache can reconstruct footprints that span tile edges.
-      const key = `${feature.id ?? ""}:${properties.height ?? properties.render_height ?? properties.levels ?? properties["building:levels"] ?? 0}:${JSON.stringify(geometry)}`;
+      const retained: Footprint = {type: "Feature", id: feature.id, properties: feature.properties, geometry};
+      const key = buildingKey(retained);
       if (current.has(key)) continue;
       let building = this.remembered.get(key) ?? this.current.get(key);
       if (!building) {
-        const retained: Feature<Polygon | MultiPolygon> = {type: "Feature", id: feature.id, properties, geometry};
-        building = {feature: retained, bytes: new TextEncoder().encode(JSON.stringify(retained)).byteLength};
+        const json = JSON.stringify(retained);
+        const bytes = encoder.encode(json).byteLength;
+        building = {feature: retained, bytes};
         this.remembered.set(key, building);
-        this.memoryBytes += building.bytes;
-        memoryChanged = true;
+        this.memoryBytes += bytes;
+        additions.push({json, bytes});
       }
       current.set(key, building);
     }
     const currentChanged = current.size !== this.current.size || [...current.keys()].some(key => !this.current.has(key));
     this.current = current;
     const evicted = this.trimMemory();
-    if (currentChanged || memoryChanged || evicted) this.publishMask();
-    if (memoryChanged || evicted) this.publishStats();
+    if (currentChanged || additions.length || evicted) this.publishMask();
+    if (additions.length || evicted) this.publishStats();
+    this.persistFootprints(additions);
   };
 
   updateMemoryLimit(limitMB: number) {

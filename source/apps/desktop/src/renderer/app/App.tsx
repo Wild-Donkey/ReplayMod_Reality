@@ -3,7 +3,7 @@ import { defaultTimelineMetrics, type TimelineMetricsSettings } from "../feature
 import { useCachedState, readCached, writeCached, cacheError } from "../shared/cache";
 import type { AnnotationProject, MapCoordinate } from "../../../../../packages/data/src";
 import type { TerrainProfilePoint } from "../features/map/elevation";
-import type { AppSettings, MapLanguage } from "../../shared/settings";
+import { DEFAULT_CACHE_LIMIT_MB, type AppSettings, type MapLanguage } from "../../shared/settings";
 import { AnnotationPanel } from "../features/annotations/AnnotationPanel";
 import { ElevationProfile } from "../features/annotations/ElevationProfile";
 import { emptyAnnotations, parseAnnotationProject, serializeAnnotationProject } from "../features/annotations/annotations";
@@ -182,6 +182,8 @@ export function App() {
   const [maptilerKey, setMaptilerKey] = useState(() => window.replaymod?.settings.maptilerApiKey ?? "");
   const [mapLanguage, setMapLanguage] = useState<MapLanguage>(() => window.replaymod?.settings.mapLanguage ?? "auto");
   const [buildingCacheLimitMB,setBuildingCacheLimitMB]=useState(()=>window.replaymod?.settings.buildingCacheLimitMB??256);
+  const [cacheLimitMB, setCacheLimitMB] = useState(() => window.replaymod?.settings.cacheLimitMB ?? DEFAULT_CACHE_LIMIT_MB);
+  const [cacheUsage, setCacheUsage] = useState<{ bytes: number; entries: number } | null>(null);
   const [buildingCacheStats,setBuildingCacheStats]=useState({bytes:0,features:0});
   const [pointerLocation, setPointerLocation] = useState<TerrainProfilePoint | null>(null);
 
@@ -192,13 +194,13 @@ export function App() {
   };
 
   const saveMaptilerKey = (key: string) => {
-    if (!saveAppSettings({ maptilerApiKey: key, mapLanguage, buildingCacheLimitMB })) return false;
+    if (!saveAppSettings({ maptilerApiKey: key, mapLanguage, buildingCacheLimitMB, cacheLimitMB })) return false;
     setMaptilerKey(key.trim());
     return true;
   };
 
   const saveMapLanguage = (language: MapLanguage) => {
-    if (!saveAppSettings({ maptilerApiKey: maptilerKey, mapLanguage: language, buildingCacheLimitMB })) return;
+    if (!saveAppSettings({ maptilerApiKey: maptilerKey, mapLanguage: language, buildingCacheLimitMB, cacheLimitMB })) return;
     setMapLanguage(language);
     setSettingsStatus("地图文字语言已更新");
   };
@@ -206,9 +208,37 @@ export function App() {
   const clearMaptilerKey = () => saveMaptilerKey("");
 
   const saveBuildingCacheLimit=(limit:number)=>{
-    if(!saveAppSettings({maptilerApiKey:maptilerKey,mapLanguage,buildingCacheLimitMB:limit}))return;
-    setBuildingCacheLimitMB(limit);setSettingsStatus(`建筑 LOD 缓存上限已设为 ${limit} MB`);
+    if(!saveAppSettings({maptilerApiKey:maptilerKey,mapLanguage,buildingCacheLimitMB:limit,cacheLimitMB}))return;
+    setBuildingCacheLimitMB(limit);setSettingsStatus(`建筑 LOD 内存上限已设为 ${limit} MB`);
   };
+
+  const saveCacheLimit = (limit: number) => {
+    if (!saveAppSettings({maptilerApiKey: maptilerKey, mapLanguage, buildingCacheLimitMB, cacheLimitMB: limit})) return;
+    setCacheLimitMB(limit);
+    setSettingsStatus("磁盘缓存上限已更新");
+  };
+
+  useEffect(() => {
+    const bridge = window.replaymod;
+    if (activeTab !== "settings" || !bridge?.getCacheUsage) return;
+    let active = true;
+    let pending = false;
+    const refresh = async () => {
+      if (pending) return;
+      pending = true;
+      try {
+        const usage = await bridge.getCacheUsage();
+        if (active) setCacheUsage(usage);
+      } catch {
+        if (active) setCacheUsage(null);
+      } finally {
+        pending = false;
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(refresh, 2000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [activeTab, cacheLimitMB]);
 
   useEffect(()=>{
     const update=(event:Event)=>setBuildingCacheStats((event as CustomEvent<{bytes:number;features:number}>).detail);
@@ -632,15 +662,25 @@ export function App() {
               </select>
             </label>
             <p>切换后底图地名会立即更新；缺少翻译时使用当地名称。</p>
-            <h3>建筑 LOD 缓存</h3>
+            <h3>统一磁盘缓存</h3>
+            <label className="settings-row" htmlFor="settings-cache-limit">
+              <span>总容量上限</span>
+              <select id="settings-cache-limit" value={cacheLimitMB} onChange={event => saveCacheLimit(Number(event.target.value))}>
+                {[...new Set([256, 512, 1024, 2048, 4096, 8192, 16384, 32768, cacheLimitMB])].sort((a, b) => a - b).map(value =>
+                  <option key={value} value={value}>{value % 1024 === 0 ? `${value / 1024} GB` : `${value} MB`}</option>)}
+              </select>
+            </label>
+            <div className="settings-row"><span>磁盘已用</span><strong>{cacheUsage ? `${(cacheUsage.bytes / 1024 / 1024).toFixed(1)} MB · ${cacheUsage.entries.toLocaleString("zh-CN")} 项` : "—"}</strong></div>
+            <p>地图、地形、建筑、轨迹和飞行筛查共用此空间。超过上限时优先淘汰最久未使用的条目。</p>
+            <h3>建筑 LOD 内存</h3>
             <label className="settings-row" htmlFor="settings-building-cache-limit">
-              <span>容量上限</span>
+              <span>内存上限</span>
               <select id="settings-building-cache-limit" value={buildingCacheLimitMB} onChange={event=>saveBuildingCacheLimit(Number(event.target.value))}>
                 {[64,128,256,512,1024,2048].map(value=><option key={value} value={value}>{value>=1024?`${value/1024} GB`:`${value} MB`}</option>)}
               </select>
             </label>
             <div className="settings-row"><span>当前已用</span><strong>{buildingCacheStats.bytes<1024*1024?`${(buildingCacheStats.bytes/1024).toFixed(1)} KB`:`${(buildingCacheStats.bytes/1024/1024).toFixed(1)} MB`}</strong></div>
-            <p>{buildingCacheStats.features.toLocaleString("zh-CN")} 个建筑要素；超出上限后优先淘汰最早记忆的区域。</p>
+            <p>{buildingCacheStats.features.toLocaleString("zh-CN")} 个建筑要素；此上限控制当前窗口保留的建筑要素。</p>
             <h3>本地存储</h3>
             <p>标注、视角和导出偏好会自动保存。</p>
             <button type="button" disabled={!window.replaymod} onClick={() => {

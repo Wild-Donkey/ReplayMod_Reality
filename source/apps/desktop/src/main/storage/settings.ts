@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, renameSync } from "node:fs";
-import type { AppSettings } from "../../shared/settings";
+import { DEFAULT_CACHE_LIMIT_MB, type AppSettings } from "../../shared/settings";
 
-const defaultSettings: AppSettings = { maptilerApiKey: "", mapLanguage: "auto", buildingCacheLimitMB: 256 };
+const defaultSettings: AppSettings = { maptilerApiKey: "", mapLanguage: "auto", buildingCacheLimitMB: 256, cacheLimitMB: DEFAULT_CACHE_LIMIT_MB };
 
 export class SettingsStore {
   constructor(private readonly file: string) {}
@@ -33,6 +33,10 @@ export class SettingsStore {
     if (typeof rawLimit !== "number" || !Number.isFinite(rawLimit) || rawLimit < 32 || rawLimit > 4096) {
       throw new Error("应用配置格式无效");
     }
-    return { maptilerApiKey: value.maptilerApiKey.trim(), mapLanguage: mapLanguage as AppSettings["mapLanguage"], buildingCacheLimitMB: Math.round(rawLimit) };
+    const cacheLimitMB = "cacheLimitMB" in value ? value.cacheLimitMB : DEFAULT_CACHE_LIMIT_MB;
+    if (typeof cacheLimitMB !== "number" || !Number.isFinite(cacheLimitMB) || cacheLimitMB < 256 || cacheLimitMB > 32768) {
+      throw new Error("应用配置格式无效");
+    }
+    return { cacheLimitMB: Math.round(cacheLimitMB), maptilerApiKey: value.maptilerApiKey.trim(), mapLanguage: mapLanguage as AppSettings["mapLanguage"], buildingCacheLimitMB: Math.round(rawLimit) };
   }
 }

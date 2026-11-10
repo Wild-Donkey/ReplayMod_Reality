@@ -53,6 +53,6 @@ macOS 双击 `Install-MacOS.command` 会打包并安装至 `~/Applications/Repla
 | 地图未加载 | 在应用中输入或更新 MapTiler API Key，检查网络和服务访问情况 |
 | 视频探测或字幕失败 | 检查 FFmpeg / FFprobe、Whisper 可执行文件和模型，见 [媒体处理](media.md) |
 | 修改主进程或原生模块后效果未变 | 完全退出并重新启动应用，网页热更新不会替换原生对象 |
-| 想清理缓存 | 从「缓存状态」打开实际缓存目录，退出后删除；见 [存储说明](storage.md) |
+| 想清理缓存 | 从「设置」打开实际缓存目录，退出后删除；见 [存储说明](storage.md) |
 
 仅检查启动环境而不打开应用：`node source/scripts/start/launch.cjs --check`。

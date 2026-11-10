@@ -8,6 +8,7 @@ export interface UserArchive {
   readonly settings: AppSettings;
   readonly workspace: Record<string, unknown>;
   readonly lastDatasetSource?: { readonly mainFilePath: string; readonly photoFilePath: string | null };
+  readonly lastDatasetCacheKey?: string;
   readonly lastMedia?: unknown;
   readonly flights?: ConfirmedFlightsFile;
   readonly services: {
