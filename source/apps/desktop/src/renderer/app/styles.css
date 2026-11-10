@@ -1881,3 +1881,104 @@ h2.section-label { margin: 0; }
 .confidence-none { background: #8a4242; }
 
 .route-elevation[data-replay-renderer="engine"] { background: transparent; }
+
+/* Astronomy workspace */
+.astronomy-basemap .maplibregl-canvas-container > canvas {
+  filter: grayscale(1) contrast(.5) brightness(.8);
+}
+.astronomy-map-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.workspace.astronomy-workspace:not(.bottom-panel-collapsed) .stage-column {
+  grid-template-rows: minmax(160px, 1fr) 174px;
+}
+.astronomy-panel {
+  padding: 8px 14px 18px;
+  color: #ccc;
+  font-size: 12px;
+}
+.astronomy-panel p { margin: 7px 0; color: #b6b6b6; line-height: 1.5; }
+.astronomy-panel h3 { margin: 17px 0 6px; color: #eee; font-size: 12px; }
+.astronomy-panel h3 small { margin-left: 6px; color: #aaa; font-weight: 400; }
+.astronomy-readout { margin: 0; }
+.astronomy-readout > div, .astronomy-events button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 5px 0;
+  border-bottom: 1px solid #fff2;
+  font-variant-numeric: tabular-nums;
+}
+.astronomy-readout dt, .astronomy-readout dd { margin: 0; }
+.astronomy-readout i, .astronomy-events i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 7px;
+  border-radius: 50%;
+}
+.astronomy-events button {
+  width: 100%;
+  padding-inline: 4px;
+  background: transparent;
+  color: #ddd;
+  cursor: pointer;
+}
+.astronomy-events button:hover:not(:disabled) { background: #fff2; }
+.astronomy-events button:disabled { color: #aaa; cursor: default; }
+.astronomy-timeline {
+  display: grid;
+  grid-template-rows: 28px minmax(0, 1fr) 15px 16px;
+  gap: 4px;
+  padding: 4px 12px 5px 8px;
+  background: #111418;
+  border-top: 1px solid #fff2;
+  color: #ddd;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.astronomy-controls { display: flex; align-items: center; gap: 4px; padding-right: 29px; }
+.astronomy-controls button, .astronomy-controls input, .astronomy-controls select {
+  min-width: 0;
+  height: 24px;
+  padding: 1px 6px;
+  border: 1px solid #fff3;
+  border-radius: 3px;
+  background: #24282d;
+  color: #eee;
+  color-scheme: dark;
+  font: inherit;
+}
+.astronomy-controls button { cursor: pointer; }
+.astronomy-controls button:disabled { opacity: .5; cursor: default; }
+.astronomy-controls output { margin-left: 4px; color: #fff; font-weight: 600; }
+.astronomy-chart {
+  position: relative;
+  display: grid;
+  min-height: 0;
+  grid-template: minmax(0, 1fr) / 35px minmax(0, 1fr);
+}
+.astronomy-altitude { position: relative; margin-right: 5px; }
+.astronomy-altitude span { position: absolute; right: 0; transform: translateY(-50%); color: #aaa; font-size: 10px; }
+.astronomy-chart svg { display: block; width: 100%; height: 100%; min-height: 0; overflow: visible; touch-action: none; cursor: ew-resize; }
+.astronomy-chart svg :is(line, polyline) { vector-effect: non-scaling-stroke; }
+.astronomy-chart polyline { stroke-width: 1.5; }
+.astronomy-chart p {
+  position: absolute;
+  inset: 0 0 0 35px;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  pointer-events: none;
+}
+.astronomy-grid { stroke: #fff2; }
+.astronomy-horizon { stroke: #fff6; stroke-dasharray: 3 3; }
+.astronomy-event-tick { opacity: .5; stroke-dasharray: 4 4; }
+.astronomy-playhead { stroke: #fff; stroke-width: 1.5; }
+.astronomy-hours { display: flex; justify-content: space-between; margin-left: 35px; color: #bbb; font-size: 10px; }
+.astronomy-time-range { width: calc(100% - 35px); height: 14px; margin: 0 0 0 35px; accent-color: #d8e4f4; cursor: ew-resize; }

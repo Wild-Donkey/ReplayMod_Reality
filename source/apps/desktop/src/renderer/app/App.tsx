@@ -7,12 +7,17 @@ import { DEFAULT_CACHE_LIMIT_MB, type AppSettings, type MapLanguage } from "../.
 import { AnnotationPanel } from "../features/annotations/AnnotationPanel";
 import { ElevationProfile } from "../features/annotations/ElevationProfile";
 import { emptyAnnotations, parseAnnotationProject, serializeAnnotationProject } from "../features/annotations/annotations";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PointDataset, TimeBounds } from "../../../../../packages/data/src";
 import type { MediaSource, SubtitleTrack } from "../../../../../packages/media/src";
 import { MapTokenSetup, MapViewport } from "../features/map/MapViewport";
 import { OverlayExport } from "../features/export/OverlayExport";
 import { SubtitleEditor } from "../features/subtitles/SubtitleEditor";
+import { AstronomyPanel, AstronomyTimeline } from "../features/astronomy/AstronomyPanel";
+import {
+  observationDay, observationNow, observationStart, skyDirections, sunVector,
+  type AstronomyMapState, type ObservationPoint,
+} from "../features/astronomy/astronomy";
 import { FlightPanel } from "../features/flights/FlightPanel";
 import { defaultLayerVisibility, renderLayerLabels, type RenderLayerId } from "../render-engine/LayerVisibility";
 import {
@@ -26,11 +31,12 @@ import { ReplayRenderSurface } from "../render-engine/ReplayRenderSurface";
 import { TrajectoryBuffer } from "../render-engine/buffers/TrajectoryBuffer";
 import type { FlightRouteSegment } from "../features/map/flights";
 
-type WorkspaceTab = "annotations" | "sources" | "flights" | "export" | "settings";
+type WorkspaceTab = "annotations" | "sources" | "flights" | "astronomy" | "export" | "settings";
 const tabs: {id: WorkspaceTab; label: string; path: string}[] = [
   {id: "annotations", label: "地图标注", path: "M12 21s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12Z M15 9a3 3 0 1 1-6 0 3 3 0 0 1 6 0"},
   {id: "sources", label: "数据与视频", path: "M3 7h7l2 2h9v11H3Z M3 7V4h7l2 3 M10 12l5 3-5 3Z"},
   {id: "flights", label: "航行", path: "M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5Z"},
+  {id: "astronomy", label: "天文", path: "M12 2l1.9 6.1L20 10l-6.1 1.9L12 18l-1.9-6.1L4 10l6.1-1.9L12 2Z M19 15v6 M16 18h6 M5 16v4 M3 18h4"},
   {id: "export", label: "叠加导出", path: "M4 14v6h16v-6 M12 16V3 M7 8l5-5 5 5"},
   {id: "settings", label: "设置", path: "M4 6h16 M4 12h16 M4 18h16 M8 3v6 M16 9v6 M10 15v6"},
 ];
@@ -74,6 +80,24 @@ export function App() {
   const [mapLegendContainer, setMapLegendContainer] = useState<HTMLDivElement | null>(null);
   const [timelineMetrics, setTimelineMetrics] = useCachedState<TimelineMetricsSettings>("timeline-metrics", defaultTimelineMetrics);
   const [activeTab, setActiveTab] = useCachedState<WorkspaceTab>("workspace-tab", "annotations");
+  const astronomyActive = activeTab === "astronomy";
+  const [observationOffset, setObservationOffset] = useState(() => -new Date().getTimezoneOffset());
+  const [observationClock, setObservationClock] = useState(() => observationNow(observationOffset));
+  const [observationPoint, setObservationPoint] = useState<ObservationPoint | null>(null);
+  const dayStart = observationStart(observationClock.date, observationOffset);
+  const skyDay = useMemo(() => astronomyActive && observationPoint
+    ? observationDay(observationPoint, dayStart) : null, [astronomyActive, observationPoint, dayStart]);
+  const astronomyMap = useMemo<AstronomyMapState | null>(() => {
+    if (!astronomyActive) return null;
+    const time = new Date(dayStart + observationClock.minute * 60_000);
+    return {
+      point: observationPoint,
+      sun: sunVector(time),
+      directions: skyDay ? skyDirections(time, skyDay.observer) : null,
+      events: skyDay?.events ?? [],
+    };
+  }, [astronomyActive, dayStart, observationClock.minute, observationPoint, skyDay]);
+  const setObservationMinute = (minute: number) => setObservationClock(clock => ({ ...clock, minute }));
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useCachedState("left-panel-collapsed", false);
   const [bottomPanelCollapsed, setBottomPanelCollapsed] = useCachedState("bottom-panel-collapsed", false);
   useEffect(() => { if (bottomPanelCollapsed) replayScene.setCursor(null); }, [bottomPanelCollapsed, replayScene]);
@@ -148,6 +172,12 @@ export function App() {
   const [currentTime, displayCurrentTime] = useState<number | null>(() => readCached("currentTime", null));
   const [playing, setPlaying] = useState(false);
   const playbackRef = useRef<ReplayPlayback | null>(null);
+  useEffect(() => {
+    if (astronomyActive) {
+      playbackRef.current?.pause();
+      replayScene.setCursor(null);
+    }
+  }, [astronomyActive, replayScene]);
   const setCurrentTime = useCallback((time: number | null) => {
     playbackRef.current?.pause();
     replayScene.clock.setTime(time);
@@ -463,6 +493,8 @@ export function App() {
             onAnnotationElevationProfile={setAnnotationElevationProfile}
             onAnnotationSelect={selectAnnotation}
             onAnnotationFocus={focusAnnotation}
+            astronomy={astronomyMap}
+            onObservationSelect={setObservationPoint}
             drawMode={drawMode}
             draftCoordinates={draftCoordinates}
             onDrawCoordinate={coordinate=>drawMode==="point"?addAnnotation([coordinate],"point"):setDraftCoordinates(p=>[...p,coordinate])}
@@ -504,11 +536,11 @@ export function App() {
             {mode: "route", label: "画路线", path: "M6 6h9a4 4 0 0 1 0 8H9a4 4 0 0 0 0 8 M6 3v6 M3 6h6 M18 19v4 M16 21h4"},
           ] as const).map(tool => <button key={tool.mode} className={`tool-button ${drawMode === tool.mode ? "active" : ""}`}
             type="button" title={tool.label} aria-label={tool.label} aria-pressed={drawMode === tool.mode}
-            disabled={tool.mode !== "select" && !annotationsReady}
+            disabled={astronomyActive || (tool.mode !== "select" && !annotationsReady)}
             onClick={() => {setDrawMode(tool.mode); setDraftCoordinates([]);}}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={tool.path}/></svg>
           </button>)}
-          {drawMode === "route" && <>
+          {!astronomyActive && drawMode === "route" && <>
             <button className="tool-button" type="button" title={`完成路线（${draftCoordinates.length} 个点）`} aria-label="完成路线" disabled={draftCoordinates.length < 2} onClick={finishRoute}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>
             </button>
@@ -520,7 +552,7 @@ export function App() {
         <div className="titlebar-legend-slot" ref={setMapLegendContainer} />
       </header>
 
-      <section className={`workspace ${leftPanelCollapsed ? "left-panel-collapsed" : ""} ${bottomPanelCollapsed ? "bottom-panel-collapsed" : ""}`}>
+      <section className={`workspace ${leftPanelCollapsed ? "left-panel-collapsed" : ""} ${bottomPanelCollapsed ? "bottom-panel-collapsed" : ""} ${astronomyActive ? "astronomy-workspace" : ""}`}>
         <aside className="activity-bar" aria-label="工作区模块">
           {tabs.map(tab => <button key={tab.id} type="button"
             className={`activity-button ${!leftPanelCollapsed && activeTab === tab.id ? "active" : ""} ${tab.id === "settings" ? "settings-entry" : ""}`}
@@ -530,6 +562,7 @@ export function App() {
                 setLeftPanelCollapsed(true);
                 return;
               }
+              if (tab.id === "astronomy") setBottomPanelCollapsed(false);
               setActiveTab(tab.id);
               setLeftPanelCollapsed(false);
             }}>
@@ -621,6 +654,7 @@ export function App() {
               onFlightAirportsChange={setFlightAirports}
             />
           </div>
+          {astronomyMap && <AstronomyPanel state={astronomyMap} onTimeChange={setObservationMinute}/>}
           <div className="workspace-page" hidden={activeTab !== "export"}>
             <p className="page-intro">将轨迹与仪表导出为透明视频，叠加到拍摄素材上。</p>
           <section className="range-editor">
@@ -707,7 +741,11 @@ export function App() {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={bottomPanelCollapsed ? "m5 15 7-7 7 7" : "m5 9 7 7 7-7"}/></svg>
             </button>
             <div className="bottom-panel-content">
-              {selectedRoute ? <ElevationProfile scene={replayScene} coordinates={annotationElevationProfile} routeName={selectedRoute.name} onHover={syncElevationHover}/> : <Timeline
+              {astronomyActive ? <AstronomyTimeline day={skyDay} date={observationClock.date} minute={observationClock.minute}
+                offset={observationOffset} onOffsetChange={setObservationOffset}
+                onDateChange={date => setObservationClock(clock => ({ ...clock, date }))}
+                onTimeChange={setObservationMinute} onNow={() => setObservationClock(observationNow(observationOffset))}
+              /> : selectedRoute ? <ElevationProfile scene={replayScene} coordinates={annotationElevationProfile} routeName={selectedRoute.name} onHover={syncElevationHover}/> : <Timeline
                 scene={replayScene}
                 dataset={pointDataset}
                 currentTime={currentTime}

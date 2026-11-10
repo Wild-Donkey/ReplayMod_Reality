@@ -1,3 +1,5 @@
+import { AstronomyOverlay } from "../astronomy/AstronomyOverlay";
+import type { AstronomyMapState, ObservationPoint } from "../astronomy/astronomy";
 import type { FootprintDensityData } from "../../render-engine/FootprintDensityPass";
 import { FootprintDensity, footprintRadius } from "./footprintDensity";
 import {
@@ -255,6 +257,8 @@ interface MapViewportProps {
   onAnnotationElevationProfile: (profile:TerrainProfilePoint[]|null|undefined)=>void;
   onAnnotationSelect: (id:string|null)=>void;
   onAnnotationFocus: (id:string)=>void;
+  astronomy: AstronomyMapState | null;
+  onObservationSelect: (point: ObservationPoint) => void;
   drawMode: "select"|"point"|"route";
   draftCoordinates: MapCoordinate[];
   onDrawCoordinate: (coordinate:MapCoordinate)=>void;
@@ -279,6 +283,7 @@ export function MapViewport({
   scene,
   legendContainer,
   annotations, annotationSelectedId, annotationFocus, onAnnotationElevationProfile, onAnnotationSelect, onAnnotationFocus,
+  astronomy, onObservationSelect,
   drawMode, draftCoordinates, onDrawCoordinate, onFinishRoute, onCancelDrawing, onMoveAnnotationCoordinate,
   apiKey,
   mapLanguage,
@@ -292,6 +297,7 @@ export function MapViewport({
   flightAirports,
   onMapViewStateChange,
 }: MapViewportProps) {
+  const astronomyActive = astronomy !== null;
   const restoreCameraRef = useRef(Boolean(readCached("map-camera", null)));
   const scrollSourceRef = useRef<ScrollSource>("unknown");
   const [terrainAppearance,setTerrainAppearance] = useState<TerrainAppearance | null>(null);
@@ -644,29 +650,34 @@ export function MapViewport({
   useEffect(()=>{
     const map=mapRef.current;
     if(!map || status!=="ready")return;
-    map.getCanvas().style.cursor=drawMode==="select"?"":"crosshair";
+    map.getCanvas().style.cursor=astronomyActive || drawMode!=="select"?"crosshair":"";
     const click=(e:maplibregl.MapMouseEvent)=>{
+      if (astronomyActive) {
+        const { lng, lat } = e.lngLat.wrap();
+        onObservationSelect([lng, lat]);
+        return;
+      }
       if(drawMode!=="select"){onDrawCoordinate([((e.lngLat.lng+180)%360+360)%360-180,e.lngLat.lat]);return;}
       onAnnotationSelect(pickMapAnnotationId(map, e.point, scene));
     };
     const doubleClick=(e:maplibregl.MapMouseEvent)=>{
-      if(drawMode!=="select" || !scene.current.visibility.annotations)return;
+      if(astronomyActive || drawMode!=="select" || !scene.current.visibility.annotations)return;
       const id = pickMapAnnotationId(map, e.point, scene, true);
       if (id) onAnnotationFocus(id);
     };
     const key=(e:KeyboardEvent)=>{
-      if(isEditableTarget(e.target))return;
+      if(astronomyActive || isEditableTarget(e.target))return;
       if(e.key==="Escape")onCancelDrawing();
       if(e.key==="Enter"&&drawMode==="route"){e.preventDefault();onFinishRoute();}
     };
     map.on("click",click);map.on("dblclick",doubleClick);window.addEventListener("keydown",key);
     return()=>{map.off("click",click);map.off("dblclick",doubleClick);window.removeEventListener("keydown",key);};
-  },[drawMode,status,onDrawCoordinate,onAnnotationSelect,onAnnotationFocus,onFinishRoute,onCancelDrawing,scene]);
+  },[astronomyActive,onObservationSelect,drawMode,status,onDrawCoordinate,onAnnotationSelect,onAnnotationFocus,onFinishRoute,onCancelDrawing,scene]);
 
   useEffect(() => {
     const map = mapRef.current;
     const node = visibleAnnotations(annotations).find(candidate => candidate.id === annotationSelectedId);
-    if (!map || status !== "ready" || drawMode !== "select" || !node || node.coordinates.length > 200) return;
+    if (!map || status !== "ready" || astronomyActive || drawMode !== "select" || !node || node.coordinates.length > 200) return;
     const registry = new RenderChannelRegistry(scene);
     const positions: [number, number][] = node.coordinates.map(([longitude, latitude]) => [longitude, latitude]);
     const markers = positions.map((position, index) => {
@@ -704,7 +715,7 @@ export function MapViewport({
       registry.destroy();
       scene.setAnnotationHandles([]);
     };
-  }, [annotations, annotationSelectedId, drawMode, status, onMoveAnnotationCoordinate, scene]);
+  }, [annotations, annotationSelectedId, astronomyActive, drawMode, status, onMoveAnnotationCoordinate, scene]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1245,7 +1256,7 @@ export function MapViewport({
   useEffect(() => {
     const map = mapRef.current;
 
-    if (!map || status !== "ready" || !pointDataset) {
+    if (!map || status !== "ready" || !pointDataset || astronomyActive) {
       return;
     }
 
@@ -1294,7 +1305,7 @@ export function MapViewport({
       map.off("mouseout", clearHover);
       map.off("movestart", clearHover);
     };
-  }, [onPointSelect, pointDataset, status, drawMode, scene]);
+  }, [onPointSelect, pointDataset, status, drawMode, scene, astronomyActive]);
 
   useEffect(() => {
     const pressedKeys = new Set<"w" | "a" | "s" | "d">();
@@ -1411,8 +1422,9 @@ export function MapViewport({
 
   return (
     <section className="viewport map-viewport">
-      <div ref={containerRef} className="map-container" />
-      {status === "ready" && mapRef.current && <AnnotationLabels
+      <div ref={containerRef} className={`map-container${astronomyActive ? " astronomy-basemap" : ""}`} />
+      {astronomy && status === "ready" && mapRef.current && <AstronomyOverlay map={mapRef.current} state={astronomy}/>}
+      {!astronomyActive && status === "ready" && mapRef.current && <AnnotationLabels
         map={mapRef.current}
         scene={scene}
         drawing={drawMode !== "select"}
