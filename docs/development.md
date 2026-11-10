@@ -29,12 +29,16 @@ bash source/scripts/tools/with-local-tools.sh npm --prefix source start
 ```bash
 npm --prefix source run check
 npm --prefix source run check:annotations
+npm --prefix source run check:export:encoder
+npm --prefix source run check:picking:gpu
 npm --prefix source run package
 npm --prefix source run make
 ```
 
-- `check`：类型、存储、缓存、标签布局与背景检查，不需要个人原始数据。
+- `check`：类型、存储、缓存、标注、时间轴、天文、渲染、地形和飞行检查。标注检查使用下述本地样本。
 - `check:annotations`：JSON / KML 往返检查，需要本机 `RawData/annotations/annotations.json`。
+- `check:export:encoder`：实际编码并解码透明 VP9，检查帧数、帧率、Alpha、分段、取消与文件保护；需要支持 `libvpx-vp9` 的 FFmpeg 和 FFprobe，不启动 Electron。
+- `check:picking:gpu`：独立 Electron 窗口验证 18 万点拾取、DPR 1/2/3、可见标注与曲线、背景交接、图层隐藏恢复和离屏尺寸；需要可正常启动 Electron 与 WebGL2 的图形会话，无法由普通类型检查代替。
 - `package`：构建当前平台应用，产物位于根目录 `out/`。
 - `make`：通过 Forge 生成当前平台配置的分发产物。打包不等于已经配置签名、公证或跨平台构建环境。
 
@@ -49,6 +53,6 @@ macOS 双击 `Install-MacOS.command` 会打包并安装至 `~/Applications/Repla
 | 地图未加载 | 在应用中输入或更新 MapTiler API Key，检查网络和服务访问情况 |
 | 视频探测或字幕失败 | 检查 FFmpeg / FFprobe、Whisper 可执行文件和模型，见 [媒体处理](media.md) |
 | 修改主进程或原生模块后效果未变 | 完全退出并重新启动应用，网页热更新不会替换原生对象 |
-| 想清理缓存 | 从「缓存状态」打开实际缓存目录，退出后删除；见 [存储说明](storage.md) |
+| 想清理缓存 | 从「设置」打开实际缓存目录，退出后删除；见 [存储说明](storage.md) |
 
 仅检查启动环境而不打开应用：`node source/scripts/start/launch.cjs --check`。
