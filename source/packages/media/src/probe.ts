@@ -18,6 +18,7 @@ interface ProbeStream {
   readonly codec_type?: string;
   readonly codec_name?: string;
   readonly codec_tag_string?: string;
+  readonly bit_rate?: string;
   readonly duration?: string;
   readonly nb_frames?: string;
   readonly tags?: Record<string, string>;
@@ -133,6 +134,7 @@ export const probeMediaFile = async (sourcePath: string): Promise<MediaSource> =
     kind: classifyTrack(stream),
     codec: stream.codec_name ?? "unknown",
     codecTag: stream.codec_tag_string ?? null,
+    bitrate: numericOrNull(stream.bit_rate),
     durationSeconds: numericOrNull(stream.duration),
     sampleCount: numericOrNull(stream.nb_frames),
     language: stream.tags?.language ?? null,

@@ -11,6 +11,7 @@ export interface MediaTrack {
   readonly kind: MediaTrackKind;
   readonly codec: string;
   readonly codecTag: string | null;
+  readonly bitrate?: number | null;
   readonly durationSeconds: number | null;
   readonly sampleCount: number | null;
   readonly language: string | null;
@@ -158,7 +159,8 @@ export interface PlaybackRateOptions {
 export interface DynamicRenderOptions {
   readonly outputFps: number;
   readonly codec: CompressionCodec;
-  readonly targetBitrateMbps: number;
+  /** Defaults to 120% of the source video stream bitrate. */
+  readonly targetBitrateMbps?: number;
   readonly encoder?: string;
   readonly overwrite?: boolean;
 }
