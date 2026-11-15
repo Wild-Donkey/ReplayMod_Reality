@@ -1,3 +1,4 @@
+import type { AudioDocument, AudioBlock } from "../../../../packages/media/src/audio-document";
 import type { OfflineExportOptions, OfflineExportSession, OfflineExportSegment } from "../shared/overlayExport";
 import type { DisplayHDRInfo } from "../shared/display";
 import { contextBridge, ipcRenderer } from "electron";
@@ -19,6 +20,12 @@ const TRANSCRIBE_MEDIA_CHANNEL = "media:transcribe";
 const SAVE_SUBTITLES_CHANNEL = "media:save-subtitles";
 
 export interface DesktopBridge {
+  prepareAudioEdit(sourcePath: string, blocks: AudioBlock[]): Promise<void>;
+  saveAudioRecording(sourcePath: string | null, bytes: Uint8Array): Promise<{document: AudioDocument; tokens: AudioBlock[]}>;
+  openAudioEdit(): Promise<AudioDocument | null>;
+  transcribeAudioEdit(sourcePath: string, granularity: "word" | "phrase"): Promise<AudioBlock[]>;
+  splitAudioEdit(sourcePath: string, block: AudioBlock): Promise<AudioBlock[]>;
+  exportAudioEdit(sourcePath: string, blocks: AudioBlock[]): Promise<string | null>;
   canExportOffline(): Promise<boolean>;
   beginOfflineExport(options: OfflineExportOptions): Promise<OfflineExportSession | null>;
   writeOfflineExportFrame(id: string, segment: number, frame: number, rgba: Uint8Array): Promise<void>;
@@ -66,6 +73,12 @@ export interface DesktopBridge {
 
 const bootstrap = ipcRenderer.sendSync("storage:bootstrap");
 const bridge: DesktopBridge = Object.freeze({
+  prepareAudioEdit: (sourcePath: string, blocks: AudioBlock[]) => ipcRenderer.invoke("audio-edit:prepare", sourcePath, blocks),
+  saveAudioRecording: (sourcePath: string | null, bytes: Uint8Array) => ipcRenderer.invoke("audio-edit:recording", sourcePath, bytes),
+  openAudioEdit: () => ipcRenderer.invoke("audio-edit:open"),
+  transcribeAudioEdit: (sourcePath: string, granularity: "word" | "phrase") => ipcRenderer.invoke("audio-edit:transcribe", sourcePath, granularity),
+  splitAudioEdit: (sourcePath: string, block: AudioBlock) => ipcRenderer.invoke("audio-edit:split", sourcePath, block),
+  exportAudioEdit: (sourcePath: string, blocks: AudioBlock[]) => ipcRenderer.invoke("audio-edit:export", sourcePath, blocks),
   canExportOffline: () => ipcRenderer.invoke("export:offline-available"),
   beginOfflineExport: (options: OfflineExportOptions) => ipcRenderer.invoke("export:offline-begin", options),
   writeOfflineExportFrame: (id: string, segment: number, frame: number, rgba: Uint8Array) => ipcRenderer.invoke("export:offline-frame", id, segment, frame, rgba),

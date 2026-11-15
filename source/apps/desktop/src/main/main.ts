@@ -1,3 +1,6 @@
+import { renderAudioEdit, saveRecordedAudio } from "../../../../packages/media/src/audio-edit";
+import { audioOutputCues, validateAudioBlocks, refineAudioBlock, coarseAudioBlocks, type AudioDocument, type AudioBlock } from "../../../../packages/media/src/audio-document";
+import {registerMediaPreviewScheme,installMediaPreviewProtocol} from "./mediaPreviewProtocol";
 import { OfflineExportManager } from "./offlineExport";
 import { OfflineFramePlan, type OfflineExportOptions } from "../shared/overlayExport";
 import { findTransparentVideoEncoder } from "../../../../packages/media/src/raw-video";
@@ -5,9 +8,9 @@ import { installDisplayHDR } from "./displayHDR";
 import { AppStorage } from "./storage";
 import { storagePaths } from "./storage/paths";
 import { windowBackgroundOptions } from "./windowBackground";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, mkdirSync } from "node:fs";
-import { access, mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { access, mkdir, readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { app, BrowserWindow, dialog, ipcMain, shell, net, Menu } from "electron";
 import { installScrollInput } from "./scrollInput";
 import { MENU_ACTION_CHANNEL, MENU_STATE_CHANNEL, type MenuAction, type MenuState } from "../shared/menu";
@@ -31,6 +34,8 @@ import type {
   SavedSubtitleTrack,
   SubtitleTrack,
 } from "../../../../packages/media/src";
+
+registerMediaPreviewScheme();
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
@@ -843,6 +848,93 @@ ipcMain.handle(
   },
 );
 
+const audioDocuments = new Map<string, AudioDocument>();
+const audioJobs = new Set<string>();
+const recordedSources = new Map<string, number>();
+async function validateAudioSources(blocks: AudioBlock[], root: AudioDocument) {
+  for (const b of blocks) {
+    if(b.sourcePath && b.sourcePath !== root.sourcePath) {
+      if(!recordedSources.has(b.sourcePath)) {
+        const actual = await realpath(b.sourcePath);
+        if(actual !== path.resolve(b.sourcePath) || path.dirname(actual) !== storage.paths.recordings || !/^[a-f0-9-]+\.wav$/i.test(path.basename(actual))) throw new Error("录音素材尚未载入。");
+        const media = await probeMediaFile(actual);
+        if(!media.durationSeconds) throw new Error("录音素材没有有效时长。");
+        recordedSources.set(actual,media.durationSeconds); openedMediaPaths.add(actual);
+      }
+      if(recordedSources.get(b.sourcePath) !== b.sourceDuration) throw new Error("录音素材时长无效。");
+    }
+    if(b.sourcePath === root.sourcePath && b.sourceDuration !== root.duration) throw new Error("素材时长无效。");
+  }
+}
+ipcMain.handle("audio-edit:prepare", async (_event, sourcePath: string, blocks: AudioBlock[]) => {
+  const root = audioDocuments.get(sourcePath); if(!root) throw new Error("请先导入素材。");
+  validateAudioBlocks(blocks, root.duration, true); await validateAudioSources(blocks, root);
+});
+ipcMain.handle("audio-edit:recording", async (_event, sourcePath: string | null, bytes: Uint8Array) => {
+  const existing = sourcePath ? audioDocuments.get(sourcePath) : undefined;
+  if(sourcePath && !existing) throw new Error("请先导入素材。");
+  await mkdir(storage.paths.recordings, {recursive:true});
+  const output = path.join(storage.paths.recordings, `${randomUUID()}.wav`);
+  await saveRecordedAudio(bytes, output);
+  const media = await probeMediaFile(output);
+  if(!media.durationSeconds) throw new Error("录音没有有效时长。");
+  recordedSources.set(output,media.durationSeconds); openedMediaPaths.add(output);
+  const doc: AudioDocument = existing ?? {sourcePath:output,sourceName:"空格录音",duration:media.durationSeconds,blocks:[]};
+  if(!existing) audioDocuments.set(output,doc);
+  const tokens: AudioBlock[] = [{id:randomUUID(),kind:"speech",level:"phrase",sourcePath:output,sourceDuration:media.durationSeconds,start:0,end:media.durationSeconds,text:"录音"}];
+  return {document:doc,tokens};
+});
+ipcMain.handle("audio-edit:open", async (): Promise<AudioDocument | null> => {
+  const result = await dialog.showOpenDialog({title: "导入音频或提取视频音轨", properties: ["openFile"], filters: [{name: "音频 / 视频", extensions: ["m4a", "mp3", "wav", "flac", "ogg", "aac", "mp4", "mov", "mkv", "webm"]}]});
+  if (result.canceled || !result.filePaths[0]) return null;
+  const media = await probeMediaFile(result.filePaths[0]);
+  if (!media.tracks.some(t => t.kind === "audio") || !media.durationSeconds) throw new Error("文件没有可用音轨或时长。");
+  const doc: AudioDocument = {sourcePath: media.sourcePath, sourceName: media.sourceName, duration: media.durationSeconds, blocks: []};
+  audioDocuments.set(doc.sourcePath, doc);
+  openedMediaPaths.add(doc.sourcePath);
+  return doc;
+});
+ipcMain.handle("audio-edit:transcribe", async (_event, sourcePath: string, granularity: "word" | "phrase") => {
+  const doc = audioDocuments.get(sourcePath);
+  if (!doc) throw new Error("请先导入音频。");
+  if (audioJobs.has(sourcePath)) throw new Error("该文件正在处理。");
+  if (!["word", "phrase"].includes(granularity)) throw new Error("分块方式无效。");
+  audioJobs.add(sourcePath);
+  try {
+    const track = await transcribeMedia(sourcePath,{...await resolveSpeechResources(),language:"auto",granularity});
+    doc.blocks = coarseAudioBlocks(track.cues, doc.duration, randomUUID);
+    return doc.blocks;
+  } finally { audioJobs.delete(sourcePath); }
+});
+ipcMain.handle("audio-edit:split", async (_event, sourcePath: string, block: AudioBlock): Promise<AudioBlock[]> => {
+  const doc = audioDocuments.get(sourcePath);
+  if (!doc) throw new Error("请先导入音频。");
+  await validateAudioSources([block], doc);
+  validateAudioBlocks([block], doc.duration);
+  if (block.kind === "silence" || block.kind === "extension") return [];
+  if (audioJobs.has(sourcePath)) throw new Error("该素材正在处理，请稍候。");
+  audioJobs.add(sourcePath);
+  try {
+    const track=await transcribeMedia(block.sourcePath??sourcePath,{...await resolveSpeechResources(),language:"auto",granularity:block.level==="phrase"?"word":"token",startTimeSeconds:block.start,endTimeSeconds:block.end});
+    return refineAudioBlock(block,track.cues,randomUUID);
+  } finally {audioJobs.delete(sourcePath);}
+});
+ipcMain.handle("audio-edit:export", async (_event, sourcePath: string, blocks: AudioBlock[]) => {
+  const doc = audioDocuments.get(sourcePath);
+  if (!doc) throw new Error("请先导入音频。");
+  await validateAudioSources(blocks, doc);
+  validateAudioBlocks(blocks, doc.duration);
+  const result = await dialog.showSaveDialog({title: "导出 token 音频及同名字幕", defaultPath: `${path.parse(doc.sourceName).name}.edited.wav`, filters: [{name: "WAV 音频", extensions: ["wav"]}]});
+  if (result.canceled || !result.filePath) return null;
+  const output = result.filePath;
+  if (path.resolve(output) === path.resolve(sourcePath)) throw new Error("不能覆盖原始音频。");
+  await renderAudioEdit(sourcePath, blocks, doc.duration, output);
+  const base = output.replace(/\.[^.]+$/, "");
+  await writeFile(`${base}.srt`, serializeSrt(audioOutputCues(blocks)));
+  await writeFile(`${base}.audio-edit.json`, JSON.stringify({version: 1, sourcePath, tokens: blocks}, null, 2));
+  return output;
+});
+
 // Annotation documents are stored as JSON; KML is only an import/export format.
 ipcMain.handle("annotations:load", async () => {
   const saved = storage.paths.annotations;
@@ -1005,6 +1097,7 @@ void app.whenReady().then(() => {
     app.quit();
     return;
   }
+  installMediaPreviewProtocol(openedMediaPaths);
   installDisplayHDR();
   installMacMenu();
   createWindow();

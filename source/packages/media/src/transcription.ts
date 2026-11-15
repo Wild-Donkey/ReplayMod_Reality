@@ -1,3 +1,4 @@
+import { parseWhisperWordCues } from "./word-cues";
 import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -17,7 +18,10 @@ export const transcribeMedia = async (
   const outputPrefix = path.join(temporaryDirectory, "subtitles");
   try {
     await execFileAsync(options.ffmpegPath ?? "ffmpeg", [
-      "-hide_banner", "-loglevel", "error", "-y", "-i", inputPath,
+      "-hide_banner", "-loglevel", "error", "-y",
+      ...(options.startTimeSeconds !== undefined ? ["-ss", String(options.startTimeSeconds)] : []),
+      "-i", inputPath,
+      ...(options.endTimeSeconds !== undefined ? ["-t", String(options.endTimeSeconds - (options.startTimeSeconds ?? 0))] : []),
       "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", audioPath,
     ], { maxBuffer: 16 * 1024 * 1024 });
     await execFileAsync(options.whisperPath, [
@@ -32,10 +36,13 @@ export const transcribeMedia = async (
         "-vt", "0.6",
         "-vspd", "300",
       ] : []),
+      ...(options.granularity && options.granularity !== "phrase" ? ["-ojf"] : []),
       "-osrt",
       "-of", outputPrefix,
     ], { maxBuffer: 64 * 1024 * 1024 });
-    const cues = parseSrt(await readFile(`${outputPrefix}.srt`, "utf8"));
+    const cues = options.granularity && options.granularity !== "phrase"
+      ? parseWhisperWordCues(JSON.parse(await readFile(`${outputPrefix}.json`, "utf8")), options.granularity !== "token")
+      : parseSrt(await readFile(`${outputPrefix}.srt`, "utf8"));
     return {
       kind: "subtitle",
       language: options.language ?? "auto",

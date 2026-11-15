@@ -65,6 +65,9 @@ export interface SubtitleTrack {
 }
 
 export interface SpeechTranscriptionOptions {
+  readonly granularity?: "word" | "phrase" | "token";
+  readonly startTimeSeconds?: number;
+  readonly endTimeSeconds?: number;
   readonly whisperPath: string;
   readonly modelPath: string;
   readonly vadModelPath?: string;

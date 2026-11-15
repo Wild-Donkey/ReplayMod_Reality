@@ -1982,3 +1982,48 @@ h2.section-label { margin: 0; }
 .astronomy-playhead { stroke: #fff; stroke-width: 1.5; }
 .astronomy-hours { display: flex; justify-content: space-between; margin-left: 35px; color: #bbb; font-size: 10px; }
 .astronomy-time-range { width: calc(100% - 35px); height: 14px; margin: 0 0 0 35px; accent-color: #d8e4f4; cursor: ew-resize; }
+
+.audio-text-editor { display: flex; flex-direction: column; width: min(1140px, 96vw); height: min(900px, calc(100dvh - 68px)); max-height: calc(100dvh - 68px); overflow: hidden; }
+.audio-text-editor > * { flex-shrink: 0; }
+.audio-text-editor .subtitle-editor-toolbar { flex-wrap: wrap; min-height: 44px; gap: 7px; }
+.audio-help, .audio-status { padding: 8px 20px; margin: 0; font-size: 12px; line-height: 1.7; }
+.audio-help { color: #aaa; }
+.audio-help kbd { color: #e6bd73; font-family: monospace; }
+.audio-status { color: #b8b8b8; overflow-wrap: anywhere; border-bottom: 1px solid #ffffff18; }
+.audio-source { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 20px; }
+.audio-source > span { font-size: 11px; color: #999; }
+.audio-source audio { display: none; }
+.audio-source strong { max-width: 300px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; }
+.audio-source button, .audio-token-inspector button { padding: 7px 10px; color: #eee; background: #303030; font-size: 11px; }
+.audio-text-editor button:disabled { opacity: .4; cursor: default; }
+.audio-text-editor input { border: 1px solid #444; color: #eee; background: #181818; padding: 6px; min-width: 0; }
+.audio-silence-input { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #c9b88f; }
+.audio-silence-input input { width: 68px; }
+.audio-token-paper-wrap { flex: 1 1 auto; min-height: 150px; display: flex; flex-direction: column; overflow: hidden; }
+.audio-token-paper { flex: 1; min-height: 0; padding: 24px 24px 80px; overflow: auto; outline: none; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 2.9; font-size: 15px; color: #ddd; background: #151515; caret-color: #9dc2ff; }
+.audio-token-paper:focus { box-shadow: inset 0 0 0 1px #8ca7cf55; }
+.audio-token-paper.disabled { opacity: .55; }
+.audio-voice-token { display: inline-block; max-width: 100%; border-radius: 5px; padding: 0 7px; margin: 3px 2px 3px 0; line-height: 1.8; vertical-align: middle; border: 1px solid #ffffff14; background: #ffffff07; cursor: text; user-select: all; white-space: normal; }
+.audio-voice-token:hover { background: #ffffff12; border-color: #ffffff38; }
+.audio-voice-token small { display: inline; margin-left: 7px; color: #666; font-size: 9px; user-select: none; }
+.audio-voice-token.silence { color: #ddbc7e; border-style: dashed; border-color: #b8985755; background: #b8985710; font-family: monospace; }
+.audio-voice-token.silence small { color: #ac9363; }
+.audio-voice-token.selected, .audio-voice-token::selection { color: #fff; background: #476d9c80; border-color: #8caad0; }
+.audio-voice-token.playing { color: #d8eaff; background: #376aab66; border-color: #82b2f0; }
+.audio-token-draft { color: #e4c78c; background: #816b3033; padding: 5px; font-family: monospace; }
+.audio-token-placeholder { color: #666; font-size: 13px; user-select: none; }
+.audio-token-selection { display: flex; justify-content: space-between; padding: 7px 20px; color: #777; font-size: 10px; border-top: 1px solid #ffffff14; }
+.audio-token-selection > span { color: #c8af7f; }
+.audio-token-inspector { padding: 12px 20px; border-top: 1px solid #ffffff22; max-height: 260px; overflow: auto; background: #1b1b1b; }
+.audio-inspector-title { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; font-size: 12px; }
+.audio-inspector-title span { color: #888; font-size: 10px; margin-right: auto; }
+.audio-token-inspector form { display: flex; flex-wrap: wrap; align-items: end; gap: 9px; }
+.audio-token-inspector label { display: flex; flex-direction: column; gap: 5px; color: #aaa; font-size: 10px; }
+.audio-token-inspector label:first-child { flex: 1; min-width: 100px; }
+.audio-token-inspector input[type=number] { width: 100px; }
+.audio-token-inspector details { margin-top: 12px; font-size: 11px; color: #aaa; }
+.audio-token-inspector details p { margin: 7px 0; color: #888; }
+.audio-voice-token.extension { color: #9ed1bc; border-style: dashed; border-color: #74b59955; background: #74b59912; font-family: monospace; }
+.audio-voice-token.extension small { color: #739e8e; }
+.audio-sequence-error { color: #e3b18d; background: #9c623222; padding: 7px 20px; font-size: 11px; }
+.audio-status.recording { color: #f1a1a1; background: #a3444422; }

@@ -19,6 +19,8 @@
     "check:storage": "node tests/cache/check-storage.cjs",
     "check:backdrop": "node tests/backdrop/check-backdrop.cjs && node tests/map/check-basemap-style.cjs",
     "check:timeline": "node tests/timeline/check-metrics.cjs",
+    "check:audio-edit": "node tests/media/check-audio-edit.cjs",
+    "check:audio-editor": "electron tests/media/check-audio-token-editor.cjs",
     "check:astronomy": "node tests/astronomy/check-astronomy.cjs",
     "check:engine": "node tests/engine/check-render-engine.cjs && node tests/engine/check-metric-projection.cjs",
     "check:export:gpu": "electron tests/engine/check-export-capture.cjs",

@@ -13,6 +13,7 @@ const config: ForgeConfig = {
     },
   },
   packagerConfig: {
+    extendInfo: {NSMicrophoneUsageDescription: "按住空格录制声音，并插入你的音频剪辑。"},
     name: "ReplayMod Reality",
     appBundleId: "com.replaymod.reality",
     asar: true,

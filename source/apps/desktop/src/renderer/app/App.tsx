@@ -1,3 +1,4 @@
+import { AudioTextEditor } from "../features/audio/AudioTextEditor";
 import { HDRSettings } from "../features/settings/HDRSettings";
 import { defaultTimelineMetrics, type TimelineMetricsSettings } from "../features/timeline/metrics";
 import { useCachedState, readCached, writeCached, cacheError } from "../shared/cache";
@@ -206,6 +207,7 @@ export function App() {
   const [mediaSource, setMediaSource] = useState<MediaSource | null>(null);
   const [isLoadingMedia, setIsLoadingMedia] = useState(false);
   const [subtitleTrack, setSubtitleTrack] = useCachedState<SubtitleTrack | null>("subtitleTrack", null);
+  const [isAudioTextEditorOpen, setIsAudioTextEditorOpen] = useState(false);
   const [isSubtitleEditorOpen, setIsSubtitleEditorOpen] = useCachedState("subtitle-editor-open", false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [subtitleStatus, setSubtitleStatus] = useState("");
@@ -601,6 +603,7 @@ export function App() {
               时间压缩
             </h2>
             <div className="time-compression-list">
+              <button type="button" onClick={() => setIsAudioTextEditorOpen(true)}>文字剪辑音频</button>
               <button
                 type="button"
                 disabled={!mediaSource}
@@ -765,6 +768,7 @@ export function App() {
 
       </section>
 
+      <AudioTextEditor open={isAudioTextEditorOpen} onClose={() => setIsAudioTextEditorOpen(false)} />
       {isSubtitleEditorOpen && (
         <SubtitleEditor
           track={subtitleTrack}

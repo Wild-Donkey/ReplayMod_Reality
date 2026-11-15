@@ -8,6 +8,7 @@ export function storagePaths(platform: NodeJS.Platform, home: string, appData: s
   const cache = path.join(data, "resource-cache-v1");
   return Object.freeze({
     data, cache, legacyCache,
+    recordings: path.join(data, "audio-recordings"),
     config: path.join(data, "config.json"),
     archive: path.join(data, "user-archive.json"),
     state: path.join(data, "state-v1"),
