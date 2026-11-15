@@ -23,6 +23,8 @@ ReplayMod Reality 基于 [Electron](https://www.electronjs.org/)、[React](https
 
 地图由 [MapLibre GL JS](https://maplibre.org/) 渲染，[MapTiler](https://www.maptiler.com/) 提供在线底图与高程数据。位置 CSV 通过 [csv-parse](https://csv.js.org/parse/) 流式读取，经过坐标校验和时间排序后，同步显示在地图与时间轴上。选择时间时，应用通过相邻采样点插值计算当前位置；选定时间范围后，可以导出带透明通道的轨迹叠加视频，用于后期剪辑。地标与路线以 JSON 工程保存，通过 KML 与其他地图软件交换，KML 的 XML 解析使用 [@xmldom/xmldom](https://github.com/xmldom/xmldom)。
 
+顶部「轨道交通」开关控制线路、站点、站名和出入口，并记住开关状态。地铁、轻轨、有轨电车和市郊通勤铁路在线网最长方向达到地图视口对角线的 1/2 时自动叠加（从 6 级开始加载低缩放瓦片，以连通线网估算范围），11 级显示站点，15 级显示站名，17 级显示出入口。普通站使用半径 2.5 像素的线路色圆点，换乘站使用半径 3 像素的白色圆点，两者均向外增加各自填色半径 1/2 宽的黑边；大小不随地图放大。出入口有编号时显示编号，没有编号时显示楼梯图标；编号来自 MapTiler Planet v4 瓦片，并沿用地图资源缓存。当前数据未提供完整的站厅轮廓。缩放不足、加载中或请求失败时，地图图例会显示提示。地铁线路优先使用 MapTiler Planet v4 的 subway 图层，并排除明确标记为在建及车辆段等服务线；新站点来自同源 POI，通过线路关系确定配色和换乘。低缩放、缺少新版覆盖，以及有轨电车和通勤铁路仍回退到 [LOOM](https://loom.cs.uni-freiburg.de/tiles) 的 [OpenStreetMap](https://www.openstreetmap.org/copyright) 矢量瓦片。LOOM 济南瓦片已确认停留在 2023 年，不能视作最新线网。所有数据按地图视野在线加载并缓存，覆盖和更新时间取决于数据源。
+
 媒体处理基于 [FFmpeg / FFprobe](https://ffmpeg.org/) 和 [GPAC MP4Box](https://gpac.io/)。FFprobe 读取视频与音频轨道信息，FFmpeg 负责视频编码、音频处理和动态变速；保留 DJI 私有遥测轨的压缩流程由 MP4Box 完成轨道替换与封装。字幕识别使用本地运行的 [whisper.cpp](https://github.com/ggml-org/whisper.cpp)，识别结果可以在应用中编辑并保存。
 
 ## 安装与启动

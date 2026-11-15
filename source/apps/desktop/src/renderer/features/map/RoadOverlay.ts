@@ -1,5 +1,5 @@
 import maplibregl, {type Map as GLMap, type StyleSpecification} from "maplibre-gl";
-import {addCompositeRoadLayers, ROAD_OPACITY_SCALE} from "./basemapStyle";
+import {compositeRoadLayers, ROAD_OPACITY_SCALE} from "./basemapStyle";
 import {cachedMapRequest} from "../../shared/cache";
 
 // Roads are first composed opaquely into their own canvas. Applying opacity to
@@ -31,17 +31,13 @@ export class RoadOverlay {
     const center = base.getCenter();
     this.overlay = new maplibregl.Map({
       container: this.container,
-      style,
+      style: {version: 8, sources: style.sources, layers: compositeRoadLayers(style.layers)},
       center: [center.lng, center.lat], zoom: base.getZoom(), bearing: base.getBearing(), pitch: base.getPitch(),
       interactive: false, attributionControl: false,
       transformRequest: cachedMapRequest,
       canvasContextAttributes: {alpha: true},
     });
     this.overlay.once("load", () => {
-      for (const layer of this.overlay.getStyle().layers ?? []) {
-        this.overlay.setLayoutProperty(layer.id, "visibility", "none");
-      }
-      addCompositeRoadLayers(this.overlay);
       this.overlay.triggerRepaint();
       this.container.style.visibility = "visible";
       this.synchronize();

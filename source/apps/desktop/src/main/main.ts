@@ -23,6 +23,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell, net, Menu } from "electron"
 import { installScrollInput } from "./scrollInput";
 import { MENU_ACTION_CHANNEL, MENU_STATE_CHANNEL, type MenuAction, type MenuState } from "../shared/menu";
 import { buildAirportNameZhQueryUrl, pickChineseNameFromCsv } from "../shared/airportNameZh";
+import { MapResources } from "./mapResources";
 import type { ConfirmedFlightRecord, ConfirmedFlightsFile, FlightScreeningCache } from "../shared/confirmedFlight";
 import { defaultUserArchive, type UserArchive } from "../shared/userArchive";
 import path from "node:path";
@@ -181,85 +182,38 @@ ipcMain.handle("cache:buildings-write", (_event, source: string, batch: string) 
   const key = buildingCachePrefix(source) + createHash("sha256").update(batch).digest("hex");
   return resources.write("buildings", key, batch);
 });
-const mapRequests = new Map<string, Promise<Uint8Array>>();
-// All MapLibre instances share Chromium's network service. Bound downloads
-// globally, including body consumption, rather than per map or per hostname.
-let activeMapDownloads = 0;
-const mapDownloadQueue: Array<() => void> = [];
-async function downloadMap(url: string): Promise<Uint8Array> {
-  if (activeMapDownloads >= 8) {
-    if (mapDownloadQueue.length >= 256) throw new Error("地图请求繁忙，请稍后重试");
-    await new Promise<void>(resolve => mapDownloadQueue.push(resolve));
-  } else {
-    activeMapDownloads++;
-  }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30_000);
-  try {
-    const response = await net.fetch(url, { signal: controller.signal });
-    if (!response.ok) {
-      await response.body?.cancel();
-      throw new Error(`地图请求失败 (${response.status})`);
+const mapResources = new MapResources(resources, (url, options) => net.fetch(url, options));
+const loadMapResource = (url: string, direct = false) => mapResources.load(url, direct);
+const mapConsumers = new Map<string, AbortController>();
+
+app.on("web-contents-created", (_event, contents) => {
+  const prefix = contents.id + ":";
+  contents.once("destroyed", () => {
+    for (const [key, controller] of mapConsumers) {
+      if (key.startsWith(prefix)) { controller.abort(); mapConsumers.delete(key); }
     }
-    return new Uint8Array(await response.arrayBuffer());
-  } finally {
-    clearTimeout(timeout);
-    const next = mapDownloadQueue.shift();
-    if (next) next(); // Transfer this slot directly to the next waiter.
-    else activeMapDownloads--;
-  }
-}
-async function downloadMapDirect(url: string): Promise<Uint8Array> {
+  });
+});
+
+ipcMain.handle("cache:map", async (event, rawUrl: string, requestId?: string) => {
+  if (requestId === undefined) return loadMapResource(rawUrl);
+  if (typeof requestId !== "string" || !/^[a-zA-Z0-9-]{1,80}$/.test(requestId)) throw new Error("地图请求编号无效");
+  const key = event.sender.id + ":" + requestId;
+  if (mapConsumers.has(key)) throw new Error("地图请求编号重复");
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30_000);
-  try {
-    const response = await net.fetch(url, { signal: controller.signal });
-    if (!response.ok) {
-      await response.body?.cancel();
-      throw new Error(`地图请求失败 (${response.status})`);
-    }
-    return new Uint8Array(await response.arrayBuffer());
-  } finally {
-    clearTimeout(timeout);
+  mapConsumers.set(key, controller);
+  try { return await mapResources.load(rawUrl, false, controller.signal); }
+  catch (error) {
+    // The renderer checks its signal before consuming bytes. A normal pan
+    // cancellation should not become an Electron IPC error in the main log.
+    if (controller.signal.aborted) return new Uint8Array();
+    throw error;
   }
-}
-
-const validatedMapUrl = (rawUrl: string): URL => {
-  const url = new URL(rawUrl);
-  if (url.protocol !== "https:" || url.hostname !== "api.maptiler.com" || url.port || url.username || url.password) {
-    throw new Error("不支持的地图资源地址");
-  }
-  return url;
-};
-
-const loadMapResource = async (rawUrl: string, direct = false): Promise<Uint8Array> => {
-  const url = validatedMapUrl(rawUrl);
-  const key = createHash("sha256").update(url.href).digest("hex");
-  let request = mapRequests.get(key);
-  if (!request) {
-    request = (async () => {
-      const saved = await resources.read<{ at: number; data: Uint8Array }>("maps", key);
-      // 飞行识别的批处理图块是可重用的离线计算输入：只要磁盘缓存存在就不重拉。
-      // 交互地图资源仍保留 7 天刷新周期。
-      if (saved && (direct || Date.now() - saved.at < 7 * 86400_000)) return saved.data;
-      try {
-        const data = await (direct ? downloadMapDirect(url.href) : downloadMap(url.href));
-        if (data.byteLength <= 32 * 1024 * 1024) {
-          await resources.write("maps", key, { at: Date.now(), data }).catch(console.warn);
-        }
-        return data;
-      } catch (error) {
-        if (saved) return saved.data;
-        throw error;
-      }
-    })();
-    mapRequests.set(key, request);
-    void request.finally(() => mapRequests.delete(key)).catch(() => {});
-  }
-  return request;
-};
-
-ipcMain.handle("cache:map", async (_event, rawUrl: string) => loadMapResource(rawUrl));
+  finally { mapConsumers.delete(key); }
+});
+ipcMain.on("cache:map-cancel", (event, requestId: string) => {
+  mapConsumers.get(event.sender.id + ":" + requestId)?.abort();
+});
 ipcMain.handle("cache:map-batch", async (_event, rawUrls: readonly string[]) => {
   if (!Array.isArray(rawUrls) || rawUrls.length > 64 || rawUrls.some(url => typeof url !== "string")) {
     throw new Error("地形图块批次无效");

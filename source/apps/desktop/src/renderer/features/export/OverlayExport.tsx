@@ -228,6 +228,7 @@ export function OverlayExport({ dataset, range, apiKey, scene }: { dataset: Poin
     if (!map) return;
     const releaseChannels = registerMapStyleChannels(renderScene, map, "export/map", layer =>
       layer.id === "route" || layer.id === "route-casing" ? "trajectory"
+        : layer.id.startsWith("urban-transit-") ? "transit"
         : layer.id.startsWith("export-annotation-") ? engineAnnotations ? null : "annotations"
         : layer.type === "line" && /road|street|transport|bridge|tunnel|highway/i.test(layer.id) ? "roads" : null);
     const apply = () => {

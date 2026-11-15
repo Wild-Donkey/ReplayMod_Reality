@@ -61,11 +61,12 @@ export function styleRoadLayers(map: Map, composite = false) {
 // line layers. Provider styles also contain road-area outlines, casings and
 // other boundaries; treating all of those as roads creates the rectangular
 // and parallel-line artefacts seen around dense city blocks.
-export function addCompositeRoadLayers(map: Map) {
-  const template = (map.getStyle().layers ?? []).find(layer =>
+export function compositeRoadLayers(layers: readonly LayerSpecification[]): LayerSpecification[] {
+  const template = layers.find(layer =>
     "source-layer" in layer && layer["source-layer"] === "transportation" &&
     "source" in layer && typeof layer.source === "string");
-  if (!template || !("source" in template) || typeof template.source !== "string") return false;
+  if (!template || !("source" in template) || typeof template.source !== "string") return [];
+  const source = template.source;
   const groups: Array<[RoadLevel, string[]]> = [
     [1, ["motorway", "trunk"]],
     [2, ["primary"]],
@@ -73,12 +74,12 @@ export function addCompositeRoadLayers(map: Map) {
     [4, ["minor", "residential", "living_street"]],
     [5, ["service", "path", "track", "pedestrian", "cycleway", "footway"]],
   ];
-  for (const [level, classes] of groups) {
+  return groups.map(([level, classes]) => {
     const appearance = ROAD_APPEARANCE[level];
-    map.addLayer({
+    return {
       id: `road-composite-${level}`,
       type: "line",
-      source: template.source,
+      source,
       "source-layer": "transportation",
       filter: ["all",
         ["==", ["geometry-type"], "LineString"],
@@ -90,9 +91,14 @@ export function addCompositeRoadLayers(map: Map) {
         "line-opacity": 1,
         "line-width": zoomWidth(appearance.width),
       },
-    });
-  }
-  return true;
+    };
+  });
+}
+
+export function addCompositeRoadLayers(map: Map) {
+  const layers = compositeRoadLayers(map.getStyle().layers ?? []);
+  for (const layer of layers) map.addLayer(layer);
+  return layers.length > 0;
 }
 
 export function hideRoadLayers(map: Map) {

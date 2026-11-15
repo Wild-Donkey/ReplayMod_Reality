@@ -6,6 +6,7 @@ import { updateWaterFallback } from "./water";
 import { maskTerrainWater } from "./terrainWaterMask";
 import { compressedRatio, DEFAULT_OCEAN_DEPTH, type ElevationRange } from "./elevationRange";
 import type { MapCoordinate } from "../../../../../../packages/data/src";
+import { loadMapBytes } from "../../shared/mapResource";
 
 export type TerrainProfilePoint = [number, number, number];
 
@@ -19,9 +20,7 @@ async function loadElevationDEM(request: {url: string}, controller: {signal: Abo
   const url = new URL(request.url.replace(/^elevation-dem:/, "https:"));
   const session = sessions.get(url.searchParams.get("replayElevation") ?? "");
   url.searchParams.delete("replayElevation");
-  const bytes = window.replaymod
-    ? new Uint8Array(await window.replaymod.loadMapResource(url.href))
-    : new Uint8Array(await (await fetch(url, {signal: controller.signal})).arrayBuffer());
+  const bytes = await loadMapBytes(url.href, controller.signal);
   controller.signal.throwIfAborted();
   const match = url.pathname.match(/\/tiles\/(terrain-rgb-v2|ocean-rgb)\/(\d+)\/(\d+)\/(\d+)/);
   let renderBytes = bytes.buffer;
@@ -65,7 +64,7 @@ interface TerrainTileTarget { coordinate: MapCoordinate; tileX: number; tileY: n
 
 async function loadTerrainMetadata(apiKey: string, signal: AbortSignal): Promise<{tileUrl:string;zoom:number}> {
   const metadataUrl=`https://api.maptiler.com/tiles/terrain-rgb-v2/tiles.json?key=${encodeURIComponent(apiKey)}`;
-  const metadataBytes=window.replaymod?new Uint8Array(await window.replaymod.loadMapResource(metadataUrl)):new Uint8Array(await (await fetch(metadataUrl,{signal})).arrayBuffer());
+  const metadataBytes = await loadMapBytes(metadataUrl, signal);
   signal.throwIfAborted();
   const metadata=JSON.parse(new TextDecoder().decode(metadataBytes)) as {tiles:string[];maxzoom?:number};
   if(!metadata.tiles[0])throw new Error("地形服务未返回图块地址");
@@ -194,9 +193,8 @@ export async function addElevationGlass(map: maplibregl.Map, apiKey: string, sig
   if (signal.aborted) return;
   const addSource = async (dataset: "terrain-rgb-v2" | "ocean-rgb") => {
     const url = `https://api.maptiler.com/tiles/${dataset}/tiles.json?key=${encodeURIComponent(apiKey)}`;
-    const metadata: {tiles: string[]; minzoom?: number; maxzoom?: number; attribution?: string} = window.replaymod
-      ? JSON.parse(new TextDecoder().decode(new Uint8Array(await window.replaymod.loadMapResource(url))))
-      : await (await fetch(url, {signal})).json();
+    const metadata: {tiles: string[]; minzoom?: number; maxzoom?: number; attribution?: string} =
+      JSON.parse(new TextDecoder().decode(await loadMapBytes(url, signal)));
     if (signal.aborted) return;
     const source = dataset === "ocean-rgb" ? "ocean-elevation-glass" : "elevation-glass";
     map.addSource(source, {

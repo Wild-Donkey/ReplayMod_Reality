@@ -1,5 +1,7 @@
 import { useState, type Dispatch, type SetStateAction } from "react";
 import maplibregl from "maplibre-gl";
+import { TRANSIT_TILE_ORIGIN } from "../../shared/transitTiles";
+import { loadMapBytes } from "./mapResource";
 
 const state: Record<string, unknown> = { ...window.replaymod?.workspaceState };
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -32,15 +34,14 @@ export function useCachedState<T>(key: string, fallback: T): [T, Dispatch<SetSta
 
 if (window.replaymod) {
   maplibregl.addProtocol("replaymap", async (request, abortController) => {
-    abortController.signal.throwIfAborted();
-    const data = await window.replaymod!.loadMapResource(request.url.replace(/^replaymap:/, "https:"));
-    abortController.signal.throwIfAborted();
-    const bytes = new Uint8Array(data);
+    const bytes = await loadMapBytes(request.url.replace(/^replaymap:/, "https:"), abortController.signal);
+    const buffer = bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength
+      ? bytes.buffer : bytes.slice().buffer;
     return { data: request.type === "json" ? JSON.parse(new TextDecoder().decode(bytes))
-      : request.type === "string" ? new TextDecoder().decode(bytes) : bytes.buffer };
+      : request.type === "string" ? new TextDecoder().decode(bytes) : buffer };
   });
 }
 export const cachedMapRequest = (url: string) => ({
-  url: window.replaymod && url.startsWith("https://api.maptiler.com/")
+  url: window.replaymod && (url.startsWith("https://api.maptiler.com/") || url.startsWith(`${TRANSIT_TILE_ORIGIN}/tiles/`))
     ? url.replace(/^https:/, "replaymap:") : url,
 });
