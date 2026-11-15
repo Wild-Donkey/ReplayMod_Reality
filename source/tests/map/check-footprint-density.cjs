@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const ts = require('typescript');
 const assert = require('node:assert/strict');
+const colorCode = ts.transpileModule(fs.readFileSync(path.resolve(__dirname, '../../apps/desktop/src/renderer/render-engine/FootprintColor.ts'), 'utf8'), {compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 const code = ts.transpileModule(fs.readFileSync(path.resolve(__dirname, '../../apps/desktop/src/renderer/render-engine/FootprintDensityPass.ts'), 'utf8'), {compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;
 app.whenReady().then(async () => {
  const window = new BrowserWindow({show:false, webPreferences:{contextIsolation:true}});
@@ -10,7 +11,9 @@ app.whenReady().then(async () => {
   await window.loadURL('data:text/html,<html></html>');
   const result = await window.webContents.executeJavaScript(`(() => {
    const mod = {exports:{}};
-   new Function('exports',${JSON.stringify(code)})(mod.exports);
+   const color = {exports:{}};
+   new Function('exports',${JSON.stringify(colorCode)})(color.exports);
+   new Function('exports','require',${JSON.stringify(code)})(mod.exports,id=>id === './FootprintColor' ? color.exports : {});
    const {FootprintDensityPass,footprintTone,footprintIntensity,footprintRadius,footprintRouteWidth} = mod.exports;
    const canvas = document.createElement('canvas'); canvas.width=canvas.height=32;
    let cssWidth=32;

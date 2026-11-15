@@ -1,3 +1,4 @@
+import {waitForMapFrame} from "../../render-engine/MapFrameBarrier";
 import maplibregl, {type Map as GLMap, type StyleSpecification} from "maplibre-gl";
 import {compositeRoadLayers, ROAD_OPACITY_SCALE} from "./basemapStyle";
 import {cachedMapRequest} from "../../shared/cache";
@@ -9,6 +10,7 @@ export class RoadOverlay {
   readonly container = document.createElement("div");
   private overlay: GLMap;
   private disposed = false;
+  private resourceFailed = false;
   private visible = true;
   private previousFrame: readonly number[] | null = null;
   setVisible(visible: boolean) {
@@ -31,12 +33,16 @@ export class RoadOverlay {
     const center = base.getCenter();
     this.overlay = new maplibregl.Map({
       container: this.container,
+      // This carrier only draws roads. Loading the full provider style first
+      // also fetches sprites and text glyphs that are never displayed here.
       style: {version: 8, sources: style.sources, layers: compositeRoadLayers(style.layers)},
       center: [center.lng, center.lat], zoom: base.getZoom(), bearing: base.getBearing(), pitch: base.getPitch(),
       interactive: false, attributionControl: false,
       transformRequest: cachedMapRequest,
-      canvasContextAttributes: {alpha: true},
+      pixelRatio: base.getPixelRatio(),
+      canvasContextAttributes: {alpha: true, preserveDrawingBuffer: true},
     });
+    this.overlay.on("error",()=>{this.resourceFailed=true;});
     this.overlay.once("load", () => {
       this.overlay.triggerRepaint();
       this.container.style.visibility = "visible";
@@ -67,6 +73,14 @@ export class RoadOverlay {
       if (!previous || frame[5] !== previous[5] || frame[6] !== previous[6]) this.overlay.resize();
       this.previousFrame = frame;
     } finally { this.syncing = false; }
+  }
+
+  getCanvas() { return this.overlay.getCanvas(); }
+  async waitForFrame(signal: AbortSignal) {
+    if (this.resourceFailed) return false;
+    this.synchronize();
+    if (this.overlay.getPixelRatio() !== this.base.getPixelRatio()) this.overlay.setPixelRatio(this.base.getPixelRatio());
+    return await waitForMapFrame(this.overlay,signal) && !this.resourceFailed;
   }
 
   dispose() {

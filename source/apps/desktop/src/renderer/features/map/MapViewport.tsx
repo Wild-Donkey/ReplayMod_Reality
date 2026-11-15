@@ -1,4 +1,4 @@
-import { addUrbanTransitLayers } from "./transitStyle";
+import {createPublicBasemap, publicBasemapStyle} from "./PublicBasemap";
 import { AstronomyOverlay } from "../astronomy/AstronomyOverlay";
 import type { AstronomyMapState, ObservationPoint } from "../astronomy/astronomy";
 import type { FootprintDensityData } from "../../render-engine/FootprintDensityPass";
@@ -29,14 +29,11 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useHDRState } from "../../shared/displayHDR";
 import { photoPointRadiusStops, replayPhotoPoints } from "../../render-engine/PhotoPoints";
 import { presentHDR } from "../../shared/hdr";
-import { addElevationGlass, sampleTerrainProfile, type TerrainProfilePoint } from "./elevation";
-import { restoreWaterLayers } from "./water";
+import { sampleTerrainProfile, type TerrainProfilePoint } from "./elevation";
 import { TerrainLegend } from "./TerrainLegend";
 import type { TerrainAppearance } from "./terrainExposure";
-import { stylePublicBasemap } from "./basemapStyle";
 import { RoadOverlay } from "./RoadOverlay";
 import { BuildingHeightOverlay } from "./BuildingHeightOverlay";
-import { applyMapLanguage } from "./mapLanguage";
 import type { ReplayCamera } from "../../render-engine/ReplayCamera";
 import { loadLocalAirportLayers, type Airport } from "./airports";
 import { applyMapLayerVisibility } from "../../render-engine/MapLayerVisibility";
@@ -379,7 +376,7 @@ export function MapViewport({
     const elevationController = new AbortController();
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: `https://api.maptiler.com/maps/dataviz-dark/style.json?key=${encodeURIComponent(apiKey)}`,
+      style: publicBasemapStyle(apiKey),
       center: [104.2, 35.8],
       zoom: 2.4,
       ...camera,
@@ -398,40 +395,25 @@ export function MapViewport({
     const hdr = presentHDR(map.getCanvas());
     map.on("render", hdr.render);
     const basemap = map;
+    // Configure the visible layers before the first tile/glyph requests, rather
+    // than waiting for a fully rendered provider style we immediately replace.
     basemap.once("style.load", () => {
       baseStyleReady = true;
-      const roadStyle = structuredClone(basemap.getStyle());
-      // Terrain supplies the surface color/alpha. Keep cartographic details
-      // above it at their original opacity, including all map text.
-      const surfaceLayers = (basemap.getStyle().layers ?? []).filter(layer =>
-        ["background", "fill", "fill-extrusion", "raster", "hillshade", "color-relief"].includes(layer.type));
-      for (const layer of surfaceLayers) {
-        basemap.setLayoutProperty(layer.id, "visibility", "none");
-      }
-      restoreWaterLayers(basemap);
-      stylePublicBasemap(basemap);
-      addUrbanTransitLayers(basemap, apiKey);
-      roadOverlay = new RoadOverlay(basemap, roadStyle);
-      const roads = roadOverlay;
-      channels.register({id: "map/roads", group: "roads", setVisible: visible => roads.setVisible(visible), dispose: () => roads.dispose()});
-      buildingOverlay = new BuildingHeightOverlay(basemap,roadStyle,buildingCacheLimitRef.current);
-      buildingOverlayRef.current=buildingOverlay;
-      const buildings = buildingOverlay;
-      channels.register({id: "map/building-height", group: "buildings", setVisible: visible => buildings.setVisible(visible), dispose: () => buildings.dispose()});
-      applyMapLanguage(basemap, mapLanguage);
-      setStatus("ready");
-      void addElevationGlass(basemap, apiKey, elevationController.signal, setTerrainAppearance,raw=>{
-        if (!raw || elevationController.signal.aborted) return;
-        channels.register({id: "map/raw-terrain", group: "elevation", setVisible: visible => raw.setVisible(visible), dispose: () => raw.dispose()});
-      }).catch(() => {
-        if (!elevationController.signal.aborted) {
-          setElevationUnavailable(true);
-          for (const layer of surfaceLayers) {
-            if ("source-layer" in layer && layer["source-layer"] === "building") continue;
-            basemap.setLayoutProperty(layer.id, "visibility", layer.layout?.visibility ?? "visible");
-          }
-        }
+      const publicMap = createPublicBasemap(basemap,apiKey,elevationController.signal,{
+        language:mapLanguage,buildingCacheLimitMB:buildingCacheLimitRef.current,
+        onAppearance:setTerrainAppearance,onUnavailable:()=>setElevationUnavailable(true),
+        onRaw:raw=>{
+          if (!raw || elevationController.signal.aborted) return;
+          channels.register({id:"map/raw-terrain",group:"elevation",setVisible:visible=>raw.setVisible(visible),dispose:()=>raw.dispose()});
+        },
       });
+      roadOverlay=publicMap.roads;buildingOverlay=publicMap.buildings;
+      buildingOverlayRef.current=buildingOverlay;
+      const roads=roadOverlay,buildings=buildingOverlay;
+      channels.register({id:"map/roads",group:"roads",setVisible:visible=>roads.setVisible(visible),dispose:()=>roads.dispose()});
+      channels.register({id:"map/building-height",group:"buildings",setVisible:visible=>buildings.setVisible(visible),dispose:()=>buildings.dispose()});
+      setStatus("ready");
+      void publicMap.ready.catch(()=>{});
     });
     basemap.on("error", event => {
       if ("sourceId" in event && (event.sourceId === "elevation-glass" || event.sourceId === "ocean-elevation-glass")) setElevationUnavailable(true);
@@ -485,9 +467,8 @@ export function MapViewport({
       }),
       "top-right",
     );
-
-
     map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
+
 
     basemap.on("error", (event) => {
       if (!baseStyleReady) {
