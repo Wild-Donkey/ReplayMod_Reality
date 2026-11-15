@@ -51,7 +51,8 @@ vm.runInNewContext(ts.transpileModule(fs.readFileSync('apps/desktop/src/renderer
   compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true},
 }).outputText, {exports:renderer.exports, URL, Uint8Array, console,
   window:{replaymod:{loadMapResource: async url => {assert(!url.includes('replayElevation')); return new Uint8Array([1,2,3]);}}},
-  require:name => name === './elevationRange' ? rangeModule.exports : name === 'maplibre-gl' ? {addProtocol:(_name,handler)=>{protocol=handler;}} : {},
+  require:name => name === '../../shared/mapResource' ? {loadMapBytes:async url=>{assert(!url.includes('replayElevation'));return new Uint8Array([1,2,3]);}}
+    : name === './elevationRange' ? rangeModule.exports : name === 'maplibre-gl' ? {addProtocol:(_name,handler)=>{protocol=handler;}} : {},
 });
 const {validateStyleMin} = require('@maplibre/maplibre-gl-style-spec');
 const ramp = renderer.exports.elevationRamp(range);

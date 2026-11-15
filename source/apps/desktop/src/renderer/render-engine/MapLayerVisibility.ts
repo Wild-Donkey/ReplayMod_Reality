@@ -18,6 +18,7 @@ export function applyMapLayerVisibility(
     const owner = id.startsWith("footprint-") || id.startsWith("photo-") ? "trajectory"
       : id.startsWith("annotation-") ? "annotations"
       : id.startsWith("airport-flight-") ? "airports"
+      : id.startsWith("urban-transit-") ? "transit"
       : id.startsWith("elevation-buildings") ? "buildings"
       : id === "elevation-glass" || id === "ocean-elevation-glass" ? "elevation" : undefined;
     if (group && owner !== group) continue;
@@ -26,6 +27,7 @@ export function applyMapLayerVisibility(
       : id.startsWith("photo-") ? visibility.trajectory && !footprint.photosInEngine
       : id.startsWith("annotation-") ? visibility.annotations
       : id.startsWith("airport-flight-") ? visibility.airports
+      : id.startsWith("urban-transit-") ? visibility.transit
       : id.startsWith("elevation-buildings") ? visibility.buildings
       : id === "elevation-glass" || id === "ocean-elevation-glass" ? visibility.elevation
       : undefined;

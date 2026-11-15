@@ -117,6 +117,10 @@ export class RawTerrain {
     this.revision++;
     this.map.triggerRepaint();
   }
+  async waitForFrame() {
+    if (this.failed) throw new Error("浮点地形绘制失败");
+    await this.device.queue.onSubmittedWorkDone();
+  }
   setBuildingCanvas(canvas:HTMLCanvasElement|null){this.buildingCanvas=canvas;this.revision++;this.map.triggerRepaint();}
   private resize() {
     const source = this.map.getCanvas();

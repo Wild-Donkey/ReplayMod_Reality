@@ -1,3 +1,4 @@
+import {createPublicBasemap, publicBasemapStyle} from "./PublicBasemap";
 import { AstronomyOverlay } from "../astronomy/AstronomyOverlay";
 import type { AstronomyMapState, ObservationPoint } from "../astronomy/astronomy";
 import type { FootprintDensityData } from "../../render-engine/FootprintDensityPass";
@@ -20,6 +21,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import type { ScrollSource } from "../../../shared/scrollInput";
 import type { MapLanguage } from "../../../shared/settings";
+import { TRANSIT_MIN_ZOOM, TRANSIT_NETWORKS } from "../../../shared/transitTiles";
 import { createPortal } from "react-dom";
 import type { PointDataset } from "../../../../../../packages/data/src";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -27,14 +29,11 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useHDRState } from "../../shared/displayHDR";
 import { photoPointRadiusStops, replayPhotoPoints } from "../../render-engine/PhotoPoints";
 import { presentHDR } from "../../shared/hdr";
-import { addElevationGlass, sampleTerrainProfile, type TerrainProfilePoint } from "./elevation";
-import { restoreWaterLayers } from "./water";
+import { sampleTerrainProfile, type TerrainProfilePoint } from "./elevation";
 import { TerrainLegend } from "./TerrainLegend";
 import type { TerrainAppearance } from "./terrainExposure";
-import { stylePublicBasemap } from "./basemapStyle";
 import { RoadOverlay } from "./RoadOverlay";
 import { BuildingHeightOverlay } from "./BuildingHeightOverlay";
-import { applyMapLanguage } from "./mapLanguage";
 import type { ReplayCamera } from "../../render-engine/ReplayCamera";
 import { loadLocalAirportLayers, type Airport } from "./airports";
 import { applyMapLayerVisibility } from "../../render-engine/MapLayerVisibility";
@@ -339,6 +338,7 @@ export function MapViewport({
     "loading",
   );
   const [errorMessage, setErrorMessage] = useState("");
+  const [transitStatus, setTransitStatus] = useState("");
   const hdrActive = useHDRState().active;
   useEffect(() => {
     scene.setPhotos(status === "ready" && pointDataset && !hdrActive ? replayPhotoPoints(pointDataset.photoCoordinates) : null);
@@ -376,7 +376,7 @@ export function MapViewport({
     const elevationController = new AbortController();
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: `https://api.maptiler.com/maps/dataviz-dark/style.json?key=${encodeURIComponent(apiKey)}`,
+      style: publicBasemapStyle(apiKey),
       center: [104.2, 35.8],
       zoom: 2.4,
       ...camera,
@@ -395,39 +395,25 @@ export function MapViewport({
     const hdr = presentHDR(map.getCanvas());
     map.on("render", hdr.render);
     const basemap = map;
-    basemap.once("load", () => {
+    // Configure the visible layers before the first tile/glyph requests, rather
+    // than waiting for a fully rendered provider style we immediately replace.
+    basemap.once("style.load", () => {
       baseStyleReady = true;
-      const roadStyle = structuredClone(basemap.getStyle());
-      // Terrain supplies the surface color/alpha. Keep cartographic details
-      // above it at their original opacity, including all map text.
-      const surfaceLayers = (basemap.getStyle().layers ?? []).filter(layer =>
-        ["background", "fill", "fill-extrusion", "raster", "hillshade", "color-relief"].includes(layer.type));
-      for (const layer of surfaceLayers) {
-        basemap.setLayoutProperty(layer.id, "visibility", "none");
-      }
-      restoreWaterLayers(basemap);
-      stylePublicBasemap(basemap);
-      roadOverlay = new RoadOverlay(basemap, roadStyle);
-      const roads = roadOverlay;
-      channels.register({id: "map/roads", group: "roads", setVisible: visible => roads.setVisible(visible), dispose: () => roads.dispose()});
-      buildingOverlay = new BuildingHeightOverlay(basemap,roadStyle,buildingCacheLimitRef.current);
-      buildingOverlayRef.current=buildingOverlay;
-      const buildings = buildingOverlay;
-      channels.register({id: "map/building-height", group: "buildings", setVisible: visible => buildings.setVisible(visible), dispose: () => buildings.dispose()});
-      applyMapLanguage(basemap, mapLanguage);
-      setStatus("ready");
-      void addElevationGlass(basemap, apiKey, elevationController.signal, setTerrainAppearance,raw=>{
-        if (!raw || elevationController.signal.aborted) return;
-        channels.register({id: "map/raw-terrain", group: "elevation", setVisible: visible => raw.setVisible(visible), dispose: () => raw.dispose()});
-      }).catch(() => {
-        if (!elevationController.signal.aborted) {
-          setElevationUnavailable(true);
-          for (const layer of surfaceLayers) {
-            if ("source-layer" in layer && layer["source-layer"] === "building") continue;
-            basemap.setLayoutProperty(layer.id, "visibility", layer.layout?.visibility ?? "visible");
-          }
-        }
+      const publicMap = createPublicBasemap(basemap,apiKey,elevationController.signal,{
+        language:mapLanguage,buildingCacheLimitMB:buildingCacheLimitRef.current,
+        onAppearance:setTerrainAppearance,onUnavailable:()=>setElevationUnavailable(true),
+        onRaw:raw=>{
+          if (!raw || elevationController.signal.aborted) return;
+          channels.register({id:"map/raw-terrain",group:"elevation",setVisible:visible=>raw.setVisible(visible),dispose:()=>raw.dispose()});
+        },
       });
+      roadOverlay=publicMap.roads;buildingOverlay=publicMap.buildings;
+      buildingOverlayRef.current=buildingOverlay;
+      const roads=roadOverlay,buildings=buildingOverlay;
+      channels.register({id:"map/roads",group:"roads",setVisible:visible=>roads.setVisible(visible),dispose:()=>roads.dispose()});
+      channels.register({id:"map/building-height",group:"buildings",setVisible:visible=>buildings.setVisible(visible),dispose:()=>buildings.dispose()});
+      setStatus("ready");
+      void publicMap.ready.catch(()=>{});
     });
     basemap.on("error", event => {
       if ("sourceId" in event && (event.sourceId === "elevation-glass" || event.sourceId === "ocean-elevation-glass")) setElevationUnavailable(true);
@@ -481,6 +467,7 @@ export function MapViewport({
       }),
       "top-right",
     );
+    map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
 
 
     basemap.on("error", (event) => {
@@ -556,6 +543,50 @@ export function MapViewport({
   }, [mapLanguage, status, scene]);
 
   useEffect(()=>{buildingCacheLimitRef.current=buildingCacheLimitMB;buildingOverlayRef.current?.updateMemoryLimit(buildingCacheLimitMB);},[buildingCacheLimitMB]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || status !== "ready") return;
+    let failed = false;
+    const update = () => {
+      if (!scene.current.visibility.transit) { setTransitStatus(""); return; }
+      if (map.getZoom() < TRANSIT_MIN_ZOOM) { setTransitStatus("轨道交通 · 继续放大显示线路"); return; }
+      if (failed) { setTransitStatus("轨道交通数据加载失败"); return; }
+      const sources = TRANSIT_NETWORKS.map(network => `urban-transit-${network}`);
+      if (map.getSource("urban-transit-current")) sources.push("urban-transit-current");
+      if (!sources.every(source => map.getSource(source) && map.isSourceLoaded(source))) {
+        setTransitStatus("正在加载轨道交通…");
+        return;
+      }
+      const lines = (map.getStyle().layers ?? []).filter(layer => layer.id.startsWith("urban-transit-") && layer.type === "line" && !layer.id.endsWith("-feed"));
+      const visible = map.queryRenderedFeatures({layers: lines.map(layer => layer.id)}).length > 0;
+      setTransitStatus(visible ? "" : sources.some(source => map.querySourceFeatures(source, {sourceLayer: "lines"}).length > 0)
+        ? "轨道交通 · 继续放大显示线路" : "当前视野暂无轨道交通数据");
+    };
+    const onError = (event: maplibregl.ErrorEvent) => {
+      if ("sourceId" in event && String(event.sourceId).startsWith("urban-transit-")) {
+        failed = true;
+        update();
+      }
+    };
+    const onMove = () => { failed = false; update(); };
+    let enabled = scene.current.visibility.transit;
+    const unsubscribe = scene.subscribe(snapshot => {
+      if (enabled === snapshot.visibility.transit) return;
+      enabled = snapshot.visibility.transit;
+      update();
+    });
+    map.on("idle", update);
+    map.on("moveend", onMove);
+    map.on("error", onError);
+    update();
+    return () => {
+      unsubscribe();
+      map.off("idle", update);
+      map.off("moveend", onMove);
+      map.off("error", onError);
+    };
+  }, [scene, status]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1451,6 +1482,7 @@ export function MapViewport({
 
       {status === "ready" && legendContainer && createPortal(
         <div className="toolbar-map-legend" aria-label="地图图例">
+          {transitStatus && <span role="status">{transitStatus}</span>}
           {pointDataset && <span className="toolbar-point-legend" title={pointDataset.sourceName}>
             <span><i className="footprint-swatch"/>足迹 {pointDataset.footprintPointCount.toLocaleString("zh-CN")}</span>
             <span><i className="photo-swatch"/>照片 {pointDataset.photoPointCount.toLocaleString("zh-CN")}</span>

@@ -122,7 +122,8 @@ const load = name => loadModule(path.join(engineDir, name) + '.ts');
 {
   const {applyMapLayerVisibility} = load('MapLayerVisibility');
   const {defaultLayerVisibility} = load('LayerVisibility');
-  const ids=['footprint-points-circle','footprint-route-line','photo-points-circle','annotation-routes','elevation-buildings','elevation-glass','provider-label'];
+  const ids=['footprint-points-circle','footprint-route-line','photo-points-circle','annotation-routes','elevation-buildings','elevation-glass','provider-label',
+    'urban-transit-subway-lightrail-lines','urban-transit-subway-lightrail-station-labels','urban-transit-platform-outline'];
   const values=new Map(ids.map(id=>[id,'visible']));
   let writes=0;
   const map={getStyle:()=>({layers:ids.map(id=>({id}))}),getLayoutProperty:id=>values.get(id),setLayoutProperty:(id,key,value)=>{values.set(id,value);writes++;}};
@@ -144,6 +145,18 @@ const load = name => loadModule(path.join(engineDir, name) + '.ts');
   assert.equal(values.get('photo-points-circle'),'none');
   assert.equal(values.get('footprint-route-line'),'none');
   assert.equal(values.get('provider-label'),'visible');
+  applyMapLayerVisibility(map,{...defaultLayerVisibility,transit:false},{density:false,line:true},'transit');
+  for(const id of ids.filter(id=>id.startsWith('urban-transit-'))) assert.equal(values.get(id),'none');
+  assert.equal(values.get('provider-label'),'visible');
+  applyMapLayerVisibility(map,defaultLayerVisibility,{density:false,line:true},'transit');
+  for(const id of ids.filter(id=>id.startsWith('urban-transit-'))) assert.equal(values.get(id),'visible');
+
+  const {ReplayScene} = load('ReplayScene');
+  const scene = new ReplayScene();
+  const {transit, ...legacyVisibility} = defaultLayerVisibility;
+  scene.setVisibility({...legacyVisibility, roads:false});
+  assert.equal(scene.current.visibility.transit,true,'Old saved visibility defaults new transit layer to enabled');
+  assert.equal(scene.current.visibility.roads,false);
 }
 
 {
@@ -1059,20 +1072,39 @@ assert.equal(
   null,
 );
 
+function checkMinimapTrail() {
+  const {visibleTrail,MINIMAP_TRAIL_MILLISECONDS}=loadModule(path.join('apps','desktop','src','renderer','features','export','MinimapTrail.ts'));
+  assert.equal(MINIMAP_TRAIL_MILLISECONDS,60000);
+  const result=visibleTrail([{x:-180,y:180,time:0},{x:180,y:180,time:10000}],360);
+  assert.equal(result.oldest,5000,'Invisible history must not compress the on-screen fade');
+  assert.equal(result.newest,10000,'Only five visible seconds span the full fade');
+  assert.equal(result.segments[0][0].x,0);
+  const crossing=visibleTrail([{x:-180,y:180,time:0},{x:540,y:180,time:12000}],360);
+  assert.equal(crossing.oldest,3000);assert.equal(crossing.newest,9000);
+  const outside=visibleTrail([{x:0,y:0,time:0},{x:360,y:0,time:1000}],360);
+  assert.equal(outside.segments.length,0,'Square corners are outside the circular viewport');
+  assert.equal(visibleTrail([{x:180,y:100,time:0},{x:180,y:180,time:400000}],360).segments.length,0,'Recording gaps must not draw a connecting tail');
+}
+checkMinimapTrail();
+
 async function checkFrameBarrier() {
   const {waitForMapFrame}=load('MapFrameBarrier');
-  const listeners=new Set();
-  const map={on:(event,listener)=>listeners.add(listener),off:(event,listener)=>listeners.delete(listener),triggerRepaint:()=>{}};
+  const listeners=new Map([['idle',new Set()],['error',new Set()]]);
+  let loaded=false;
+  const emit=event=>{for(const listener of [...listeners.get(event)])listener();};
+  const count=()=>[...listeners.values()].reduce((sum,set)=>sum+set.size,0);
+  const map={on:(event,listener)=>listeners.get(event).add(listener),off:(event,listener)=>listeners.get(event).delete(listener),triggerRepaint:()=>{},loaded:()=>loaded,isStyleLoaded:()=>loaded,areTilesLoaded:()=>loaded};
   const controller=new AbortController();
-  const rendered=waitForMapFrame(map,controller.signal);
-  assert.equal(listeners.size,1);
-  for(const listener of [...listeners])listener();
-  assert.equal(await rendered,true);
-  assert.equal(listeners.size,0);
-  const cancelled=waitForMapFrame(map,controller.signal);
-  controller.abort();
-  assert.equal(await cancelled,false);
-  assert.equal(listeners.size,0);
+  let finished=false;
+  const rendered=waitForMapFrame(map,controller.signal).then(value=>{finished=true;return value;});
+  assert.equal(count(),2);
+  emit('idle');await Promise.resolve();
+  assert.equal(finished,false,'An incomplete tile frame must not be encoded');
+  loaded=true;emit('idle');assert.equal(await rendered,true);assert.equal(count(),0);
+  const failed=waitForMapFrame(map,controller.signal);emit('error');assert.equal(await failed,false);
+  assert.equal(await waitForMapFrame(map,controller.signal,1),false,'Timeout stops export instead of accepting placeholders');
+  const cancelled=waitForMapFrame(map,controller.signal);controller.abort();
+  assert.equal(await cancelled,false);assert.equal(count(),0);
   assert.equal(await waitForMapFrame(map,controller.signal),false);
 }
 async function checkOfflinePump() {

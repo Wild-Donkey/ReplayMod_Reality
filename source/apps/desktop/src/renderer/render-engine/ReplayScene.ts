@@ -83,8 +83,9 @@ export class ReplayScene {
   }
 
   setVisibility(visibility: LayerVisibility) {
-    if ((Object.keys(defaultLayerVisibility) as (keyof LayerVisibility)[]).every(id => this.snapshot.visibility[id] === visibility[id])) return;
-    this.update({...this.snapshot, visibility: {...visibility}});
+    const resolved = {...defaultLayerVisibility, ...visibility};
+    if ((Object.keys(defaultLayerVisibility) as (keyof LayerVisibility)[]).every(id => this.snapshot.visibility[id] === resolved[id])) return;
+    this.update({...this.snapshot, visibility: resolved});
   }
 
   setTrajectory(trajectory: TrajectoryBuffer | null) {

@@ -13,6 +13,8 @@ const sources = Object.fromEntries(['BuildingHeightOverlay', 'basemapStyle'].map
   }).outputText,
 ]));
 
+sources['../../render-engine/MapFrameBarrier'] = ts.transpileModule(fs.readFileSync(path.resolve(root, '../../render-engine/MapFrameBarrier.ts'), 'utf8'), {compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022}}).outputText;
+
 app.whenReady().then(async () => {
   const {default: Pbf} = await import('pbf');
   const makeTile = (zoom, tallHeight) => {
@@ -117,6 +119,7 @@ app.whenReady().then(async () => {
         throw new Error('Building mask did not settle: ' + JSON.stringify({remembered, pixels: sample()}));
       };
       await until(() => remembered >= 3 && overlay.map.loaded() && sample()[0] > 0);
+      if (!await overlay.waitForFrame(new AbortController().signal)) throw Error("Building capture barrier failed");
       const current = sample();
       map.jumpTo({zoom: 13});
       await until(() => requested.has(13) && overlay.map.loaded() && sample()[3] > 0);
@@ -141,6 +144,7 @@ app.whenReady().then(async () => {
       map.jumpTo({zoom: 11});
       const reopened = new BuildingHeightOverlay(map, style);
       await until(() => remembered >= 3 && reopened.map.loaded() && sample()[3] > 0);
+      if (!await reopened.waitForFrame(new AbortController().signal)) throw Error("Restored building capture barrier failed");
       const reopenedOffline = sample();
       reopened.dispose();
       map.remove();

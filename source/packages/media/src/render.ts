@@ -114,6 +114,12 @@ export const renderDynamicVideo = async (
 ): Promise<DynamicRenderResult> => {
   const source = await probeMediaFile(inputPath);
   if (!source.durationSeconds) throw new Error("无法确定输入视频时长。");
+  const sourceBitrate = source.tracks.find(track => track.kind === "video")?.bitrate;
+  const targetBitrateMbps = options.targetBitrateMbps ??
+    (sourceBitrate && sourceBitrate > 0 ? sourceBitrate * 1.2 / 1_000_000 : null);
+  if (!targetBitrateMbps || !Number.isFinite(targetBitrateMbps) || targetBitrateMbps <= 0) {
+    throw new Error("无法读取源视频码率，请指定导出目标码率。");
+  }
   const encoder = await chooseEncoder(options.codec, options.encoder);
   const segments = buildSegments(playbackRateTrack, source.durationSeconds);
   const outputDurationSeconds = segments.reduce(
@@ -140,7 +146,7 @@ export const renderDynamicVideo = async (
     "-/filter_complex", filterPath,
     "-map", "[vout]",
     ...(hasAudio ? ["-map", "[aout]"] : []),
-    ...codecArguments(options.codec, encoder, options.targetBitrateMbps),
+    ...codecArguments(options.codec, encoder, targetBitrateMbps),
     ...(hasAudio ? ["-c:a", "aac", "-b:a", "192k"] : []),
     ...(hasAudio ? ["-shortest"] : []),
     "-map_metadata", "0",

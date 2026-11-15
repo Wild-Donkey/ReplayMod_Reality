@@ -35,7 +35,7 @@ export function registerStyleRenderChannels(
 ) {
   const registry = new RenderChannelRegistry(scene);
   let applying = false;
-  for (const group of ["trajectory", "annotations", "airports", "buildings", "roads", "elevation"] as const) {
+  for (const group of ["trajectory", "annotations", "airports", "transit", "buildings", "roads", "elevation"] as const) {
     registry.register({
       id: `${prefix}/${group}`, group,
       setVisible: visible => {

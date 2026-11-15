@@ -34,6 +34,8 @@ export class ReplayCanvasCapture {
     canvas.height = this.pixelHeight;
     canvas.style.width = this.surface.style.width;
     canvas.style.height = this.surface.style.height;
+    // A host's preview canvas styles must not shrink the GPU drawing buffer.
+    Object.assign(canvas.style, {boxSizing: "content-box", border: "0", padding: "0", background: "none"});
     this.surface.appendChild(canvas);
     parent.appendChild(this.surface);
     let backend: DeckRenderBackend | undefined;

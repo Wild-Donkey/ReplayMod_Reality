@@ -1,3 +1,4 @@
+import {FOOTPRINT_RGB} from "./FootprintColor";
 // Convergent brightness response shared by far points and near route strokes.
 // v(1) = 0.20 (a single coverage is just visible), and repeated coverage grows
 // through arctan towards 1 without a hard saturation plateau. k is derived from
@@ -12,7 +13,7 @@ export const footprintIntensity = (count: number, exposure = 0) => {
   const exposed = Math.min(coverage, 1) + Math.max(coverage - 1, 0) * scale;
   return (2 / Math.PI) * Math.atan(exposed / FOOTPRINT_ARCTAN_K);
 };
-const FOOTPRINT_MINT = [70 / 255, 225 / 255, 135 / 255] as const;
+const FOOTPRINT_MINT = FOOTPRINT_RGB.map(channel => channel / 255);
 const WHITE_START = 0.72;
 const smoothStep = (edge0: number, edge1: number, value: number) => {
   const t = Math.min(1, Math.max(0, (value - edge0) / (edge1 - edge0)));
@@ -301,7 +302,7 @@ export class FootprintDensityPass {
         float coverage = max(count, 0.0);
         float exposed = min(coverage, 1.0) + max(coverage - 1.0, 0.0) * exposureScale;
         float intensity = (2.0 / 3.141592653589793) * atan(exposed / ${FOOTPRINT_ARCTAN_K.toFixed(6)});
-        vec3 mint = vec3(70.0, 225.0, 135.0) / 255.0;
+        vec3 mint = vec3(${FOOTPRINT_RGB.map(channel => channel.toFixed(1)).join(", ")}) / 255.0;
         float t = clamp((intensity - ${WHITE_START.toFixed(2)}) / ${(1 - WHITE_START).toFixed(2)}, 0.0, 1.0);
         float whiteMix = t * t * (3.0 - 2.0 * t);
         vec3 rgb = mix(mint, vec3(1.0), whiteMix);

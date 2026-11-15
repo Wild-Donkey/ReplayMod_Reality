@@ -1,3 +1,4 @@
+import {waitForMapFrame} from "../../render-engine/MapFrameBarrier";
 import maplibregl, {type CustomLayerInterface, type Map as GLMap, type StyleSpecification, type GeoJSONSource} from "maplibre-gl";
 import type {Feature, FeatureCollection, MultiPolygon, Polygon} from "geojson";
 import {cachedMapRequest} from "../../shared/cache";
@@ -60,6 +61,8 @@ export class BuildingHeightOverlay {
   private readonly providerSource: string | undefined;
   private readonly cacheSource: string | undefined;
   private restoring = false;
+  private resourceFailed = false;
+  private restoration: Promise<void> = Promise.resolve();
   private visible = true;
   private disposed = false;
   private synchronizing = false;
@@ -89,6 +92,8 @@ export class BuildingHeightOverlay {
       interactive: false, attributionControl: false, transformRequest: cachedMapRequest,
       canvasContextAttributes: {alpha: true, preserveDrawingBuffer: true, antialias: false},
     });
+
+    this.map.on("error",()=>{this.resourceFailed=true;});
 
     let program: WebGLProgram;
     let texture: WebGLTexture;
@@ -138,7 +143,7 @@ export class BuildingHeightOverlay {
       this.map.on("idle", this.capture);
       this.map.on("sourcedata", this.captureSource);
       this.restoring = true;
-      void this.restoreMemory().catch(console.warn).finally(() => {
+      this.restoration = this.restoreMemory().catch(console.warn).finally(() => {
         this.restoring = false;
         if (this.disposed) return;
         if (this.remembered.size) {
@@ -151,6 +156,15 @@ export class BuildingHeightOverlay {
     base.on("movestart", this.capture);
     base.on("move", this.synchronize);
     base.on("resize", this.synchronize);
+  }
+
+  async waitForFrame(signal: AbortSignal) {
+    if (this.resourceFailed) return false;
+    if (this.map.getPixelRatio() !== this.base.getPixelRatio()) this.map.setPixelRatio(this.base.getPixelRatio());
+    this.synchronize();
+    if (!await waitForMapFrame(this.map,signal)) return false;
+    await this.restoration;
+    return !signal.aborted && !this.resourceFailed && await waitForMapFrame(this.map,signal);
   }
 
   setVisible(visible: boolean) {
