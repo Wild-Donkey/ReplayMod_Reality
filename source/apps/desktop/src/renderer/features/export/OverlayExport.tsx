@@ -1,3 +1,7 @@
+import {createPublicBasemap, publicBasemapStyle} from "../map/PublicBasemap";
+import {ROAD_OPACITY_SCALE} from "../map/basemapStyle";
+import {drawMinimapTrail, MINIMAP_TRAJECTORY_COLOR, MINIMAP_TRAIL_MILLISECONDS, type TrailPoint} from "./MinimapTrail";
+import { drawCircularMinimap, MINIMAP_SIZE } from "./CircularMinimap";
 import { createExportScene } from "../../render-engine/export/ReplaySceneExport";
 import { ReplayCanvasCapture } from "../../render-engine/export/ReplayCanvasCapture";
 import { OfflineFramePlan } from "../../../shared/overlayExport";
@@ -110,38 +114,16 @@ const drawOverlay = (
     panel(1280, "坡度", Number.isFinite(value.grade) ? `${value.grade.toFixed(1)} %` : "—");
   }
 
-  if (settings.showMap) {
-  const mapX = 60;
-  const mapY = 720;
-  const mapSize = 410;
-  if (navigationCanvas) context.drawImage(navigationCanvas, mapX, mapY, mapSize, 302);
-  if (annotationCanvas) context.drawImage(annotationCanvas, mapX, mapY, mapSize, 302);
-  const markerX = mapX + mapSize / 2;
-  const markerY = mapY + 151;
-  context.fillStyle = "#ff3b30";
-  context.strokeStyle = "white"; context.lineWidth = 3;
-  context.beginPath(); context.moveTo(markerX, markerY - 14); context.lineTo(markerX + 10, markerY + 11); context.lineTo(markerX, markerY + 6); context.lineTo(markerX - 10, markerY + 11); context.closePath(); context.fill(); context.stroke();
-  context.shadowBlur = 5;
-  context.font = "700 22px sans-serif";
-  context.textAlign = "center";
-  context.textBaseline = "middle";
-  const directions = [{ label: "N", bearing: 0 }, { label: "E", bearing: 90 }, { label: "S", bearing: 180 }, { label: "W", bearing: 270 }];
-  for (const direction of directions) {
-    const angle = (direction.bearing - value.bearing) * Math.PI / 180 - Math.PI / 2;
-    const x = markerX + Math.cos(angle) * 180;
-    const y = markerY + Math.sin(angle) * 126;
-    context.fillStyle = direction.label === "N" ? "#ff4a40" : "white";
-    context.fillText(direction.label, x, y);
-  }
-  context.textAlign = "start";
-  context.textBaseline = "alphabetic";
-  context.shadowBlur = 0;
-  }
+  if (settings.showMap) drawCircularMinimap(context, navigationCanvas, annotationCanvas, value.bearing);
 };
 
-export function OverlayExport({ dataset, range, apiKey, scene }: { dataset: PointDataset; range: TimeBounds; apiKey: string; scene: ReplayScene }) {
+export function OverlayExport({ dataset, range, apiKey, scene, active = true, previewContainer = null, previewTime = null }: { dataset: PointDataset; range: TimeBounds; apiKey: string; scene: ReplayScene; active?: boolean; previewContainer?: HTMLDivElement|null; previewTime?: number|null }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const navigationContainerRef = useRef<HTMLDivElement>(null);
+  const publicMapRef = useRef<ReturnType<typeof createPublicBasemap> | null>(null);
+  const mapFailureRef = useRef<string | null>(null);
+  const trailRef = useRef<TrailPoint[]>([]);
+  const navigationSurfaceRef = useRef<HTMLCanvasElement | null>(null);
   const navigationMapRef = useRef<maplibregl.Map | null>(null);
   const navigationBindingRef = useRef<(() => void) | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -167,19 +149,28 @@ export function OverlayExport({ dataset, range, apiKey, scene }: { dataset: Poin
   const [isMapReady, setIsMapReady] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
   const [exportError, setExportError] = useState("");
+  const previewRef = useRef({dataset, range, settings, progress, active, previewTime});
+  previewRef.current = {dataset, range, settings, progress, active, previewTime};
   const duration = useMemo(() => (range[1] - range[0]) / 1000, [range]);
   useEffect(() => cancelActiveExport, [dataset, range, settings, cancelActiveExport]);
 
   const updateNavigationMap = (timestamp: number, value = sample(dataset, timestamp)) => {
     const map = navigationMapRef.current;
-    if (!map?.isStyleLoaded()) return;
-    const secondsVisible = Math.max(18, Math.min(90, 18 + value.speed * 0.6));
-    const first = Math.max(0, lowerBound(dataset.timelineTimestamps, timestamp - secondsVisible * 1000));
+    // Changing layer visibility in the load handler temporarily invalidates
+    // isStyleLoaded(). The route source is the actual readiness requirement;
+    // skipping here would leave the camera at its initial [0, 0] ocean view.
+    if (!map?.getSource("local-route")) return;
+    const trailStart = Math.max(dataset.timelineTimestamps[0] ?? timestamp, timestamp - MINIMAP_TRAIL_MILLISECONDS);
+    const first = Math.max(0, lowerBound(dataset.timelineTimestamps, trailStart));
     const last = Math.min(dataset.timelineTimestamps.length, lowerBound(dataset.timelineTimestamps, timestamp));
-    const coordinates: number[] = [];
-    const timestamps: number[] = [];
+    // Interpolate both ends so the tail advances continuously, including
+    // between sparse GPS samples. Never include points ahead of the pointer.
+    const start = sample(dataset, trailStart);
+    const coordinates: number[] = [start.longitude, start.latitude];
+    const timestamps: number[] = [trailStart];
     const step = Math.max(1, Math.ceil((last - first) / 500));
     for (let index = first; index < last; index += step) {
+      if (dataset.timelineTimestamps[index] <= trailStart) continue;
       coordinates.push(dataset.timelineCoordinates[index * 2], dataset.timelineCoordinates[index * 2 + 1]);
       timestamps.push(dataset.timelineTimestamps[index]);
     }
@@ -187,38 +178,81 @@ export function OverlayExport({ dataset, range, apiKey, scene }: { dataset: Poin
     timestamps.push(timestamp);
     (map.getSource("local-route") as maplibregl.GeoJSONSource | undefined)?.setData({ type: "Feature", properties: {}, geometry: { type: "MultiLineString", coordinates: compileFootprintPaths(coordinates, timestamps) } });
     map.jumpTo({ center: [value.longitude, value.latitude], bearing: value.bearing, zoom: 16.8 - Math.min(value.speed, 140) / 42 });
+    trailRef.current = timestamps.map((time, index) => {
+      const point = map.project([coordinates[index * 2], coordinates[index * 2 + 1]]);
+      return {x: point.x, y: point.y, time};
+    });
     map.triggerRepaint();
+  };
+
+  const navigationCanvas = () => {
+    const map = navigationMapRef.current;
+    if (!map) return null;
+    const canvas = navigationSurfaceRef.current ?? (navigationSurfaceRef.current = document.createElement("canvas"));
+    const source = map.getCanvas();
+    if (canvas.width !== source.width || canvas.height !== source.height) {canvas.width=source.width;canvas.height=source.height;}
+    const context=canvas.getContext("2d")!;
+    context.setTransform(1,0,0,1,0,0);context.clearRect(0,0,canvas.width,canvas.height);
+    const publicMap=publicMapRef.current;
+    const terrain=publicMap?.terrain?.canvas;
+    if(terrain && terrain.style.display!=="none" && terrain.style.visibility!=="hidden") {
+      context.globalAlpha=.58;context.drawImage(terrain,0,0,canvas.width,canvas.height);context.globalAlpha=1;
+    }
+    if(publicMap && publicMap.roads.container.style.visibility!=="hidden" && publicMap.roads.container.style.display!=="none") {
+      context.globalCompositeOperation="screen";context.globalAlpha=ROAD_OPACITY_SCALE;
+      context.drawImage(publicMap.roads.getCanvas(),0,0,canvas.width,canvas.height);
+      context.globalCompositeOperation="source-over";context.globalAlpha=1;
+    }
+    context.drawImage(source,0,0);
+    context.setTransform(canvas.width/MINIMAP_SIZE,0,0,canvas.height/MINIMAP_SIZE,0,0);
+    if (scene.current.visibility.trajectory) drawMinimapTrail(context,trailRef.current,MINIMAP_SIZE);
+    return canvas;
   };
 
   useEffect(() => {
     const container = navigationContainerRef.current;
     if (!container || !apiKey) return;
+    const controller = new AbortController();
+    mapFailureRef.current=null;
     const map = new maplibregl.Map({
       transformRequest: cachedMapRequest,
       container, interactive: false, attributionControl: false,
       canvasContextAttributes: { preserveDrawingBuffer: true },
       center: [0, 0], zoom: 15,
-      style: `https://api.maptiler.com/maps/streets-v2/style.json?key=${encodeURIComponent(apiKey)}`,
+      style: publicBasemapStyle(apiKey),
     });
     navigationMapRef.current = map;
+    map.on("error",event=>{mapFailureRef.current=event.error?.message ?? "地图资源加载失败";});
+    // Drawing immediately after jumpTo samples the previous/empty buffer.
+    // Redraw the composition only after MapLibre has submitted its new frame.
+    const paintPreview = () => {
+      const current = previewRef.current;
+      if (!current.active || current.progress !== null) return;
+      const context = canvasRef.current?.getContext("2d");
+      if (context) drawOverlay(context, current.dataset, current.range, current.previewTime ?? current.range[0], current.settings, navigationCanvas());
+    };
+    map.on("render", paintPreview);
     map.once("load", () => {
-      for (const layer of map.getStyle().layers) {
-        const isRoadLine = layer.type === "line" && /road|street|transport|bridge|tunnel|highway/i.test(layer.id);
-        if (!isRoadLine) map.setLayoutProperty(layer.id, "visibility", "none");
-      }
+      const publicMap=createPublicBasemap(map,apiKey,controller.signal,{
+        language:window.replaymod?.settings.mapLanguage ?? "auto",
+        buildingCacheLimitMB:window.replaymod?.settings.buildingCacheLimitMB,
+        boundaries:false,
+        onRaw:raw=>raw?.setVisible(scene.current.visibility.elevation),
+      });
+      publicMapRef.current=publicMap;
+      void publicMap.ready.catch(error=>{mapFailureRef.current=String(error);});
       map.addSource("local-route", { type: "geojson", data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [] } } });
-      map.addLayer({ id: "route-casing", type: "line", source: "local-route", paint: { "line-color": "rgba(0,0,0,.9)", "line-width": 9 } });
-      map.addLayer({ id: "route", type: "line", source: "local-route", paint: { "line-color": "#ffd500", "line-width": 5 } });
+      map.addLayer({ id: "route-casing", type: "line", source: "local-route", layout: {"line-cap": "round", "line-join": "round"}, paint: { "line-color": "rgba(0,0,0,.9)", "line-width": 9, "line-opacity": 0 } });
+      map.addLayer({ id: "route", type: "line", source: "local-route", layout: {"line-cap": "round", "line-join": "round"}, paint: { "line-color": MINIMAP_TRAJECTORY_COLOR, "line-width": 5, "line-opacity": 0 } });
       map.addSource("export-annotations", {type: "geojson", data: committedAnnotationGeometry(scene.current.annotationGeometry)});
       map.addLayer({id: "export-annotation-routes", type: "line", source: "export-annotations", paint: {"line-color": ["get", "color"], "line-width": 2}});
       updateNavigationMap(range[0]);
       map.once("idle", () => {
         setIsMapReady(true);
-        const context = canvasRef.current?.getContext("2d");
-        if (context) drawOverlay(context, dataset, range, range[0], settings, map.getCanvas());
+        paintPreview();
       });
     });
-    return () => { setIsMapReady(false); navigationMapRef.current = null; map.remove(); };
+    return () => { controller.abort(); publicMapRef.current?.roads.dispose(); publicMapRef.current?.buildings.dispose(); publicMapRef.current=null; setIsMapReady(false); navigationMapRef.current = null; map.off("render", paintPreview); map.remove(); };
   }, [apiKey, dataset]);
 
   const bindNavigationScene = useCallback((renderScene: ReplayScene, engineAnnotations = false) => {
@@ -233,13 +267,17 @@ export function OverlayExport({ dataset, range, apiKey, scene }: { dataset: Poin
         : layer.type === "line" && /road|street|transport|bridge|tunnel|highway/i.test(layer.id) ? "roads" : null);
     const apply = () => {
       if (!map.getSource("local-route")) return;
+      const publicMap=publicMapRef.current,visibility=renderScene.current.visibility;
+      publicMap?.roads.setVisible(visibility.roads);
+      publicMap?.buildings.setVisible(visibility.buildings);
+      publicMap?.terrain?.setVisible(visibility.elevation);
       (map.getSource("export-annotations") as maplibregl.GeoJSONSource | undefined)?.setData(committedAnnotationGeometry(renderScene.current.annotationGeometry));
     };
     map.on("load", apply);
-    let previous = renderScene.current.annotationGeometry;
+    let previous = renderScene.current;
     const unsubscribe = renderScene.subscribe(snapshot => {
-      if (snapshot.annotationGeometry === previous) return;
-      previous = snapshot.annotationGeometry;
+      if (snapshot.annotationGeometry === previous.annotationGeometry && snapshot.visibility === previous.visibility) return;
+      previous = snapshot;
       apply();
     });
     apply();
@@ -251,10 +289,14 @@ export function OverlayExport({ dataset, range, apiKey, scene }: { dataset: Poin
   }, [scene, apiKey, dataset, bindNavigationScene]);
 
   useEffect(() => {
+    if (!active || progress !== null) return;
     const context = canvasRef.current?.getContext("2d");
-    updateNavigationMap(range[0]);
-    if (context) drawOverlay(context, dataset, range, range[0], settings, navigationMapRef.current?.getCanvas() ?? null);
-  }, [dataset, range, settings]);
+    // Refresh after workspace activation or returning from an export.
+    navigationMapRef.current?.resize();
+    updateNavigationMap(previewTime ?? range[0]);
+    if (context) drawOverlay(context, dataset, range, previewTime ?? range[0], settings, null);
+    navigationMapRef.current?.triggerRepaint();
+  }, [dataset, range, settings, active, progress, previewTime, previewContainer]);
 
   const exportRealtime = async () => {
     const canvas = canvasRef.current;
@@ -278,7 +320,7 @@ export function OverlayExport({ dataset, range, apiKey, scene }: { dataset: Poin
     if (frameController.signal.aborted) { setProgress(null); return; }
     const initialContext = canvas.getContext("2d");
     if (!initialContext) { setExportError("无法创建导出画布。"); setProgress(null); return; }
-    drawOverlay(initialContext, dataset, range, range[0], settings, initialMap?.getCanvas() ?? null);
+    drawOverlay(initialContext, dataset, range, range[0], settings, navigationCanvas());
     // Submit only completed compositions. Automatic capture can encode the
     // previous map canvas while its asynchronous renderer is still working.
     const stream = canvas.captureStream(0);
@@ -353,7 +395,7 @@ export function OverlayExport({ dataset, range, apiKey, scene }: { dataset: Poin
             return;
           }
         }
-        if (context) drawOverlay(context, dataset, range, frameTime, settings, navigationMapRef.current?.getCanvas() ?? null);
+        if (context) drawOverlay(context, dataset, range, frameTime, settings, navigationCanvas());
         videoTrack.requestFrame();
         if (now - lastProgressUpdate >= 250 || segmentRatio >= 1) {
           setProgress((timestamp - range[0]) / Math.max(range[1] - range[0], 1));
@@ -393,7 +435,7 @@ export function OverlayExport({ dataset, range, apiKey, scene }: { dataset: Poin
         if (!container || !navigationMap) throw new Error("导航地图尚未就绪。");
         const pixelRatio = settings.width / 1920;
         navigationMap.setPixelRatio(pixelRatio);
-        annotationCapture = new ReplayCanvasCapture(container, exportScene, {width: 410, height: 302, metrics: false, pixelRatio});
+        annotationCapture = new ReplayCanvasCapture(container, exportScene, {width: MINIMAP_SIZE, height: MINIMAP_SIZE, metrics: false, pixelRatio});
         // The shared Layer graph owns annotations for this export. Keep the
         // legacy preview path available and restore it when the session ends.
         if (navigationMap.getLayer("export-annotation-routes")) navigationMap.setLayoutProperty("export-annotation-routes", "visibility", "none");
@@ -403,10 +445,18 @@ export function OverlayExport({ dataset, range, apiKey, scene }: { dataset: Poin
           const value = sample(dataset, work.timestamp);
           const map = settings.showMap ? navigationMapRef.current : null;
           if (map) { updateNavigationMap(work.timestamp, value); const center = map.getCenter(); exportScene.setMapViewState({longitude: center.lng, latitude: center.lat, zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch()}); }
-          if (settings.showMap && (!map || !await waitForMapFrame(map, controller.signal))) throw new Error("地图帧未及时完成，导出已停止。");
+          if (settings.showMap) {
+            const publicMap=publicMapRef.current;
+            if(!map || !publicMap) throw new Error("地图尚未就绪");
+            await publicMap.ready;
+            if(mapFailureRef.current) throw new Error(`地图资源加载失败：${mapFailureRef.current}`);
+            if(!await publicMap.roads.waitForFrame(controller.signal) || !await publicMap.buildings.waitForFrame(controller.signal) || !await waitForMapFrame(map,controller.signal)) throw new Error("地图资源或 GPU 帧未完成，导出已停止。");
+            await publicMap.terrain?.waitForFrame();
+            if(mapFailureRef.current) throw new Error(`地图资源加载失败：${mapFailureRef.current}`);
+          }
           const annotations = annotationCapture ? await annotationCapture.capture(work.timestamp, work.frame, exportScene.current.mapViewState, controller.signal) : null;
           if (annotationCapture && !annotations) throw new Error("标注 GPU 帧未完成，导出已停止。");
-          drawOverlay(context, dataset, range, work.timestamp, settings, map?.getCanvas() ?? null, value, annotations);
+          drawOverlay(context, dataset, range, work.timestamp, settings, navigationCanvas(), value, annotations);
         },
         encode: async work => {
           const pixels = context.getImageData(0, 0, settings.width, settings.height).data;
@@ -455,8 +505,9 @@ export function OverlayExport({ dataset, range, apiKey, scene }: { dataset: Poin
   };
 
   return <section className="overlay-export">
-    <div ref={navigationContainerRef} className="navigation-map-renderer" aria-hidden="true" />
-    <canvas ref={canvasRef} width={settings.width} height={settings.height} />
+    {/* Keep fixed-size renderers outside hidden workspace pages. */}
+    {createPortal(<div ref={navigationContainerRef} className="navigation-map-renderer" style={{width: MINIMAP_SIZE, height: MINIMAP_SIZE}} aria-hidden="true" />, document.body)}
+    {previewContainer ? createPortal(<canvas ref={canvasRef} width={settings.width} height={settings.height} aria-label="仪表与小地图预览"/>,previewContainer) : <canvas ref={canvasRef} width={settings.width} height={settings.height} hidden/>}
     <button type="button" disabled={progress !== null} onClick={() => setIsSettingsOpen(true)}>导出设置…</button>
     <span>成片 {duration.toFixed(1)} 秒（1:1）· {settings.width}×{settings.height} / {settings.fps}fps</span>
     <p role="status">{exportError}</p>
