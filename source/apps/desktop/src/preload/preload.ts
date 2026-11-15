@@ -56,7 +56,8 @@ export interface DesktopBridge {
   readBuildingCache(source: string, key: string): Promise<string | null>;
   writeBuildingCache(source: string, batch: string): Promise<boolean>;
   loadCachedMedia(): Promise<MediaSource | null>;
-  loadMapResource(url: string): Promise<Uint8Array>;
+  loadMapResource(url: string, requestId?: string): Promise<Uint8Array>;
+  cancelMapResource(requestId: string): void;
   loadMapResources(urls: readonly string[]): Promise<Uint8Array[]>;
   loadAnnotations(): Promise<{name:string; content:string} | null>;
   openAnnotations(): Promise<{name:string; content:string} | null>;
@@ -128,7 +129,8 @@ const bridge: DesktopBridge = Object.freeze({
   readBuildingCache: (source: string, key: string) => ipcRenderer.invoke("cache:buildings-read", source, key),
   writeBuildingCache: (source: string, batch: string) => ipcRenderer.invoke("cache:buildings-write", source, batch),
   loadCachedMedia: () => ipcRenderer.invoke("cache:media"),
-  loadMapResource: (url: string) => ipcRenderer.invoke("cache:map", url),
+  loadMapResource: (url: string, requestId?: string) => ipcRenderer.invoke("cache:map", url, requestId),
+  cancelMapResource: (requestId: string) => ipcRenderer.send("cache:map-cancel", requestId),
   loadMapResources: (urls: readonly string[]) => ipcRenderer.invoke("cache:map-batch", urls),
   loadAnnotations: () => ipcRenderer.invoke("annotations:load"),
   openAnnotations: () => ipcRenderer.invoke("annotations:open"),

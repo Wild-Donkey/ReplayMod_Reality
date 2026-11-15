@@ -53,24 +53,74 @@ assert.equal(systemCacheDirectory('linux', '/home/test', '/home/test/.config', {
   let protocol;
   let resource = Buffer.from('{"version":8,"sources":{},"layers":[]}');
   const renderer = {exports: {}};
+  const transit = {exports: {}};
+  vm.runInNewContext(ts.transpileModule(fs.readFileSync('apps/desktop/src/shared/transitTiles.ts', 'utf8'), {
+    compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022},
+  }).outputText, {exports: transit.exports});
+  const transitUrl = 'https://loom.cs.uni-freiburg.de/tiles/subway-lightrail/geo/12/3430/1673.mvt';
+  assert(transit.exports.isTransitTileUrl(new URL(transitUrl)));
+  assert(transit.exports.isTransitTileUrl(new URL('https://loom.cs.uni-freiburg.de/tiles/subway-lightrail/geo/10/857/418.mvt')));
+  assert(transit.exports.isTransitTileUrl(new URL('https://loom.cs.uni-freiburg.de/tiles/subway-lightrail/geo/6/50/31.mvt')));
+  for (const url of [
+    'https://loom.cs.uni-freiburg.de/tiles/subway-lightrail/geo/5/25/15.mvt',
+    transitUrl.replace('subway-lightrail', 'rail'),
+    transitUrl.replace('/geo/', '/octi/'),
+    transitUrl.replace('/12/', '/18/'),
+    transitUrl.replace('/3430/', '/4096/'),
+    transitUrl.replace('.de/', '.de.example.com/'),
+    transitUrl + '?override=1',
+  ]) assert(!transit.exports.isTransitTileUrl(new URL(url)), url);
   const rendererCode = ts.transpileModule(fs.readFileSync('apps/desktop/src/renderer/shared/cache.ts', 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
   }).outputText;
+  const cancelled = [];
+  const bridge = { addEventListener() {}, replaymod: {workspaceState: {},
+    loadMapResource: async (url, id) => {
+      assert(url.startsWith('https://api.maptiler.com/') || url === transitUrl);
+      assert.equal(typeof id, 'string');
+      return resource;
+    },
+    cancelMapResource: id => cancelled.push(id),
+  }};
+  const mapResource = {exports: {}};
+  vm.runInNewContext(ts.transpileModule(fs.readFileSync('apps/desktop/src/renderer/shared/mapResource.ts', 'utf8'), {
+    compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022},
+  }).outputText, {exports: mapResource.exports, window: bridge, crypto: require('node:crypto').webcrypto, Uint8Array, ArrayBuffer});
   vm.runInNewContext(rendererCode, {
     exports: renderer.exports, TextDecoder, Uint8Array, AbortController, setTimeout, clearTimeout,
-    window: { addEventListener() {}, replaymod: {workspaceState: {}, loadMapResource: async url => {
-      assert(url.startsWith('https://api.maptiler.com/'));
-      return resource;
-    }}},
-    require: name => name === 'react' ? {} : { addProtocol: (_name, handler) => { protocol = handler; } },
+    window: bridge,
+    require: name => name === '../../shared/transitTiles' ? transit.exports
+      : name === './mapResource' ? mapResource.exports
+      : name === 'react' ? {} : { addProtocol: (_name, handler) => { protocol = handler; } },
   });
   const json = await protocol({url:'replaymap://api.maptiler.com/style.json', type:'json'}, new AbortController());
   assert.equal(json.data.version, 8);
   resource = Buffer.from([1, 2, 3]);
   const binary = await protocol({url:'replaymap://api.maptiler.com/tile.pbf', type:'arrayBuffer'}, new AbortController());
   assert.equal(new Uint8Array(binary.data)[2], 3);
+  const transitRequest = renderer.exports.cachedMapRequest(transitUrl);
+  assert.equal(transitRequest.url, transitUrl.replace('https:', 'replaymap:'));
+  resource = new Uint8Array(); // A location outside the transit network.
+  const empty = await protocol({...transitRequest, type: 'arrayBuffer'}, new AbortController());
+  assert.equal(empty.data.byteLength, 0);
   assert.equal(renderer.exports.cachedMapRequest('https://api.maptiler.com/a').url, 'replaymap://api.maptiler.com/a');
   assert.equal(renderer.exports.cachedMapRequest('https://example.com/a').url, 'https://example.com/a');
+  let release;
+  resource = new Promise(resolve => { release = resolve; });
+  const controller = new AbortController();
+  const aborted = protocol({url:'replaymap://api.maptiler.com/tile.pbf', type:'arrayBuffer'}, controller);
+  controller.abort();
+  assert.equal(cancelled.length, 1, 'MapLibre cancellation reaches the main process');
+  release(new Uint8Array([4, 5]));
+  await assert.rejects(aborted, {name: 'AbortError'});
+  const count = cancelled.length;
+  resource = Buffer.from([9, 8, 7]).subarray(1);
+  const completed = new AbortController();
+  const slice = await protocol({url:'replaymap://api.maptiler.com/tile.pbf', type:'arrayBuffer'}, completed);
+  assert.deepEqual([...new Uint8Array(slice.data)], [8, 7], 'Only the requested byte range is returned');
+  completed.abort();
+  assert.equal(cancelled.length, count, 'Completed requests release their abort listener');
+
   console.log('Map protocol checks passed: JSON styles, binary tiles, URL scope.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
 

@@ -122,7 +122,8 @@ const load = name => loadModule(path.join(engineDir, name) + '.ts');
 {
   const {applyMapLayerVisibility} = load('MapLayerVisibility');
   const {defaultLayerVisibility} = load('LayerVisibility');
-  const ids=['footprint-points-circle','footprint-route-line','photo-points-circle','annotation-routes','elevation-buildings','elevation-glass','provider-label'];
+  const ids=['footprint-points-circle','footprint-route-line','photo-points-circle','annotation-routes','elevation-buildings','elevation-glass','provider-label',
+    'urban-transit-subway-lightrail-lines','urban-transit-subway-lightrail-station-labels','urban-transit-platform-outline'];
   const values=new Map(ids.map(id=>[id,'visible']));
   let writes=0;
   const map={getStyle:()=>({layers:ids.map(id=>({id}))}),getLayoutProperty:id=>values.get(id),setLayoutProperty:(id,key,value)=>{values.set(id,value);writes++;}};
@@ -144,6 +145,18 @@ const load = name => loadModule(path.join(engineDir, name) + '.ts');
   assert.equal(values.get('photo-points-circle'),'none');
   assert.equal(values.get('footprint-route-line'),'none');
   assert.equal(values.get('provider-label'),'visible');
+  applyMapLayerVisibility(map,{...defaultLayerVisibility,transit:false},{density:false,line:true},'transit');
+  for(const id of ids.filter(id=>id.startsWith('urban-transit-'))) assert.equal(values.get(id),'none');
+  assert.equal(values.get('provider-label'),'visible');
+  applyMapLayerVisibility(map,defaultLayerVisibility,{density:false,line:true},'transit');
+  for(const id of ids.filter(id=>id.startsWith('urban-transit-'))) assert.equal(values.get(id),'visible');
+
+  const {ReplayScene} = load('ReplayScene');
+  const scene = new ReplayScene();
+  const {transit, ...legacyVisibility} = defaultLayerVisibility;
+  scene.setVisibility({...legacyVisibility, roads:false});
+  assert.equal(scene.current.visibility.transit,true,'Old saved visibility defaults new transit layer to enabled');
+  assert.equal(scene.current.visibility.roads,false);
 }
 
 {

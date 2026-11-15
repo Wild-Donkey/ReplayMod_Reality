@@ -75,6 +75,7 @@ export function App() {
   const replaySceneRef = useRef<ReplayScene | null>(null);
   if (!replaySceneRef.current) replaySceneRef.current = new ReplayScene();
   const replayScene = replaySceneRef.current;
+  const resolvedLayerVisibility = {...defaultLayerVisibility, ...layerVisibility};
   useEffect(() => replayScene.setVisibility(layerVisibility), [replayScene, layerVisibility]);
   const syncReplayMapView = useCallback((viewState: import("../render-engine/ReplayCamera").ReplayCamera) => {
     replayScene.setMapViewState(viewState);
@@ -536,8 +537,9 @@ export function App() {
         <nav className="titlebar-map-tools" aria-label="地图工具">
           <div className="render-layer-toggles" aria-label="图层开关">
             {(Object.keys(renderLayerLabels) as RenderLayerId[]).map(id => <button
-              key={id} type="button" aria-pressed={layerVisibility[id]}
-              onClick={() => setLayerVisibility(previous => ({...previous, [id]: !previous[id]}))}
+              key={id} type="button" aria-pressed={resolvedLayerVisibility[id]}
+              title={id === "transit" ? "轨道交通 · 城市级别显示线路，放大后显示站点、站名和出入口" : renderLayerLabels[id]}
+              onClick={() => setLayerVisibility(previous => ({...defaultLayerVisibility, ...previous, [id]: !(previous[id] ?? defaultLayerVisibility[id])}))}
             >{renderLayerLabels[id]}</button>)}
           </div>
           {([
