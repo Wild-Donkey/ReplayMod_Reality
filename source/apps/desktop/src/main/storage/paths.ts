@@ -9,6 +9,7 @@ export function storagePaths(platform: NodeJS.Platform, home: string, appData: s
   return Object.freeze({
     data, cache, legacyCache,
     recordings: path.join(data, "audio-recordings"),
+    localSpeech: path.join(data,"local-speech"),
     config: path.join(data, "config.json"),
     archive: path.join(data, "user-archive.json"),
     state: path.join(data, "state-v1"),

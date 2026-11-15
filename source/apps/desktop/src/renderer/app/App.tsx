@@ -1,3 +1,4 @@
+import {LocalSpeechModels} from "../features/audio/LocalSpeechModels";
 import { AudioTextEditor } from "../features/audio/AudioTextEditor";
 import { HDRSettings } from "../features/settings/HDRSettings";
 import { defaultTimelineMetrics, type TimelineMetricsSettings } from "../features/timeline/metrics";
@@ -681,6 +682,7 @@ export function App() {
           <div className="workspace-page settings-page" hidden={activeTab !== "settings"}>
             <div className="settings-heading"><small>REPLAY MOD REALITY</small><h2>设置</h2><p>工作区偏好自动保存在本机。</p></div>
             <HDRSettings/>
+            <h3>本地语音识别</h3><LocalSpeechModels/>
             <h3>地图服务</h3>
             <form onSubmit={event => {event.preventDefault(); if (saveMaptilerKey(keyDraft)) {setKeyDraft(""); setSettingsStatus("地图密钥已更新");}}}>
               <label htmlFor="settings-map-key">MapTiler API Key</label>

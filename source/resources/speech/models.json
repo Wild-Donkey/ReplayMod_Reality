@@ -1,0 +1,155 @@
+[
+  {
+    "id": "Qwen3-ASR-0.6B-8bit",
+    "role": "asr",
+    "label": "Qwen3 ASR 0.6B 8bit",
+    "repository": "mlx-community/Qwen3-ASR-0.6B-8bit",
+    "revision": "89e96d92ba34aca20b3e29fb10cc284097d1219f",
+    "source": "https://huggingface.co/mlx-community/Qwen3-ASR-0.6B-8bit",
+    "files": [
+      {
+        "name": "README.md",
+        "size": 1008
+      },
+      {
+        "name": "chat_template.json",
+        "size": 1161
+      },
+      {
+        "name": "config.json",
+        "size": 7187
+      },
+      {
+        "name": "generation_config.json",
+        "size": 142
+      },
+      {
+        "name": "merges.txt",
+        "size": 1671853
+      },
+      {
+        "name": "model.safetensors",
+        "size": 1006229426,
+        "sha256": "b5bfe4abc1b4c6e58b633096682ec2b6297298add1527119936107d211adf0e8"
+      },
+      {
+        "name": "model.safetensors.index.json",
+        "size": 71815
+      },
+      {
+        "name": "preprocessor_config.json",
+        "size": 330
+      },
+      {
+        "name": "tokenizer_config.json",
+        "size": 12487
+      },
+      {
+        "name": "vocab.json",
+        "size": 2776833
+      }
+    ]
+  },
+  {
+    "id": "Qwen3-ASR-1.7B-8bit",
+    "role": "asr",
+    "label": "Qwen3 ASR 1.7B 8bit",
+    "repository": "mlx-community/Qwen3-ASR-1.7B-8bit",
+    "revision": "a8379a2e2f9e313c9292cdf1af4055ab56d50d55",
+    "source": "https://huggingface.co/mlx-community/Qwen3-ASR-1.7B-8bit",
+    "files": [
+      {
+        "name": "README.md",
+        "size": 1008
+      },
+      {
+        "name": "chat_template.json",
+        "size": 1161
+      },
+      {
+        "name": "config.json",
+        "size": 7188
+      },
+      {
+        "name": "generation_config.json",
+        "size": 142
+      },
+      {
+        "name": "merges.txt",
+        "size": 1671853
+      },
+      {
+        "name": "model.safetensors",
+        "size": 2463307541,
+        "sha256": "bf304b009cc7eca79283056f787b44c952d24ac22cec787b39732bba3c23c13c"
+      },
+      {
+        "name": "model.safetensors.index.json",
+        "size": 78968
+      },
+      {
+        "name": "preprocessor_config.json",
+        "size": 330
+      },
+      {
+        "name": "tokenizer_config.json",
+        "size": 12487
+      },
+      {
+        "name": "vocab.json",
+        "size": 2776833
+      }
+    ]
+  },
+  {
+    "id": "Qwen3-ForcedAligner-0.6B-8bit",
+    "role": "aligner",
+    "label": "Qwen3 ForcedAligner 0.6B 8bit",
+    "repository": "mlx-community/Qwen3-ForcedAligner-0.6B-8bit",
+    "revision": "0e1a68e91d815300c7c9754b2a7639378b23db15",
+    "source": "https://huggingface.co/mlx-community/Qwen3-ForcedAligner-0.6B-8bit",
+    "files": [
+      {
+        "name": "README.md",
+        "size": 1068
+      },
+      {
+        "name": "chat_template.json",
+        "size": 1161
+      },
+      {
+        "name": "config.json",
+        "size": 6940
+      },
+      {
+        "name": "generation_config.json",
+        "size": 115
+      },
+      {
+        "name": "merges.txt",
+        "size": 1671853
+      },
+      {
+        "name": "model.safetensors",
+        "size": 1271924386,
+        "sha256": "be19ef8ac4326d032e7673342930b14c2df30bd68c1632493b0f563e30829f91"
+      },
+      {
+        "name": "model.safetensors.index.json",
+        "size": 79108
+      },
+      {
+        "name": "preprocessor_config.json",
+        "size": 330
+      },
+      {
+        "name": "tokenizer_config.json",
+        "size": 12666
+      },
+      {
+        "name": "vocab.json",
+        "size": 2776833
+      }
+    ]
+  }
+]

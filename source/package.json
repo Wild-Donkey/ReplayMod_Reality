@@ -20,7 +20,7 @@
     "check:backdrop": "node tests/backdrop/check-backdrop.cjs && node tests/map/check-basemap-style.cjs",
     "check:timeline": "node tests/timeline/check-metrics.cjs",
     "check:audio-edit": "node tests/media/check-audio-edit.cjs",
-    "check:audio-editor": "electron tests/media/check-audio-token-editor.cjs",
+    "check:audio-editor": "electron tests/media/check-audio-token-editor.cjs && electron tests/media/check-speech-model-ui.cjs",
     "check:astronomy": "node tests/astronomy/check-astronomy.cjs",
     "check:engine": "node tests/engine/check-render-engine.cjs && node tests/engine/check-metric-projection.cjs",
     "check:export:gpu": "electron tests/engine/check-export-capture.cjs",
@@ -30,7 +30,9 @@
     "check:footprint:gpu": "electron tests/map/check-footprint-density.cjs",
     "check:display:gpu": "electron tests/map/check-display-gray.cjs",
     "check:picking:gpu": "electron tests/engine/check-trajectory-picking.cjs",
-    "check:export:encoder": "node tests/engine/check-offline-export.cjs"
+    "check:export:encoder": "node tests/engine/check-offline-export.cjs",
+    "setup:speech": "node resources/speech/install.cjs",
+    "check:local-speech": "node tests/media/check-local-speech.cjs && node tests/media/check-speech-models.cjs"
   },
   "author": "",
   "license": "UNLICENSED",

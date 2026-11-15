@@ -8,6 +8,7 @@ import { VitePlugin } from "@electron-forge/plugin-vite";
 const config: ForgeConfig = {
   hooks: {
     generateAssets: async () => {
+      if(process.platform === "darwin" && process.arch === "arm64") execFileSync(process.execPath,[path.resolve("resources/speech/bundle-runtime.cjs")],{stdio:"inherit"});
       execFileSync(process.execPath, [path.resolve("scripts/native/build-hdr.cjs")], { stdio: "inherit" });
       execFileSync(process.execPath, [path.resolve("scripts/native/build-scroll-input.cjs")], { stdio: "inherit" });
     },
@@ -18,7 +19,7 @@ const config: ForgeConfig = {
     appBundleId: "com.replaymod.reality",
     asar: true,
     extraResource: process.platform === "darwin"
-      ? ["native/build/hdr-display", "native/build/scroll-input.node"]
+      ? ["native/build/hdr-display", "native/build/scroll-input.node", "resources/speech", ...(process.arch === "arm64" ? ["../.tools/speech-runtime"] : [])]
       : [],
     executableName: "ReplayMod Reality",
   },

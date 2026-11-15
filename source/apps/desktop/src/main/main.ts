@@ -1,3 +1,4 @@
+import {LocalSpeech} from "./localSpeech";
 import { renderAudioEdit, saveRecordedAudio } from "../../../../packages/media/src/audio-edit";
 import { audioOutputCues, validateAudioBlocks, refineAudioBlock, coarseAudioBlocks, type AudioDocument, type AudioBlock } from "../../../../packages/media/src/audio-document";
 import {registerMediaPreviewScheme,installMediaPreviewProtocol} from "./mediaPreviewProtocol";
@@ -27,7 +28,6 @@ import type {
 import {
   probeMediaFile,
   serializeSrt,
-  transcribeMedia,
 } from "../../../../packages/media/src";
 import type {
   MediaSource,
@@ -89,6 +89,13 @@ app.setPath("userData", paths.data);
 if (!app.requestSingleInstanceLock()) process.exit(0);
 
 const storage = new AppStorage(platform, home, appData, env);
+const localSpeech = new LocalSpeech(app.getAppPath(),process.resourcesPath,app.isPackaged,storage.paths.localSpeech);
+app.on("will-quit",()=>localSpeech.close());
+ipcMain.handle("speech:status",()=>localSpeech.status());
+ipcMain.handle("speech:download",(event,id:string)=>localSpeech.download(id,update=>{if(!event.sender.isDestroyed())event.sender.send("speech:progress",update);}));
+ipcMain.handle("speech:select",(_event,role:"asr"|"aligner",id:string)=>localSpeech.select(role,id));
+ipcMain.handle("speech:folder",async()=>{const result=await dialog.showOpenDialog({title:"选择已下载的 MLX 模型文件夹",properties:["openDirectory"]});return result.canceled||!result.filePaths[0]?null:localSpeech.register(result.filePaths[0]);});
+ipcMain.handle("speech:open-directory",async()=>{await mkdir(localSpeech.modelDirectory,{recursive:true});const error=await shell.openPath(localSpeech.modelDirectory);if(error)throw new Error(error);});
 app.setPath("sessionData", paths.session);
 app.commandLine.appendSwitch("disable-http-cache");
 
@@ -329,24 +336,6 @@ const firstExistingPath = async (candidates: readonly string[]) => {
     }
   }
   return null;
-};
-
-const resolveSpeechResources = async () => {
-  const roots = [path.resolve(process.cwd(), ".."), process.cwd(), app.getAppPath(), path.dirname(app.getPath("exe"))];
-  const whisperPath = await firstExistingPath(roots.flatMap((root) => [
-    path.join(root, ".tools/whisper.cpp/build/bin/whisper-cli"),
-    path.join(root, ".tools/whisper.cpp/build/bin/Release/whisper-cli.exe"),
-  ]));
-  const modelPath = await firstExistingPath(roots.flatMap((root) => [
-    path.join(root, ".tools/whisper.cpp/models/ggml-small.bin"),
-    path.join(root, ".tools/whisper.cpp/models/ggml-base.bin"),
-  ]));
-  const vadModelPath = await firstExistingPath(roots.map((root) =>
-    path.join(root, ".tools/whisper.cpp/models/ggml-silero-v6.2.0.bin")));
-  if (!whisperPath || !modelPath) {
-    throw new Error("未找到本地 Whisper 识别器或模型，请先完成语音识别环境安装。");
-  }
-  return { whisperPath, modelPath, vadModelPath: vadModelPath ?? undefined };
 };
 
 interface TimedCoordinate {
@@ -824,10 +813,11 @@ ipcMain.handle(OPEN_MEDIA_CHANNEL, async (): Promise<MediaSource | null> => {
 
 ipcMain.handle(
   TRANSCRIBE_MEDIA_CHANNEL,
-  async (_event, sourcePath: string): Promise<SubtitleTrack> => {
+  async (event, sourcePath: string): Promise<SubtitleTrack> => {
     if (!openedMediaPaths.has(sourcePath)) throw new Error("请先在当前工程中载入该视频。");
-    const resources = await resolveSpeechResources();
-    return transcribeMedia(sourcePath, { ...resources, language: "auto" });
+    const source=await probeMediaFile(sourcePath);
+    const result=await localSpeech.transcribe(sourcePath,source.durationSeconds??0,update=>{if(!event.sender.isDestroyed())event.sender.send("speech:progress",update);});
+    return {kind:"subtitle",language:"zh",source:"speech-recognition",cues:result.sentences};
   },
 );
 
@@ -894,19 +884,19 @@ ipcMain.handle("audio-edit:open", async (): Promise<AudioDocument | null> => {
   openedMediaPaths.add(doc.sourcePath);
   return doc;
 });
-ipcMain.handle("audio-edit:transcribe", async (_event, sourcePath: string, granularity: "word" | "phrase") => {
+ipcMain.handle("audio-edit:transcribe", async (event, sourcePath: string, granularity: "word" | "phrase") => {
   const doc = audioDocuments.get(sourcePath);
   if (!doc) throw new Error("请先导入音频。");
   if (audioJobs.has(sourcePath)) throw new Error("该文件正在处理。");
   if (!["word", "phrase"].includes(granularity)) throw new Error("分块方式无效。");
   audioJobs.add(sourcePath);
   try {
-    const track = await transcribeMedia(sourcePath,{...await resolveSpeechResources(),language:"auto",granularity});
-    doc.blocks = coarseAudioBlocks(track.cues, doc.duration, randomUUID);
+    const result=await localSpeech.transcribe(sourcePath,doc.duration,update=>{if(!event.sender.isDestroyed())event.sender.send("speech:progress",update);});
+    doc.blocks = coarseAudioBlocks(granularity==="word"?result.words:result.sentences, doc.duration, randomUUID);
     return doc.blocks;
   } finally { audioJobs.delete(sourcePath); }
 });
-ipcMain.handle("audio-edit:split", async (_event, sourcePath: string, block: AudioBlock): Promise<AudioBlock[]> => {
+ipcMain.handle("audio-edit:split", async (event, sourcePath: string, block: AudioBlock): Promise<AudioBlock[]> => {
   const doc = audioDocuments.get(sourcePath);
   if (!doc) throw new Error("请先导入音频。");
   await validateAudioSources([block], doc);
@@ -915,8 +905,9 @@ ipcMain.handle("audio-edit:split", async (_event, sourcePath: string, block: Aud
   if (audioJobs.has(sourcePath)) throw new Error("该素材正在处理，请稍候。");
   audioJobs.add(sourcePath);
   try {
-    const track=await transcribeMedia(block.sourcePath??sourcePath,{...await resolveSpeechResources(),language:"auto",granularity:block.level==="phrase"?"word":"token",startTimeSeconds:block.start,endTimeSeconds:block.end});
-    return refineAudioBlock(block,track.cues,randomUUID);
+    const result=await localSpeech.transcribe(block.sourcePath??sourcePath,block.sourceDuration??doc.duration,update=>{if(!event.sender.isDestroyed())event.sender.send("speech:progress",update);});
+    const words=result.words.filter(c=>c.startTimeSeconds<block.end && c.endTimeSeconds>block.start).map(c=>({...c,startTimeSeconds:Math.max(0,c.startTimeSeconds-block.start),endTimeSeconds:Math.min(block.end,c.endTimeSeconds)-block.start}));
+    return refineAudioBlock(block,words,randomUUID);
   } finally {audioJobs.delete(sourcePath);}
 });
 ipcMain.handle("audio-edit:export", async (_event, sourcePath: string, blocks: AudioBlock[]) => {

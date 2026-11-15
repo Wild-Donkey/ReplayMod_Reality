@@ -1,0 +1,28 @@
+const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),assert=require('node:assert/strict'),crypto=require('node:crypto'),ts=require('typescript');
+require.extensions['.ts']=(m,f)=>m._compile(ts.transpileModule(fs.readFileSync(f,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText,f);
+const {inspectSpeechModel,discoverSpeechModels}=require('../../apps/desktop/src/main/speechModels.ts');
+const {LocalSpeech}=require('../../apps/desktop/src/main/localSpeech.ts');
+const {transfer}=require('../../resources/speech/download.cjs');
+const catalog=require('../../resources/speech/models.json');
+const dir=fs.mkdtempSync(path.join(os.tmpdir(),'replay-speech-models-'));
+function model(directory,role){fs.mkdirSync(directory,{recursive:true});for(const file of ['tokenizer_config.json','vocab.json','preprocessor_config.json'])fs.writeFileSync(path.join(directory,file),'{}');fs.writeFileSync(path.join(directory,'merges.txt'),'# fixture');fs.writeFileSync(path.join(directory,'config.json'),JSON.stringify({model_type:'qwen3_asr',thinker_config:{model_type:role==='aligner'?'qwen3_forced_aligner':'qwen3_asr'},quantization:{bits:8}}));const name='model.safetensors',header=Buffer.from(JSON.stringify({test:{dtype:'U8',shape:[4],data_offsets:[0,4]}})),prefix=Buffer.alloc(8);prefix.writeBigUInt64LE(BigInt(header.length));fs.writeFileSync(path.join(directory,name),Buffer.concat([prefix,header,Buffer.from([1,2,3,4])]));fs.writeFileSync(path.join(directory,'model.safetensors.index.json'),JSON.stringify({weight_map:{test:name}}));}
+(async()=>{try{
+ const resources=path.join(dir,'resources'),runtime=path.join(dir,'data');fs.mkdirSync(path.join(resources,'speech-runtime/python/bin'),{recursive:true});fs.writeFileSync(path.join(resources,'speech-runtime/python/bin/python3.11'),'');
+ const manager=new LocalSpeech('',resources,true,runtime);
+ let status=await manager.status();assert.equal(status.ready,false);assert.equal(status.installed.length,0);assert.deepEqual(status.selected,{asr:'',aligner:''});assert.ok(!fs.existsSync(runtime),'status must not create model directories or downloads');
+ const asr=path.join(manager.modelDirectory,'manually-copied-ASR'),aligner=path.join(dir,'external-aligner');model(asr,'asr');model(aligner,'aligner');
+ status=await manager.status();assert.equal(status.installed.length,1);assert.equal(status.ready,false,'discovery does not silently select models');assert.equal((await inspectSpeechModel(asr)).role,'asr');assert.equal((await inspectSpeechModel(aligner)).role,'aligner');
+ await manager.register(aligner);await manager.select('asr',asr);status=await manager.select('aligner',aligner);assert.equal(status.ready,process.platform==='darwin'&&process.arch==='arm64');
+ const reopened=new LocalSpeech('',resources,true,runtime);assert.deepEqual((await reopened.status()).selected,{asr,aligner});await assert.rejects(reopened.select('asr',aligner),/不可用/);
+ fs.truncateSync(path.join(asr,'model.safetensors'),20);status=await reopened.status();assert.equal(status.ready,false);assert.equal(status.installed.length,1);assert.ok(status.issues.some(i=>i.includes('manually-copied-ASR')));await assert.rejects(reopened.select('asr',asr));
+ const lfs=path.join(manager.modelDirectory,'lfs-pointer');model(lfs,'asr');fs.writeFileSync(path.join(lfs,'model.safetensors'),'version https://git-lfs.github.com/spec/v1\noid sha256:aaa\nsize 9999\n');assert.equal((await discoverSpeechModels(manager.modelDirectory,[])).installed.length,0);
+ const data=Buffer.from('download fixture'),entry={name:'weights',size:data.length,sha256:crypto.createHash('sha256').update(data).digest('hex')},target=path.join(dir,'transfer','weights');
+ fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target+'.part',data.subarray(0,4));let calls=0;
+ await transfer('https://example.test/weights',target,entry,()=>{},async(url,options)=>{calls++;assert.equal(options.headers.Range,'bytes=4-');return new Response(data.subarray(4),{status:206,headers:{'content-range':`bytes 4-${data.length-1}/${data.length}`}});});assert.deepEqual(fs.readFileSync(target),data);assert.ok(!fs.existsSync(target+'.part'));
+ await transfer('https://example.test/weights',target,entry,()=>{},()=>{throw Error('must reuse complete file');});assert.equal(calls,1);
+ fs.rmSync(target);fs.writeFileSync(target+'.part',data.subarray(0,3));await transfer('https://example.test/weights',target,entry,()=>{},async()=>new Response(data));assert.deepEqual(fs.readFileSync(target),data,'non-Range servers restart one file');
+ fs.rmSync(target);await assert.rejects(transfer('https://example.test/weights',target,entry,()=>{},async()=>new Response(Buffer.alloc(data.length))),/校验失败/);assert.ok(!fs.existsSync(target)&&!fs.existsSync(target+'.part'));
+ fs.writeFileSync(target+'.part',data.subarray(0,4));await assert.rejects(transfer('https://example.test/weights',target,entry,()=>{},async()=>new Response(data,{status:206,headers:{'content-range':'bytes 0-15/16'}})),/续传范围/);
+ for(const m of catalog){assert.match(m.source,/^https:\/\/huggingface.co\/mlx-community\//);assert.match(m.revision,/^[a-f0-9]{40}$/);assert.ok(m.files.find(f=>f.name==='model.safetensors'&&/^[a-f0-9]{64}$/.test(f.sha256)));}
+ console.log('Speech models passed: empty first run, receipt-free manual discovery, external folders, persisted independent selection, incomplete/LFS rejection, resumable download, no-Range restart, checksum failure and fixed public sources.');
+}finally{fs.rmSync(dir,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});

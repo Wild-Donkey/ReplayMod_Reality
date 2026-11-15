@@ -1,0 +1,19 @@
+const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),assert=require('node:assert/strict'),cp=require('node:child_process'),ts=require('typescript');
+require.extensions['.ts']=(m,f)=>m._compile(ts.transpileModule(fs.readFileSync(f,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,f);
+const {LocalQwen,validateLocalTranscript}=require('../../packages/media/src/local-qwen.ts');
+const cue={startTimeSeconds:0,endTimeSeconds:.5,text:'中文'};
+assert.equal(validateLocalTranscript({sentences:[cue],words:[cue]},1).words[0].text,'中文');
+for(const value of [{sentences:[cue],words:[]},{sentences:[{...cue,endTimeSeconds:2}],words:[cue]},{sentences:[cue],words:[{...cue,startTimeSeconds:NaN}]}])assert.throws(()=>validateLocalTranscript(value,1));
+const dir=fs.mkdtempSync(path.join(os.tmpdir(),'replay-local-speech-test-'));
+const python=process.platform==='win32'?'python':'python3';
+const worker=path.join(dir,'worker.cjs'),input=path.join(dir,'audio.wav'),crash=path.join(dir,'crash');
+fs.writeFileSync(worker,`const fs=require('fs'),readline=require('readline');let busy=false;console.log(JSON.stringify({type:'ready'}));readline.createInterface({input:process.stdin}).on('line',async line=>{const r=JSON.parse(line);if(fs.existsSync(${JSON.stringify(crash)})){fs.unlinkSync(${JSON.stringify(crash)});process.exit(7);}if(busy)throw Error('queue not serialized');busy=true;const wav=fs.readFileSync(r.audio);if(wav.toString('ascii',0,4)!=='RIFF')throw Error('not converted to WAV');console.log(JSON.stringify({type:'progress',id:r.id,stage:'align',done:0,total:1}));await new Promise(resolve=>setTimeout(resolve,10));const value=Buffer.from(JSON.stringify({type:'result',id:r.id,sentences:[${JSON.stringify(cue)}],words:[${JSON.stringify(cue)}]})+'\\n');const split=value.indexOf(Buffer.from('中'))+1;process.stdout.write(value.subarray(0,split));setTimeout(()=>{process.stdout.write(value.subarray(split));busy=false;},5);});`);
+const local=new LocalQwen({runtime:dir,worker,python:process.execPath});
+(async()=>{try{
+ cp.execFileSync('ffmpeg',['-v','error','-f','lavfi','-i','sine=frequency=440:duration=1',input]);
+ const progress=[];const results=await Promise.all([local.transcribe(input,1,p=>progress.push(p)),local.transcribe(input,1)]);
+ assert.equal(results[0].words[0].text,'中文','split UTF-8 bytes must be decoded intact');assert.equal(results[1].words[0].text,'中文');assert.ok(progress.some(p=>p.stage==='align'));
+ fs.writeFileSync(crash,'');await assert.rejects(local.transcribe(input,1),/进程已退出/);assert.equal((await local.transcribe(input,1)).words.length,1,'worker restarts after crash');
+ const result=cp.execFileSync(python,['-c',`import importlib.util\ns=importlib.util.spec_from_file_location('worker',${JSON.stringify(path.resolve('resources/speech/worker.py'))})\nm=importlib.util.module_from_spec(s);s.loader.exec_module(m)\nwords=[{'startTimeSeconds':1,'endTimeSeconds':2,'text':'你好'},{'startTimeSeconds':2,'endTimeSeconds':3,'text':'世界'},{'startTimeSeconds':4,'endTimeSeconds':5,'text':'再见'}]\nphrases=m.phrase_cues('你好世界，再见。',words,0,6)\nassert [p['text'] for p in phrases]==['你好世界，','再见。']\nassert phrases[1]['startTimeSeconds']==4\nfrom types import SimpleNamespace as I\nitems=[I(text='甲',start_time=0,end_time=0),I(text='乙',start_time=1,end_time=2),I(text='丙',start_time=2,end_time=2),I(text='丁',start_time=2,end_time=3)]\nassert [w['text'] for w in m.word_cues(items,10,4)]==['甲乙丙','丁']\nassert m.word_cues(items,10,4)[0]['startTimeSeconds']==11\nprint('phrase boundaries passed')`],{encoding:'utf8'});assert.match(result,/passed/);
+ console.log('Local speech passed: timestamp validation, real WAV conversion, serialized requests, split UTF-8 protocol, progress, crash recovery and punctuation-aware phrase grouping.');
+ }finally{local.close();fs.rmSync(dir,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});

@@ -2027,3 +2027,13 @@ h2.section-label { margin: 0; }
 .audio-voice-token.extension small { color: #739e8e; }
 .audio-sequence-error { color: #e3b18d; background: #9c623222; padding: 7px 20px; font-size: 11px; }
 .audio-status.recording { color: #f1a1a1; background: #a3444422; }
+.local-speech-models { padding: 9px 18px; border-bottom: 1px solid #ffffff22; font-size: 11px; color: #aaa; max-height: 180px; overflow: auto; }
+.local-speech-models summary { color: #c1d7cc; cursor: pointer; }
+.local-speech-models p { margin: 7px 0; line-height: 1.6; }
+.local-speech-models button { padding: 7px 10px; margin-right: 8px; background: #303030; color: #ddd; }
+.local-speech-models label { display: flex; flex-direction: column; gap: 5px; margin: 8px 0; }
+.local-speech-models select { max-width: 100%; }
+.local-speech-models code { overflow-wrap: anywhere; user-select: text; }
+.local-speech-models pre { white-space: pre-wrap; user-select: text; }
+.local-model-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.local-model-download { margin-top: 12px; }

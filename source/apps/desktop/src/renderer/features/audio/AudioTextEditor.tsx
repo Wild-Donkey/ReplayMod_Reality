@@ -1,3 +1,4 @@
+import {LocalSpeechModels} from "./LocalSpeechModels";
 import {useAudioRecording} from "./useAudioRecording";
 import {useEffect, useMemo, useRef, useState} from "react";
 import {audioBlockDuration, audioSequenceDuration, silenceBlock, audioControlBlock, audioControlLabel, resolveAudioBlocks, validateAudioBlocks, type AudioDocument, type AudioBlock} from "../../../../../../packages/media/src/audio-document";
@@ -22,6 +23,7 @@ function TokenInspector({block, disabled, onApply, onSplit, onManualSplit, onPla
 }
 
 export function AudioTextEditor({open, onClose}: {open: boolean; onClose: () => void}) {
+  const [localReady,setLocalReady] = useState(false);
   const [doc, setDoc] = useState<AudioDocument | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
@@ -45,6 +47,7 @@ export function AudioTextEditor({open, onClose}: {open: boolean; onClose: () => 
     if(audio.current) {audio.current.pause(); audio.current.onended = null;}
     setPlaying(null);
   };
+  useEffect(()=>{if(!open)return;return window.replaymod?.onLocalSpeechProgress(update=>{if(update.sourcePath)setStatus(update.message);});},[open]);
   useEffect(() => {if(!open) stop(); return () => {playback.current.generation++; clearTimeout(playback.current.timer); cancelAnimationFrame(playback.current.frame); audio.current?.pause();};}, [open]);
   useEffect(() => {
     if(!open) return;
@@ -126,9 +129,9 @@ export function AudioTextEditor({open, onClose}: {open: boolean; onClose: () => 
       setStatus("控制 token 已拆成两个，总时长不变。"); return;
     }
     void task(async () => {
-      setStatus("正在本地识别这个片段的细时间戳…");
+      setStatus("正在读取 ForcedAligner 的词/字时间戳…");
       const finer = await window.replaymod!.splitAudioEdit(doc.sourcePath, b);
-      if(finer.length < 2) {setStatus("已到当前识别器的最细时间戳。可在下方展开「手动指定切点」继续拆分。"); return;}
+      if(finer.length < 2) {setStatus("已到 ForcedAligner 返回的最细时间戳。可在下方展开「手动指定切点」继续拆分。"); return;}
       change([...blocks.slice(0,index), ...finer, ...blocks.slice(index+1)]);
       setInspected(finer[0].id);
       setStatus(`已打散为 ${finer.length} 个更细的 token，原片段完整音频和总时长保留。`);
@@ -148,11 +151,12 @@ export function AudioTextEditor({open, onClose}: {open: boolean; onClose: () => 
   if(!open) return null;
   return <div className="subtitle-editor-backdrop"><section ref={dialog} className="subtitle-editor audio-text-editor" role="dialog" aria-modal="true" aria-label="声音 token 编辑器">
     <header><div><span>音频工作台</span><h1>像编辑文字一样剪声音</h1></div><button autoFocus disabled={locked} onClick={onClose} aria-label="关闭">×</button></header>
+    <LocalSpeechModels disabled={locked} onReady={setLocalReady} onInstalling={setBusy}/>
     <div className="subtitle-editor-toolbar">
-      <button disabled={locked} onClick={() => void task(async () => {
+      <button disabled={locked || !localReady} onClick={() => void task(async () => {
         const source = await window.replaymod!.openAudioEdit(); if(!source) return;
         setDoc(source); setHistory([]); setFuture([]); setInspected(null);
-        setStatus("正在本地识别，先按短句粗分声音 token…");
+        setStatus("正在用本地 Qwen3-ASR 识别文字，并用 ForcedAligner 对齐时间…");
         const next = await window.replaymod!.transcribeAudioEdit(source.sourcePath, "phrase");
         setDoc({...source, blocks: next}); setStatus(`已生成 ${next.length} 个短句 token。双击任意一个可继续打散。`);
       })}>导入音频 / 视频</button>

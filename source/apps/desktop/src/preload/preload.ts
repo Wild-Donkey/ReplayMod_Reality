@@ -1,3 +1,4 @@
+import type {LocalSpeechStatus,LocalSpeechUpdate} from "../shared/localSpeech";
 import type { AudioDocument, AudioBlock } from "../../../../packages/media/src/audio-document";
 import type { OfflineExportOptions, OfflineExportSession, OfflineExportSegment } from "../shared/overlayExport";
 import type { DisplayHDRInfo } from "../shared/display";
@@ -20,6 +21,12 @@ const TRANSCRIBE_MEDIA_CHANNEL = "media:transcribe";
 const SAVE_SUBTITLES_CHANNEL = "media:save-subtitles";
 
 export interface DesktopBridge {
+  getLocalSpeechStatus(): Promise<LocalSpeechStatus>;
+  downloadSpeechModel(id:string): Promise<LocalSpeechStatus>;
+  selectSpeechModel(role:"asr"|"aligner",id:string): Promise<LocalSpeechStatus>;
+  addSpeechModelFolder(): Promise<LocalSpeechStatus|null>;
+  openSpeechModelDirectory(): Promise<void>;
+  onLocalSpeechProgress(listener:(update:LocalSpeechUpdate)=>void):()=>void;
   prepareAudioEdit(sourcePath: string, blocks: AudioBlock[]): Promise<void>;
   saveAudioRecording(sourcePath: string | null, bytes: Uint8Array): Promise<{document: AudioDocument; tokens: AudioBlock[]}>;
   openAudioEdit(): Promise<AudioDocument | null>;
@@ -73,6 +80,15 @@ export interface DesktopBridge {
 
 const bootstrap = ipcRenderer.sendSync("storage:bootstrap");
 const bridge: DesktopBridge = Object.freeze({
+  getLocalSpeechStatus: () => ipcRenderer.invoke("speech:status"),
+  downloadSpeechModel: (id:string) => ipcRenderer.invoke("speech:download",id),
+  selectSpeechModel: (role:"asr"|"aligner",id:string) => ipcRenderer.invoke("speech:select",role,id),
+  addSpeechModelFolder: () => ipcRenderer.invoke("speech:folder"),
+  openSpeechModelDirectory: () => ipcRenderer.invoke("speech:open-directory"),
+  onLocalSpeechProgress: (listener:(update:LocalSpeechUpdate)=>void) => {
+    const handler=(_event:Electron.IpcRendererEvent,update:LocalSpeechUpdate)=>listener(update);
+    ipcRenderer.on("speech:progress",handler);return ()=>ipcRenderer.removeListener("speech:progress",handler);
+  },
   prepareAudioEdit: (sourcePath: string, blocks: AudioBlock[]) => ipcRenderer.invoke("audio-edit:prepare", sourcePath, blocks),
   saveAudioRecording: (sourcePath: string | null, bytes: Uint8Array) => ipcRenderer.invoke("audio-edit:recording", sourcePath, bytes),
   openAudioEdit: () => ipcRenderer.invoke("audio-edit:open"),
