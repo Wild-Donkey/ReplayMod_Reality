@@ -1,15 +1,15 @@
 import {processMotionGps} from "../../../../packages/media/src/gps-motion";
 import {PROCESS_GPS_CHANNEL,type MotionGpsRequest,type MotionGpsResult} from "../shared/mediaAlignment";
 import {restoreDataset,resolveDatasetSource} from "./restoreDataset";
+import { ALIGN_MEDIA_CHANNEL, type MediaAlignmentRequest, type MediaAlignmentResult } from "../shared/mediaAlignment";
+import { refineMotionAlignment, type MotionAlignmentResult } from "../../../../packages/media/src/motion-alignment";
+import { shiftVideoTimestamps } from "../../../../packages/media/src/video-timestamps";
+import { extractDjiOrientation } from "../../../../packages/media/src/dji";
 import {LocalSpeech} from "./localSpeech";
 import { renderAudioEdit, saveRecordedAudio } from "../../../../packages/media/src/audio-edit";
 import { audioOutputCues, validateAudioBlocks, refineAudioBlock, coarseAudioBlocks, type AudioDocument, type AudioBlock } from "../../../../packages/media/src/audio-document";
 import {registerMediaPreviewScheme,installMediaPreviewProtocol} from "./mediaPreviewProtocol";
 import { OfflineExportManager } from "./offlineExport";
-import { ALIGN_MEDIA_CHANNEL, type MediaAlignmentRequest, type MediaAlignmentResult } from "../shared/mediaAlignment";
-import { refineMotionAlignment, type MotionAlignmentResult } from "../../../../packages/media/src/motion-alignment";
-import { shiftVideoTimestamps } from "../../../../packages/media/src/video-timestamps";
-import { extractDjiOrientation } from "../../../../packages/media/src/dji";
 import { OfflineFramePlan, type OfflineExportOptions } from "../shared/overlayExport";
 import { findTransparentVideoEncoder } from "../../../../packages/media/src/raw-video";
 import { installDisplayHDR } from "./displayHDR";
@@ -298,7 +298,6 @@ const firstExistingPath = async (candidates: readonly string[]) => {
   }
   return null;
 };
-
 
 interface TimedCoordinate {
   readonly timestamp: number;

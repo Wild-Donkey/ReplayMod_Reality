@@ -35,7 +35,7 @@ npm --prefix source run package
 npm --prefix source run make
 ```
 
-- `check`：类型、存储、缓存、标签布局与背景检查，不需要个人原始数据。
+- `check`：类型、存储、缓存、标注、时间轴、天文、渲染、地形和飞行检查。标注检查使用下述本地样本。
 - `check:annotations`：JSON / KML 往返检查，需要本机 `RawData/annotations/annotations.json`。
 - `check:export:encoder`：实际编码并解码透明 VP9，检查帧数、帧率、Alpha、分段、取消与文件保护；需要支持 `libvpx-vp9` 的 FFmpeg 和 FFprobe，不启动 Electron。
 - `check:picking:gpu`：独立 Electron 窗口验证 18 万点拾取、DPR 1/2/3、可见标注与曲线、背景交接、图层隐藏恢复和离屏尺寸；需要可正常启动 Electron 与 WebGL2 的图形会话，无法由普通类型检查代替。

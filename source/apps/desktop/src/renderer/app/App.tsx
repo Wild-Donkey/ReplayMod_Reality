@@ -1,8 +1,8 @@
 import {withProcessedTrajectory} from "../features/timeline/processedTrajectory";
 import type {MotionGpsResult} from "../../../../../packages/media/src/gps-motion";
+import { MediaAlignmentPanel } from "../features/timeline/MediaAlignmentPanel";
 import {LocalSpeechModels} from "../features/audio/LocalSpeechModels";
 import { AudioTextEditor } from "../features/audio/AudioTextEditor";
-import {VideoPreview} from "../features/export/VideoPreview";
 import { HDRSettings } from "../features/settings/HDRSettings";
 import { defaultTimelineMetrics, type TimelineMetricsSettings } from "../features/timeline/metrics";
 import { useCachedState, readCached, writeCached, cacheError } from "../shared/cache";
@@ -18,7 +18,6 @@ import type { MediaSource, SubtitleTrack } from "../../../../../packages/media/s
 import { MapTokenSetup, MapViewport } from "../features/map/MapViewport";
 import { OverlayExport } from "../features/export/OverlayExport";
 import { SubtitleEditor } from "../features/subtitles/SubtitleEditor";
-import { MediaAlignmentPanel } from "../features/timeline/MediaAlignmentPanel";
 import { AstronomyPanel, AstronomyTimeline } from "../features/astronomy/AstronomyPanel";
 import {
   observationDay, observationNow, observationStart, skyDirections, sunVector,
@@ -40,9 +39,10 @@ import type { FlightRouteSegment } from "../features/map/flights";
 type WorkspaceTab = "annotations" | "sources" | "flights" | "astronomy" | "export" | "settings";
 const tabs: {id: WorkspaceTab; label: string; path: string}[] = [
   {id: "annotations", label: "地图标注", path: "M12 21s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12Z M15 9a3 3 0 1 1-6 0 3 3 0 0 1 6 0"},
-  {id: "sources", label: "视频与导出", path: "M3 7h7l2 2h9v11H3Z M3 7V4h7l2 3 M10 12l5 3-5 3Z"},
+  {id: "sources", label: "数据与视频", path: "M3 7h7l2 2h9v11H3Z M3 7V4h7l2 3 M10 12l5 3-5 3Z"},
   {id: "flights", label: "航行", path: "M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5Z"},
   {id: "astronomy", label: "天文", path: "M12 2l1.9 6.1L20 10l-6.1 1.9L12 18l-1.9-6.1L4 10l6.1-1.9L12 2Z M19 15v6 M16 18h6 M5 16v4 M3 18h4"},
+  {id: "export", label: "叠加导出", path: "M4 14v6h16v-6 M12 16V3 M7 8l5-5 5 5"},
   {id: "settings", label: "设置", path: "M4 6h16 M4 12h16 M4 18h16 M8 3v6 M16 9v6 M10 15v6"},
 ];
 
@@ -86,9 +86,6 @@ export function App() {
   const [mapLegendContainer, setMapLegendContainer] = useState<HTMLDivElement | null>(null);
   const [timelineMetrics, setTimelineMetrics] = useCachedState<TimelineMetricsSettings>("timeline-metrics", defaultTimelineMetrics);
   const [activeTab, setActiveTab] = useCachedState<WorkspaceTab>("workspace-tab", "annotations");
-  const mediaActive = activeTab === "sources" || activeTab === "export";
-  const [previewHost,setPreviewHost] = useState<HTMLDivElement|null>(null);
-  useEffect(()=>{if(activeTab === "export")setActiveTab("sources");},[activeTab,setActiveTab]);
   const astronomyActive = activeTab === "astronomy";
   const [observationOffset, setObservationOffset] = useState(() => -new Date().getTimezoneOffset());
   const [observationClock, setObservationClock] = useState(() => observationNow(observationOffset));
@@ -483,8 +480,8 @@ export function App() {
   }, [isMac, isLoadingData, isLoadingMedia, mediaSource, currentTime, exportRange]);
 
   return (
-    <main className={`app-shell ${mediaActive ? "media-workspace" : ""}`}>
-      <div className="map-background" style={{visibility:mediaActive?"hidden":"visible"}} aria-hidden={mediaActive}>
+    <main className="app-shell">
+      <div className="map-background">
         {maptilerKey ? (
           <MapViewport
             scene={replayScene}
@@ -590,7 +587,7 @@ export function App() {
           <div className="workspace-page" hidden={activeTab !== "annotations"}>
           <AnnotationPanel project={annotations} onChange={setAnnotations} selectedId={annotationSelectedId} onSelect={selectAnnotation} onFocus={focusAnnotation} status={annotationStatus} ready={annotationsReady}/>
           </div>
-          <div className="workspace-page" hidden={!mediaActive}>
+          <div className="workspace-page" hidden={activeTab !== "sources"}>
           <section className="library-section">
             <h2 className="section-label">
               数据源
@@ -657,29 +654,9 @@ export function App() {
             disabled={isLoadingMedia}
             onClick={() => void openMedia()}
           >
-            {isLoadingMedia ? "正在检查视频..." : "载入视频"}
+            {isLoadingMedia ? "正在检查视频..." : "载入 DJI 视频"}
           </button>
-          {mediaSource && <button type="button" className="primary-action" onClick={()=>setMediaSource(null)}>使用黑底预览</button>}
           {dataError && <div className="data-error">{dataError}</div>}
-            <p className="page-intro">将轨迹与仪表导出为透明视频，叠加到拍摄素材上。</p>
-          <section className="range-editor">
-            <p>移动红色播放头，再设置导出区间。</p>
-            <div>
-              <button type="button" disabled={currentTime === null || !exportRange} onClick={() => {
-                if (currentTime !== null && exportRange) setExportRange([Math.min(currentTime, exportRange[1]), exportRange[1]]);
-              }}>设为入点 (I)</button>
-              <button type="button" disabled={currentTime === null || !exportRange} onClick={() => {
-                if (currentTime !== null && exportRange) setExportRange([exportRange[0], Math.max(currentTime, exportRange[0])]);
-              }}>设为出点 (O)</button>
-            </div>
-            {exportRange && <code>{new Date(exportRange[0]).toLocaleString("zh-CN")}<br />— {new Date(exportRange[1]).toLocaleString("zh-CN")}</code>}
-          </section>
-          {pointDataset && exportRange ? (
-            <OverlayExport dataset={pointDataset} range={exportRange} apiKey={maptilerKey} scene={replayScene} active={mediaActive} previewContainer={previewHost} previewTime={currentTime} />
-          ) : (
-            <div className="inspector-empty"><div className="inspector-icon">i</div><p>载入轨迹后可输出透明视频。</p></div>
-          )}
-
           </div>
           <div className="workspace-page" hidden={activeTab !== "flights"}>
             <FlightPanel
@@ -694,6 +671,26 @@ export function App() {
             />
           </div>
           {astronomyMap && <AstronomyPanel state={astronomyMap} onTimeChange={setObservationMinute}/>}
+          <div className="workspace-page" hidden={activeTab !== "export"}>
+            <p className="page-intro">将轨迹与仪表导出为透明视频，叠加到拍摄素材上。</p>
+          <section className="range-editor">
+            <p>移动红色播放头，再设置导出区间。</p>
+            <div>
+              <button type="button" disabled={currentTime === null || !exportRange} onClick={() => {
+                if (currentTime !== null && exportRange) setExportRange([Math.min(currentTime, exportRange[1]), exportRange[1]]);
+              }}>设为入点 (I)</button>
+              <button type="button" disabled={currentTime === null || !exportRange} onClick={() => {
+                if (currentTime !== null && exportRange) setExportRange([exportRange[0], Math.max(currentTime, exportRange[0])]);
+              }}>设为出点 (O)</button>
+            </div>
+            {exportRange && <code>{new Date(exportRange[0]).toLocaleString("zh-CN")}<br />— {new Date(exportRange[1]).toLocaleString("zh-CN")}</code>}
+          </section>
+          {pointDataset && exportRange ? (
+            <OverlayExport dataset={pointDataset} range={exportRange} apiKey={maptilerKey} scene={replayScene} />
+          ) : (
+            <div className="inspector-empty"><div className="inspector-icon">i</div><p>载入轨迹后可输出透明视频。</p></div>
+          )}
+          </div>
           <div className="workspace-page settings-page" hidden={activeTab !== "settings"}>
             <div className="settings-heading"><small>REPLAY MOD REALITY</small><h2>设置</h2><p>工作区偏好自动保存在本机。</p></div>
             <HDRSettings/>
@@ -751,7 +748,7 @@ export function App() {
         <section className="stage-column">
 
 
-          {mediaActive ? <VideoPreview source={mediaSource} time={currentTime} playing={playing} onOverlayHost={setPreviewHost}/> : <div className="map-interaction-area" aria-label="地图视图" />}
+          <div className="map-interaction-area" aria-label="地图视图" />
 
           <div className="bottom-panel">
             <button className="bottom-panel-toggle" type="button"
