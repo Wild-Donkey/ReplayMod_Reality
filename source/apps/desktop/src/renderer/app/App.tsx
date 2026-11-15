@@ -1,3 +1,6 @@
+import {withProcessedTrajectory} from "../features/timeline/processedTrajectory";
+import type {MotionGpsResult} from "../../../../../packages/media/src/gps-motion";
+import { MediaAlignmentPanel } from "../features/timeline/MediaAlignmentPanel";
 import {LocalSpeechModels} from "../features/audio/LocalSpeechModels";
 import { AudioTextEditor } from "../features/audio/AudioTextEditor";
 import { HDRSettings } from "../features/settings/HDRSettings";
@@ -157,7 +160,11 @@ export function App() {
     setAnnotationSelectedId(id);setDraftCoordinates([]);setDrawMode("select");
   };
   const finishRoute = () => {if(draftCoordinates.length>=2)addAnnotation(draftCoordinates,"route");};
-  const [pointDataset, setPointDataset] = useState<PointDataset | null>(null);
+  const [mediaSource, setMediaSource] = useState<MediaSource | null>(null);
+  const [rawPointDataset, setPointDataset] = useState<PointDataset | null>(null);
+  const [motionGps,setMotionGps]=useState<{raw:PointDataset;path:string;result:MotionGpsResult}|null>(null);
+  const pointDataset=useMemo(()=>rawPointDataset&&motionGps?.raw===rawPointDataset&&motionGps.path===mediaSource?.sourcePath&&motionGps.result.videoStartSeconds===mediaSource?.creationTimeSeconds?withProcessedTrajectory(rawPointDataset,motionGps.result):rawPointDataset,[rawPointDataset,motionGps,mediaSource?.sourcePath,mediaSource?.creationTimeSeconds]);
+  const gpsInputRef=useRef<{raw:PointDataset|null;path:string|null}>({raw:rawPointDataset,path:null});
   const [flightRoutes, setFlightRoutes] = useState<readonly (readonly [number, number])[][]>([]);
   const [flightRouteSegments, setFlightRouteSegments] = useState<readonly FlightRouteSegment[]>([]);
   const [flightAirports, setFlightAirports] = useState<readonly (readonly [number, number])[]>([]);
@@ -165,7 +172,7 @@ export function App() {
     setFlightRoutes([]);
     setFlightRouteSegments([]);
     setFlightAirports([]);
-  }, [pointDataset, replayScene]);
+  }, [rawPointDataset, replayScene]);
   useEffect(() => {
     replayScene.setTrajectory(pointDataset
       ? TrajectoryBuffer.fromPointDatasetWithFlightRoutes(pointDataset, flightRouteSegments)
@@ -198,14 +205,14 @@ export function App() {
     const playback = new ReplayPlayback(replayScene.clock, pointDataset.timeBounds);
     playbackRef.current = playback;
     return () => { playback.destroy(); playbackRef.current = null; };
-  }, [pointDataset, replayScene]);
+  }, [pointDataset?.timeBounds, replayScene]);
   const [exportRange, setExportRange] = useCachedState<TimeBounds | null>("exportRange", null);
   const [timelineFocusRequest, setTimelineFocusRequest] =
     useState<TimelineFocusRequest | null>(null);
   const timelineFocusSequenceRef = useRef(0);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [dataError, setDataError] = useState("");
-  const [mediaSource, setMediaSource] = useState<MediaSource | null>(null);
+  gpsInputRef.current={raw:rawPointDataset,path:mediaSource?.sourcePath??null};
   const [isLoadingMedia, setIsLoadingMedia] = useState(false);
   const [subtitleTrack, setSubtitleTrack] = useCachedState<SubtitleTrack | null>("subtitleTrack", null);
   const [isAudioTextEditorOpen, setIsAudioTextEditorOpen] = useState(false);
@@ -346,7 +353,7 @@ export function App() {
           setDataError(
             error instanceof Error
               ? error.message
-              : "自动载入 RawData 时发生未知错误。",
+              : "恢复上次打开的 CSV 时发生未知错误。",
           );
         }
       })
@@ -627,6 +634,9 @@ export function App() {
                 </>
               ) : "尚未载入视频"}
             </div>
+            {mediaSource&&<MediaAlignmentPanel key={mediaSource.sourcePath} source={mediaSource} dataset={rawPointDataset}
+              onProcessed={result=>{if(rawPointDataset&&gpsInputRef.current.raw===rawPointDataset&&gpsInputRef.current.path===mediaSource.sourcePath)setMotionGps({raw:rawPointDataset,path:mediaSource.sourcePath,result});}}
+              onAligned={next=>setMediaSource(current=>current?.sourcePath===next.sourcePath?next:current)} />}
           </section>
           <button
             className="primary-action"

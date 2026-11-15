@@ -1,0 +1,24 @@
+const fs=require('node:fs'),ts=require('typescript'),assert=require('node:assert/strict');
+const mod={exports:{}};new Function('exports',ts.transpileModule(fs.readFileSync('apps/desktop/src/main/restoreDataset.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText)(mod.exports);
+const {restoreDataset}=mod.exports;
+(async()=>{
+ const original={mainFilePath:'/data/original.csv',photoFilePath:'/data/photos.csv'},newest={mainFilePath:'/data/newest.csv',photoFilePath:null};
+ const reads=[];let scans=0,latest=newest;
+ const present=new Set([original.mainFilePath,original.photoFilePath,newest.mainFilePath]);
+ const io={exists:async p=>present.has(p),latest:async()=>{scans++;return latest;},cached:async()=> 'snapshot',read:async(...p)=>{reads.push(p);return p[0];}};
+ assert.equal(await restoreDataset(original,'key',io),original.mainFilePath);assert.equal(scans,0,'A newer CSV must not override an available selection');
+ present.delete(original.photoFilePath);
+ assert.equal(await restoreDataset(original,'key',io),original.mainFilePath);assert.deepEqual(reads.at(-1),[original.mainFilePath,null]);assert.equal(scans,0);
+ present.delete(original.mainFilePath);
+ assert.equal(await restoreDataset(original,'key',io),newest.mainFilePath);assert.equal(scans,1,'Missing primary file falls back to the newest CSV, ahead of stale cache');
+ assert.equal(await restoreDataset(undefined,undefined,io),newest.mainFilePath);
+ latest=null;assert.equal(await restoreDataset(original,'key',io),'snapshot');
+ await assert.rejects(restoreDataset(original,undefined,io),/未找到可用 CSV/);
+ assert.equal(await restoreDataset(undefined,undefined,io),null);
+ const main=fs.readFileSync('apps/desktop/src/main/main.ts','utf8');
+ const reader=main.slice(main.indexOf('const readLocationCsvSnapshot ='),main.indexOf('const activateLocationCsv ='));
+ assert(!reader.includes('rememberDatasetSource('),'Background reads must not persist active-source changes');
+ const activation=main.slice(main.indexOf('const activateLocationCsv ='),main.indexOf('const findCsvPairInDirectory ='));
+ assert(activation.includes('rememberDatasetSource('));
+ console.log('Dataset restore passed: stable existing source, latest-CSV fallback, optional photos, cache fallback and background-read isolation.');
+})().catch(e=>{console.error(e);process.exitCode=1;});

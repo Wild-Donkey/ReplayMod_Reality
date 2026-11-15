@@ -1,3 +1,10 @@
+import {processMotionGps} from "../../../../packages/media/src/gps-motion";
+import {PROCESS_GPS_CHANNEL,type MotionGpsRequest,type MotionGpsResult} from "../shared/mediaAlignment";
+import {restoreDataset,resolveDatasetSource} from "./restoreDataset";
+import { ALIGN_MEDIA_CHANNEL, type MediaAlignmentRequest, type MediaAlignmentResult } from "../shared/mediaAlignment";
+import { refineMotionAlignment, type MotionAlignmentResult } from "../../../../packages/media/src/motion-alignment";
+import { shiftVideoTimestamps } from "../../../../packages/media/src/video-timestamps";
+import { extractDjiOrientation } from "../../../../packages/media/src/dji";
 import {LocalSpeech} from "./localSpeech";
 import { renderAudioEdit, saveRecordedAudio } from "../../../../packages/media/src/audio-edit";
 import { audioOutputCues, validateAudioBlocks, refineAudioBlock, coarseAudioBlocks, type AudioDocument, type AudioBlock } from "../../../../packages/media/src/audio-document";
@@ -363,10 +370,10 @@ const isPhotoDataFile = (filePath: string) =>
 const pointKey = (point: TimedCoordinate) =>
   `${point.timestamp}|${point.longitude.toFixed(6)}|${point.latitude.toFixed(6)}`;
 
-const readLocationCsv = async (
+const readLocationCsvSnapshot = async (
   mainFilePath: string,
   photoFilePath: string | null = null,
-): Promise<PointDataset> => {
+): Promise<{dataset:PointDataset;key:string}> => {
   const signature = ["point-parser-v2-accuracy-100m", ...await Promise.all([mainFilePath, photoFilePath].map(async file => {
     if (!file) return null;
     const info = await stat(file);
@@ -375,8 +382,7 @@ const readLocationCsv = async (
   const key = createHash("sha256").update(JSON.stringify(signature)).digest("hex");
   const saved = await resources.read<PointDataset>("snapshots", key);
   if (saved) {
-    rememberDatasetSource(mainFilePath, photoFilePath, key);
-    return saved;
+    return {dataset:saved,key};
   }
   const footprintPoints: TimedCoordinate[] = [];
   const photoPointsByKey = new Map<string, TimedCoordinate>();
@@ -512,7 +518,14 @@ const readLocationCsv = async (
     timeBounds,
   };
   await resources.write("snapshots", key, dataset).catch(console.warn);
-  rememberDatasetSource(mainFilePath, photoFilePath, key);
+  return {dataset,key};
+};
+
+// Only explicit activation updates the persistent application selection.
+// Background slicing, filtering and verification can read snapshots independently.
+const activateLocationCsv = async (mainFilePath:string,photoFilePath:string|null=null):Promise<PointDataset> => {
+  const {dataset,key}=await readLocationCsvSnapshot(mainFilePath,photoFilePath);
+  rememberDatasetSource(mainFilePath,photoFilePath,key);
   return dataset;
 };
 
@@ -551,83 +564,34 @@ const findCsvPairInDirectory = async (
     : null;
 };
 
-const findLatestRawDataCsvPair = async (): Promise<CsvPair | null> => {
-  const candidateDirectories = [
-    path.resolve(process.cwd(), "../RawData"),
-    path.resolve(process.cwd(), "RawData"),
-    path.resolve(app.getAppPath(), "RawData"),
-    path.resolve(path.dirname(app.getPath("exe")), "RawData"),
-  ];
-  const uniqueDirectories = [...new Set(candidateDirectories.map(directory => path.join(directory, "footprint")))];
-  const pairs: {
-    pair: CsvPair;
-    mainModifiedAt: number;
-  }[] = [];
-
-  for (const directory of uniqueDirectories) {
-    try {
-      const pair = await findCsvPairInDirectory(directory);
-
-      if (pair) {
-        const mainStats = await stat(pair.mainFilePath);
-        pairs.push({
-          pair,
-          mainModifiedAt: mainStats.mtimeMs,
-        });
-      }
-    } catch {
-      // RawData is optional. Manual file selection remains available.
-    }
-  }
-
-  pairs.sort((left, right) => right.mainModifiedAt - left.mainModifiedAt);
-  return pairs[0]?.pair ?? null;
-};
-
 let defaultDatasetPromise: Promise<PointDataset | null> | null = null;
 
-const findDefaultCsvPair = async (): Promise<CsvPair | null> => {
-  const source = userArchive.lastDatasetSource;
-
-  if (source?.mainFilePath) {
-    try {
-      await access(source.mainFilePath);
-      if (source.photoFilePath) await access(source.photoFilePath);
-      return source;
-    } catch {
-      try {
-        const latestInSourceDirectory = await findCsvPairInDirectory(
-          path.dirname(source.mainFilePath),
-        );
-        if (latestInSourceDirectory) return latestInSourceDirectory;
-      } catch {
-        // The former source directory may have moved or been removed.
-      }
-    }
+const latestDatasetSource = async (previous:CsvPair|undefined):Promise<CsvPair|null> => {
+  if(previous) {
+    try {const pair=await findCsvPairInDirectory(path.dirname(previous.mainFilePath));if(pair)return pair;}catch { /* Try the standard data directories next. */ }
   }
-
-  // Older caches did not retain the opened path. In that case, use the newest
-  // CSV in the standard RawData/footprint directory instead of stale data.
-  return findLatestRawDataCsvPair();
+  const directories=[...new Set([
+    path.resolve(process.cwd(),"../RawData/footprint"),path.resolve(process.cwd(),"RawData/footprint"),
+    path.resolve(app.getAppPath(),"RawData/footprint"),path.resolve(path.dirname(app.getPath("exe")),"RawData/footprint"),
+  ])];
+  const candidates: {pair:CsvPair;modified:number}[]=[];
+  for(const directory of directories) {
+    try {const pair=await findCsvPairInDirectory(directory);if(pair)candidates.push({pair,modified:(await stat(pair.mainFilePath)).mtimeMs});}catch { /* Optional directory. */ }
+  }
+  candidates.sort((a,b)=>b.modified-a.modified);
+  return candidates[0]?.pair ?? null;
 };
+const datasetLookup={exists:(file:string)=>access(file).then(()=>true,()=>false),latest:latestDatasetSource};
+const findDefaultCsvPair = ():Promise<CsvPair|null> => resolveDatasetSource(userArchive.lastDatasetSource,datasetLookup);
 
 ipcMain.handle(
   LOAD_DEFAULT_LOCATION_CSV_CHANNEL,
   (): Promise<PointDataset | null> => {
-    defaultDatasetPromise ??= (async () => {
-      const source = userArchive.lastDatasetSource;
-      const key = userArchive.lastDatasetCacheKey;
-      if (source && key) {
-        const available = await Promise.all([source.mainFilePath, source.photoFilePath].map(file =>
-          file ? access(file).then(() => true, () => false) : true));
-        if (available.includes(false)) {
-          const saved = await resources.read<PointDataset>("snapshots", key);
-          if (saved) return saved;
-        }
-      }
-      const pair = await findDefaultCsvPair();
-      return pair ? readLocationCsv(pair.mainFilePath, pair.photoFilePath) : null;
-    })().finally(() => { defaultDatasetPromise = null; });
+    defaultDatasetPromise ??= restoreDataset(userArchive.lastDatasetSource,userArchive.lastDatasetCacheKey,{
+      ...datasetLookup,
+      cached:key=>resources.read<PointDataset>("snapshots",key),
+      read:activateLocationCsv,
+    }).finally(() => { defaultDatasetPromise = null; });
 
     return defaultDatasetPromise;
   },
@@ -659,14 +623,14 @@ ipcMain.handle(
 
     if (isPhotoDataFile(selectedFilePath)) {
       return directoryPair
-        ? readLocationCsv(directoryPair.mainFilePath, selectedFilePath)
-        : readLocationCsv(selectedFilePath);
+        ? activateLocationCsv(directoryPair.mainFilePath, selectedFilePath)
+        : activateLocationCsv(selectedFilePath);
     }
 
     // The selected footprint file is authoritative. Previously this reused the
     // directory's newest main CSV, which made selecting the full table reopen a
     // newer Example_footprint.csv instead.
-    return readLocationCsv(
+    return activateLocationCsv(
       selectedFilePath,
       directoryPair?.photoFilePath ?? null,
     );
@@ -789,9 +753,11 @@ ipcMain.handle("flights:save-screening-cache", async (_event, cache: FlightScree
 });
 
 ipcMain.handle("cache:media", async () => {
-  const source = userArchive.lastMedia as MediaSource | undefined;
+  let source = userArchive.lastMedia as MediaSource | undefined;
   if (!source) return null;
   try { await access(source.sourcePath); } catch { return null; }
+  // Refresh timestamps: the file may have been aligned since the archive was saved.
+  source = await probeMediaFile(source.sourcePath);
   openedMediaPaths.add(source.sourcePath);
   return source;
 });
@@ -809,6 +775,54 @@ ipcMain.handle(OPEN_MEDIA_CHANNEL, async (): Promise<MediaSource | null> => {
   const source = await probeMediaFile(selectedFilePath);
   updateUserArchive(current=>({...current,lastMedia:source}));
   return source;
+});
+
+ipcMain.handle(PROCESS_GPS_CHANNEL,async (_event,request:MotionGpsRequest):Promise<MotionGpsResult>=>{
+  if(!openedMediaPaths.has(request.sourcePath))throw new Error("请先载入该视频。");
+  if(!Array.isArray(request.points)||request.points.length>100000||request.points.length<2)throw new Error("匹配视频时段的 GPS 样本不足或范围过大。");
+  const source=await probeMediaFile(request.sourcePath);
+  if(source.creationTimeSeconds===undefined)throw new Error("请先对齐视频拍摄时间。");
+  const info=await stat(request.sourcePath);
+  const key=createHash("sha256").update(JSON.stringify(["motion-gps-v2",request.sourcePath,info.size,info.mtimeMs,source.creationTimeSeconds,request.points])).digest("hex");
+  const cached=await resources.read<MotionGpsResult>("snapshots",key);if(cached)return cached;
+  const roots=[path.resolve(process.cwd(),".."),process.cwd(),app.getAppPath(),path.dirname(app.getPath("exe"))];
+  const exiftool=await firstExistingPath(roots.flatMap(root=>[path.join(root,".tools/exiftool/exiftool"),path.join(root,".tools/exiftool/exiftool.exe")]));
+  let orientation:Awaited<ReturnType<typeof extractDjiOrientation>>=[];
+  try {orientation=await extractDjiOrientation(request.sourcePath,exiftool??"exiftool");}catch { /* GPS-only fallback remains usable. */ }
+  const result=processMotionGps(orientation,request.points,source.creationTimeSeconds);
+  const end=source.creationTimeSeconds+(source.durationSeconds??Infinity);
+  result.points=result.points.filter(p=>p.timeSeconds>=source.creationTimeSeconds!&&p.timeSeconds<=end);
+  if(result.points.length<2)throw new Error("GPS 与视频时间不重叠，请先完成时间对齐。");
+  await resources.write("snapshots",key,result);
+  return result;
+});
+
+const aligningMedia = new Set<string>();
+ipcMain.handle(ALIGN_MEDIA_CHANNEL, async (_event, request: MediaAlignmentRequest): Promise<MediaAlignmentResult> => {
+  const {sourcePath,offsetSeconds,points}=request;
+  if(!openedMediaPaths.has(sourcePath))throw new Error("请先载入该视频。");
+  if(!Number.isSafeInteger(offsetSeconds)||Math.abs(offsetSeconds)>86400)throw new Error("请输入一天以内的整数秒，可使用正负号。");
+  if(aligningMedia.has(sourcePath))throw new Error("该视频正在对齐，请稍候。");
+  if(!Array.isArray(points)||points.length>100000)throw new Error("轨迹数据无效。");
+  aligningMedia.add(sourcePath);
+  try {
+    const source=await probeMediaFile(sourcePath);
+    if(source.creationTimeSeconds===undefined)throw new Error("视频没有可用的拍摄时间，无法应用秒数偏移。");
+    let alignment: MotionAlignmentResult={offsetSeconds,adjustmentSeconds:0,refined:false,reason:"已使用输入偏移。"};
+    const roots=[path.resolve(process.cwd(),".."),process.cwd(),app.getAppPath(),path.dirname(app.getPath("exe"))];
+    const exiftool=await firstExistingPath(roots.flatMap(root=>[path.join(root,".tools/exiftool/exiftool"),path.join(root,".tools/exiftool/exiftool.exe")]));
+    try {
+      const orientation=await extractDjiOrientation(sourcePath,exiftool??"exiftool");
+      alignment=refineMotionAlignment(orientation,points.map(p=>({...p,timeSeconds:p.timeSeconds-source.creationTimeSeconds!})),offsetSeconds);
+    } catch {
+      alignment.reason="无法读取运动数据，已使用输入偏移。";
+    }
+    if(alignment.offsetSeconds===0)throw new Error("最终偏移为 0 秒，视频无需修改。");
+    const saved=await shiftVideoTimestamps(sourcePath,alignment.offsetSeconds);
+    const updated={...source,creationTimeSeconds:source.creationTimeSeconds+alignment.offsetSeconds};
+    updateUserArchive(current=>({...current,lastMedia:updated}));
+    return {...alignment,...saved,source:updated};
+  } finally {aligningMedia.delete(sourcePath);}
 });
 
 ipcMain.handle(

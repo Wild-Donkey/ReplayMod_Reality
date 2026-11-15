@@ -40,6 +40,7 @@ export interface MediaCapabilityReport {
 }
 
 export interface MediaSource {
+  readonly creationTimeSeconds?: number;
   readonly sourcePath: string;
   readonly sourceName: string;
   readonly format: string;

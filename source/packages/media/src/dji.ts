@@ -12,7 +12,7 @@ export const extractDjiOrientation = async (
     "-ee", "-j", "-G3:1", "-n", "-api", "LargeFileSupport=1",
     "-Quaternion1", "-Quaternion2", "-Quaternion3", "-Quaternion4",
     "-SampleTime", "-SampleDuration", inputPath,
-  ], { maxBuffer: 64 * 1024 * 1024 });
+  ], { maxBuffer: 64 * 1024 * 1024, timeout: 120_000 });
   const document = (JSON.parse(stdout) as Record<string, unknown>[])[0];
   const grouped = new Map<number, Record<string, number>>();
 

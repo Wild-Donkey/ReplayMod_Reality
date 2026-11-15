@@ -148,6 +148,8 @@ export const probeMediaFile = async (sourcePath: string): Promise<MediaSource> =
   const makeSignature = Object.values(formatTags).join(" ");
 
   return {
+    ...(Number.isFinite(Date.parse(formatTags.creation_time ?? ""))
+      ? { creationTimeSeconds: Date.parse(formatTags.creation_time) / 1000 } : {}),
     sourcePath,
     sourceName: path.basename(sourcePath),
     format: document.format?.format_name ?? "unknown",

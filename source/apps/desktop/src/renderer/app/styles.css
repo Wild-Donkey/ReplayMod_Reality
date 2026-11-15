@@ -2037,3 +2037,14 @@ h2.section-label { margin: 0; }
 .local-speech-models pre { white-space: pre-wrap; user-select: text; }
 .local-model-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .local-model-download { margin-top: 12px; }
+
+.media-alignment { margin-top: 18px; padding: 14px 11px 0; border-top: 1px solid rgba(128,128,128,.24); }
+.media-alignment label { display: block; margin: 10px 0 6px; font-size: 12px; }
+.alignment-controls { display: flex; gap: 8px; }
+.alignment-controls input { min-width: 0; width: 90px; flex: 1; padding: 8px; border: 1px solid rgba(128,128,128,.4); border-radius: 6px; background: transparent; color: inherit; font: inherit; }
+.alignment-controls button { padding: 8px 10px; border: 1px solid rgba(128,128,128,.4); border-radius: 6px; background: transparent; color: inherit; cursor: pointer; white-space: nowrap; }
+.alignment-controls button:disabled { opacity: .5; cursor: default; }
+.alignment-hint { font-size: 11px; line-height: 1.6; opacity: .7; margin: 8px 0; }
+.alignment-result { margin-top: 12px; font-size: 12px; line-height: 1.6; }
+.alignment-result p { margin: 6px 0; }
+.alignment-backup { display: block; overflow-wrap: anywhere; font-size: 10px; margin-top: 6px; }

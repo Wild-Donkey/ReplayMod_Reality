@@ -1,3 +1,5 @@
+import {PROCESS_GPS_CHANNEL,type MotionGpsRequest,type MotionGpsResult} from "../shared/mediaAlignment";
+import { ALIGN_MEDIA_CHANNEL, type MediaAlignmentRequest, type MediaAlignmentResult } from "../shared/mediaAlignment";
 import type {LocalSpeechStatus,LocalSpeechUpdate} from "../shared/localSpeech";
 import type { AudioDocument, AudioBlock } from "../../../../packages/media/src/audio-document";
 import type { OfflineExportOptions, OfflineExportSession, OfflineExportSegment } from "../shared/overlayExport";
@@ -74,6 +76,8 @@ export interface DesktopBridge {
   loadFlightScreeningCache(): Promise<FlightScreeningCache | null>;
   saveFlightScreeningCache(cache: FlightScreeningCache): Promise<void>;
   openMedia(): Promise<MediaSource | null>;
+  processMediaGps(request:MotionGpsRequest):Promise<MotionGpsResult>;
+  alignMediaTime(request:MediaAlignmentRequest):Promise<MediaAlignmentResult>;
   transcribeMedia(sourcePath: string): Promise<SubtitleTrack>;
   saveSubtitles(sourcePath: string, track: SubtitleTrack): Promise<SavedSubtitleTrack>;
 }
@@ -148,6 +152,8 @@ const bridge: DesktopBridge = Object.freeze({
   deleteConfirmedFlight: (id: string) => ipcRenderer.invoke("flights:delete-confirmed", id) as Promise<void>,
   loadFlightScreeningCache: () => ipcRenderer.invoke("flights:screening-cache") as Promise<FlightScreeningCache | null>,
   saveFlightScreeningCache: (cache: FlightScreeningCache) => ipcRenderer.invoke("flights:save-screening-cache", cache) as Promise<void>,
+  alignMediaTime: (request: MediaAlignmentRequest) => ipcRenderer.invoke(ALIGN_MEDIA_CHANNEL, request),
+  processMediaGps:(request:MotionGpsRequest)=>ipcRenderer.invoke(PROCESS_GPS_CHANNEL,request) as Promise<MotionGpsResult>,
   openMedia: () => ipcRenderer.invoke(OPEN_MEDIA_CHANNEL) as Promise<MediaSource | null>,
   transcribeMedia: (sourcePath: string) =>
     ipcRenderer.invoke(TRANSCRIBE_MEDIA_CHANNEL, sourcePath) as Promise<SubtitleTrack>,

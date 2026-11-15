@@ -75,7 +75,7 @@ const sample = (dataset: PointDataset, timestamp: number) => {
     latitude: shared?.position[1] ?? lat0,
     speed: Math.hypot(dx, dy) / seconds * 3.6,
     altitude,
-    grade: hasAltitude && Math.hypot(dx, dy) > 1 ? (altitude1 - altitude0) / Math.hypot(dx, dy) * 100 : Number.NaN,
+    grade: hasAltitude && Math.hypot(dx, dy) > Math.min(1, seconds) ? (altitude1 - altitude0) / Math.hypot(dx, dy) * 100 : Number.NaN,
     bearing: shared?.heading ?? Math.atan2(dx, dy) * 180 / Math.PI,
   };
 };
