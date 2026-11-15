@@ -1424,12 +1424,13 @@ export function MapViewport({
     <section className="viewport map-viewport">
       <div ref={containerRef} className={`map-container${astronomyActive ? " astronomy-basemap" : ""}`} />
       {astronomy && status === "ready" && mapRef.current && <AstronomyOverlay map={mapRef.current} state={astronomy}/>}
-      {!astronomyActive && status === "ready" && mapRef.current && <AnnotationLabels
+      {/* Labels must share the map's gesture container so wheel/drag events reach its handlers. */}
+      {!astronomyActive && status === "ready" && mapRef.current && createPortal(<AnnotationLabels
         map={mapRef.current}
         scene={scene}
         drawing={drawMode !== "select"}
         onSelect={onAnnotationSelect}
-      />}
+      />, mapRef.current.getCanvasContainer())}
 
       {status === "loading" && (
         <div className="map-message">
