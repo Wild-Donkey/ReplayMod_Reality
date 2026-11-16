@@ -37,6 +37,10 @@ npm --prefix source run make
 
 - `check`：类型、存储、缓存、标注、时间轴、天文、渲染、地形和飞行检查。标注检查使用下述本地样本。
 - `check:annotations`：JSON / KML 往返检查，需要本机 `RawData/annotations/annotations.json`。
+- `check:media-alignment`：视频时间字段、时间码、备份与 GPS 运动处理检查。
+- `check:audio-edit`：声音 token 编排、时间范围、PCM 拼接与字幕时间检查。
+- `check:local-speech`：推理进程协议、模型发现、选择、断点下载和文件完整性检查。
+- `check:export:layout`：独立 Electron 窗口检查生产 CSS 下 720p／1080p／4K 导出画布尺寸与清理，需要图形会话。
 - `check:export:encoder`：实际编码并解码透明 VP9，检查帧数、帧率、Alpha、分段、取消与文件保护；需要支持 `libvpx-vp9` 的 FFmpeg 和 FFprobe，不启动 Electron。
 - `check:picking:gpu`：独立 Electron 窗口验证 18 万点拾取、DPR 1/2/3、可见标注与曲线、背景交接、图层隐藏恢复和离屏尺寸；需要可正常启动 Electron 与 WebGL2 的图形会话，无法由普通类型检查代替。
 - `package`：构建当前平台应用，产物位于根目录 `out/`。
@@ -51,7 +55,7 @@ macOS 双击 `Install-MacOS.command` 会打包并安装至 `~/Applications/Repla
 | 启动脚本提示找不到 Node.js | 安装符合要求的 Node.js / npm，或准备本平台的 `.tools` 工具链 |
 | 更新后依赖损坏或启动失败 | 在根目录重新运行 `npm --prefix source ci`，保留终端错误信息 |
 | 地图未加载 | 在应用中输入或更新 MapTiler API Key，检查网络和服务访问情况 |
-| 视频探测或字幕失败 | 检查 FFmpeg / FFprobe、Whisper 可执行文件和模型，见 [媒体处理](media.md) |
+| 视频探测或字幕失败 | 检查 FFmpeg / FFprobe、本地语音环境及已选择的 ASR／对齐模型，见 [媒体处理](media.md) |
 | 修改主进程或原生模块后效果未变 | 完全退出并重新启动应用，网页热更新不会替换原生对象 |
 | 想清理缓存 | 从「设置」打开实际缓存目录，退出后删除；见 [存储说明](storage.md) |
 
