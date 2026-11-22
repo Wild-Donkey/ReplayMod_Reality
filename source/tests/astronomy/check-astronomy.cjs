@@ -10,7 +10,7 @@ const { outputText } = ts.transpileModule(fs.readFileSync(file, "utf8"), {
 });
 const exportsObject = {};
 vm.runInNewContext(outputText, { exports: exportsObject, require, Date }, { filename: file });
-const { observationDay, observationStart, minutesPerDay, sunVector } = exportsObject;
+const { observationDay, observationStart, minutesPerDay, solarYear, sunVector } = exportsObject;
 
 assert.equal(new Date(observationStart("2026-11-10", 480)).toISOString(), "2026-11-09T16:00:00.000Z");
 assert.equal(new Date(observationStart("2026-11-10", -210)).toISOString(), "2026-11-10T03:30:00.000Z");
@@ -41,4 +41,26 @@ for (const [date, aboveHorizon] of [["2026-06-21", true], ["2026-12-21", false]]
   assert.equal(polarDay.events[0].value, null);
   assert.equal(polarDay.events[1].value, null);
 }
-console.log("Astronomy checks passed: 24-hour UTC-offset day, equinox directions, solar vector, Galactic Centre and polar rise/set.");
+const shanghaiPoint = [121.47, 31.23];
+const annual = solarYear(shanghaiPoint, 2024, 480);
+assert.equal(annual.length, 366);
+assert.equal(annual[59].date, "2024-02-29");
+assert.equal(annual.at(-1).date, "2024-12-31");
+const june = annual.find(day => day.date === "2024-06-21");
+const juneDay = observationDay(shanghaiPoint, observationStart(june.date, 480));
+assert.equal(june.rise[0], juneDay.events[0].value.minute);
+assert.equal(june.set[0], juneDay.events[1].value.minute);
+assert(june.rise.every((minute, index) => index === 0 || minute < june.rise[index - 1]));
+assert(june.set.every((minute, index) => index === 0 || minute > june.set[index - 1]));
+
+const polarYear = solarYear([15.63, 78.22], 2026, 120);
+assert.equal(polarYear.length, 365);
+for (const date of ["2026-06-21", "2026-12-21"]) {
+  const day = polarYear.find(day => day.date === date);
+  assert.equal(day.rise[0], null);
+  assert.equal(day.set[0], null);
+}
+const midnightYear = solarYear(shanghaiPoint, 2024, 120);
+assert(midnightYear.some((day, index) => index > 0 &&
+  Math.abs(day.rise[0] - midnightYear[index - 1].rise[0]) > minutesPerDay / 2));
+console.log("Astronomy checks passed: daily directions and annual solar events, twilight, leap year, polar gaps and midnight rollover.");

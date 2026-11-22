@@ -670,7 +670,8 @@ export function App() {
               onFlightAirportsChange={setFlightAirports}
             />
           </div>
-          {astronomyMap && <AstronomyPanel state={astronomyMap} onTimeChange={setObservationMinute}/>}
+          {astronomyMap && <AstronomyPanel state={astronomyMap} date={observationClock.date}
+            offset={observationOffset} onTimeChange={setObservationMinute}/>}
           <div className="workspace-page" hidden={activeTab !== "export"}>
             <p className="page-intro">将轨迹与仪表导出为透明视频，叠加到拍摄素材上。</p>
           <section className="range-editor">

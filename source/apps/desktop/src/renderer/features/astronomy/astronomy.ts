@@ -1,6 +1,6 @@
 import {
   Body, Equator, EquatorFromVector, GeoVector, Horizon, Observer, RotateVector,
-  Rotation_EQJ_EQD, SearchRiseSet, SiderealTime, Spherical, VectorFromSphere,
+  Rotation_EQJ_EQD, SearchAltitude, SearchRiseSet, SiderealTime, Spherical, VectorFromSphere,
 } from "astronomy-engine";
 
 export type ObservationPoint = readonly [longitude: number, latitude: number];
@@ -83,6 +83,29 @@ const horizonEvents = [
   { label: "月出", color: "#76dec0", direction: 1, target: Body.Moon },
   { label: "月落", color: "#7997ff", direction: -1, target: Body.Moon },
 ] as const;
+
+export const solarTwilight = twilightBands.slice(1, 4);
+
+export function solarYear(point: ObservationPoint, year: number, offset: number) {
+  const observer = toObserver(point);
+  const date = `${year}-01-01`;
+  const start = observationStart(date, offset);
+  const dayMs = minutesPerDay * minuteMs;
+  const count = (observationStart(`${year + 1}-01-01`, offset) - start) / dayMs;
+  return Array.from({ length: count }, (_, index) => {
+    const midnight = new Date(start + index * dayMs);
+    const timeOf = (event: ReturnType<typeof SearchRiseSet>) => {
+      const minute = event ? (event.date.getTime() - midnight.getTime()) / minuteMs : null;
+      return minute !== null && minute >= 0 && minute < minutesPerDay ? minute : null;
+    };
+    const crossings = (direction: 1 | -1) => [
+      timeOf(SearchRiseSet(Body.Sun, observer, direction, midnight, 1)),
+      ...solarTwilight.map(({ minAltitude }) =>
+        timeOf(SearchAltitude(Body.Sun, observer, direction, midnight, 1, minAltitude))),
+    ];
+    return { date: observationDateAfter(date, index), rise: crossings(1), set: crossings(-1) };
+  });
+}
 
 export function observationDay(point: ObservationPoint, start: number) {
   const observer = toObserver(point);

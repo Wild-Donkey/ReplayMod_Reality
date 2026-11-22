@@ -3,9 +3,12 @@ import {
   firstDate, formatMinute, formatOffset, lastDate, minutesPerDay, observationDateAfter,
   skyObjects, twilightBands, type AstronomyMapState, type ObservationDay,
 } from "./astronomy";
+import { SolarYearButton } from "./SolarYearChart";
 
-export function AstronomyPanel({ state, onTimeChange }: {
+export function AstronomyPanel({ state, date, offset, onTimeChange }: {
   state: AstronomyMapState;
+  date: string;
+  offset: number;
   onTimeChange: (minute: number) => void;
 }) {
   return <section className="astronomy-panel">
@@ -14,6 +17,7 @@ export function AstronomyPanel({ state, onTimeChange }: {
     <p>{state.point
       ? `${state.point[1].toFixed(4)}°, ${state.point[0].toFixed(4)}°`
       : "尚未选择"}</p>
+    <SolarYearButton point={state.point} date={date} offset={offset}/>
     <h3>当前方位 <small>正北 0° · 顺时针</small></h3>
     <dl className="astronomy-readout">
       {skyObjects.map(({ id, label, color }) => {
