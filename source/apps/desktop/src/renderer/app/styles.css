@@ -861,15 +861,6 @@ button:focus-visible {
   filter: none;
 }
 
-.maplibregl-ctrl-attrib {
-  color: #aaa;
-  background: rgb(8 8 8 / 74%);
-}
-
-.maplibregl-ctrl-attrib a {
-  color: #ddd;
-}
-
 .timeline {
   border-top: 1px solid var(--line);
   background: var(--panel-solid);
@@ -1398,11 +1389,6 @@ body,
   right: 8px;
 }
 
-.maplibregl-ctrl-bottom-right {
-  right: 8px;
-  bottom: 137px;
-}
-
 .maplibregl-ctrl-group {
   border: 0;
   background: rgb(18 18 18 / 62%);
@@ -1540,8 +1526,7 @@ body,
     right: 10px;
   }
 
-  .maplibregl-ctrl-top-right,
-  .maplibregl-ctrl-bottom-right {
+  .maplibregl-ctrl-top-right {
     right: 8px;
   }
 }
@@ -1663,10 +1648,6 @@ body,
 
 .viewport-badge {
   bottom: 175px;
-}
-
-.maplibregl-ctrl-bottom-right {
-  bottom: 137px;
 }
 
 @media (max-width: 1250px) {
@@ -1883,10 +1864,17 @@ h2.section-label { margin: 0; }
 .route-elevation[data-replay-renderer="engine"] { background: transparent; }
 
 /* Astronomy workspace */
-.astronomy-basemap .maplibregl-canvas-container > canvas {
-  filter: grayscale(1) contrast(.5) brightness(.8);
+.light-pollution-legend, .light-pollution-scale { display: inline-flex; align-items: center; }
+.light-pollution-legend { gap: 6px; color: inherit; text-decoration: none; }
+.light-pollution-legend:hover { text-decoration: underline; }
+.light-pollution-scale { gap: 2px; }
+.light-pollution-scale i { display: block; width: 7px; height: 9px; border: 1px solid #626262; }
+.astronomy-basemap > [data-road-composite] {
+  --road-composite-opacity: 0.58;
+  z-index: 1;
 }
 .astronomy-map-overlay {
+  z-index: 2;
   position: absolute;
   inset: 0;
   width: 100%;

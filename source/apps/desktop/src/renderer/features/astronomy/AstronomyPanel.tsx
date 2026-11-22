@@ -1,8 +1,9 @@
-import { useMemo, type PointerEvent } from "react";
+import { useEffect, useMemo, useState, type PointerEvent } from "react";
 import {
   firstDate, formatMinute, formatOffset, lastDate, minutesPerDay, observationDateAfter,
-  skyObjects, twilightBands, type AstronomyMapState, type ObservationDay,
+  daylightDisplayZones, skyObjects, twilightBands, type AstronomyMapState, type ObservationDay,
 } from "./astronomy";
+import { defaultLightPollutionExposure, lightPollutionZoneGray, sampleLightPollution } from "./lightPollution";
 import { SolarYearButton } from "./SolarYearChart";
 
 export function AstronomyPanel({ state, date, offset, onTimeChange }: {
@@ -11,12 +12,34 @@ export function AstronomyPanel({ state, date, offset, onTimeChange }: {
   offset: number;
   onTimeChange: (minute: number) => void;
 }) {
+  const { point } = state;
+  const [reading, setReading] = useState<{
+    point: NonNullable<typeof point>;
+    value: Awaited<ReturnType<typeof sampleLightPollution>> | "error";
+  } | null>(null);
+  useEffect(() => {
+    if (!point) return;
+    const controller = new AbortController();
+    sampleLightPollution(point, controller.signal).then(value => {
+      if (!controller.signal.aborted) setReading({ point, value });
+    }).catch(() => {
+      if (!controller.signal.aborted) setReading({ point, value: "error" });
+    });
+    return () => controller.abort();
+  }, [point]);
+  const lightPollution = reading && reading.point === point ? reading.value : undefined;
+
   return <section className="astronomy-panel">
     <p>点击地图选择观测点，拖动下方时间轴查看方位。</p>
     <h3>观测点</h3>
     <p>{state.point
       ? `${state.point[1].toFixed(4)}°, ${state.point[0].toFixed(4)}°`
       : "尚未选择"}</p>
+    {point && <dl className="astronomy-readout" aria-live="polite"><div>
+      <dt>{lightPollution && lightPollution !== "error" && <i style={{background: lightPollution.color}}/>}光污染等级</dt>
+      <dd>{lightPollution === undefined ? "查询中…" : lightPollution === "error" ? "数据暂不可用"
+        : lightPollution === null ? "超出图集覆盖范围" : lightPollution.zone}</dd>
+    </div></dl>}
     <SolarYearButton point={state.point} date={date} offset={offset}/>
     <h3>当前方位 <small>正北 0° · 顺时针</small></h3>
     <dl className="astronomy-readout">
@@ -40,10 +63,14 @@ export function AstronomyPanel({ state, date, offset, onTimeChange }: {
     <p>升落按海平面理想地平线计算，山体和建筑遮挡未计入。</p>
     <h3>全球昼夜 <small>太阳高度</small></h3>
     <dl className="astronomy-readout">
-      {twilightBands.map(({ label, minAltitude, opacity }) => <div key={label}>
-        <dt><i style={{ background: `hsl(0 0% ${73 * (1 - opacity)}%)` }}/>{label}</dt>
-        <dd>{minAltitude === -90 ? "低于 −18°" : `≥ ${minAltitude}°`}</dd>
-      </div>)}
+      {twilightBands.map(({ label, minAltitude, zone }) => {
+        const displayZone = minAltitude === 0 ? daylightDisplayZones.land : zone;
+        return <div key={label}>
+          <dt><i style={{ background: `hsl(0 0% ${100 * lightPollutionZoneGray(displayZone, defaultLightPollutionExposure)}%)` }}/>{label}
+            {minAltitude !== -90 && <small> · {displayZone}{minAltitude === 0 ? ` / 水面 ${daylightDisplayZones.water}` : ""}</small>}</dt>
+          <dd>{minAltitude === -90 ? "低于 −18°" : `≥ ${minAltitude}°`}</dd>
+        </div>;
+      })}
     </dl>
   </section>;
 }

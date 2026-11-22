@@ -1,5 +1,5 @@
 import type { Map } from "maplibre-gl";
-import { elevationAppearance, WATER_SURFACE_OPACITY, type ElevationRange } from "./elevationRange";
+import { DEFAULT_OCEAN_DEPTH, elevationAppearance, WATER_SURFACE_OPACITY, type ElevationRange } from "./elevationRange";
 
 // Reuse the provider's water geometry, filters and zoom ranges. Elevation alone
 // cannot distinguish a lake from the surrounding terrain at the same height.
@@ -18,7 +18,7 @@ export function restoreWaterLayers(map: Map, range: ElevationRange = {minimum: 0
       map.setPaintProperty(layer.id, "fill-translate", [0, 0]);
       map.setPaintProperty(layer.id, "fill-translate-anchor", "map");
       const fallback = elevationAppearance(NaN, range, true).alpha;
-      map.setPaintProperty(layer.id, "fill-opacity", range.minimum < 0 && map.getLayer("ocean-elevation-glass")
+      map.setPaintProperty(layer.id, "fill-opacity", astronomyWaterMaps.has(map) ? 0 : range.minimum < 0 && map.getLayer("ocean-elevation-glass")
         ? ["case", ["==", ["get", "class"], "ocean"], WATER_SURFACE_OPACITY, fallback] : fallback);
       map.setPaintProperty(layer.id, "fill-outline-color", "rgba(0,0,0,0)");
       // Separate line opacity keeps shores readable despite the faint fill.
@@ -40,13 +40,22 @@ export function restoreWaterLayers(map: Map, range: ElevationRange = {minimum: 0
   }
 }
 
+const astronomyWaterMaps = new WeakSet<Map>();
+
+export function setAstronomyWaterMaskEnabled(map: Map, enabled: boolean) {
+  if (enabled) astronomyWaterMaps.add(map);
+  else astronomyWaterMaps.delete(map);
+  if (!map.getStyle()) return;
+  updateWaterFallback(map, {minimum: -DEFAULT_OCEAN_DEPTH, maximum: 9000});
+}
+
 // Only update paint during a depth-range change; do not rebuild shoreline layers.
 export function updateWaterFallback(map: Map, range: ElevationRange, rawTerrain = Boolean(map.getLayer("terrain-raw-presentation"))) {
   const fallback = elevationAppearance(NaN, range, true).alpha;
   for (const layer of map.getStyle().layers ?? []) {
     if (layer.type !== "fill" || /shadow/i.test(layer.id)) continue;
     if (layer["source-layer"] !== "water") continue;
-    map.setPaintProperty(layer.id, "fill-opacity", range.minimum < 0 && map.getLayer("ocean-elevation-glass")
+    map.setPaintProperty(layer.id, "fill-opacity", astronomyWaterMaps.has(map) ? 0 : range.minimum < 0 && map.getLayer("ocean-elevation-glass")
         ? ["case", ["==", ["get", "class"], "ocean"], rawTerrain ? 0 : WATER_SURFACE_OPACITY, fallback] : fallback);
   }
 }

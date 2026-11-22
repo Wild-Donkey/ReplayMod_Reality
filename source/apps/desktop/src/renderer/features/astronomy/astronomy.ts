@@ -16,12 +16,14 @@ export const skyObjects = [
   { id: "galacticCenter", label: "银心", color: "#e8afff" },
 ] as const;
 
+export const daylightDisplayZones = { land: "5b", water: "4b" } as const;
+
 export const twilightBands = [
-  { label: "白昼", minAltitude: 0, opacity: 0 },
-  { label: "民用曙暮光", minAltitude: -6, opacity: 0.16 },
-  { label: "航海曙暮光", minAltitude: -12, opacity: 0.32 },
-  { label: "天文曙暮光", minAltitude: -18, opacity: 0.49 },
-  { label: "夜晚", minAltitude: -90, opacity: 0.66 },
+  { label: "白昼", minAltitude: 0, zone: "7b" },
+  { label: "民用曙暮光", minAltitude: -6, zone: "3a" },
+  { label: "航海曙暮光", minAltitude: -12, zone: "2a" },
+  { label: "天文曙暮光", minAltitude: -18, zone: "1a" },
+  { label: "夜晚", minAltitude: -90, zone: "0" },
 ] as const;
 
 export type SkyObject = typeof skyObjects[number]["id"];
