@@ -7,11 +7,14 @@ export type CoordinateBounds = readonly [
 
 export type TimeBounds = readonly [start: number, end: number];
 
-export interface PointDataset {
-  readonly sourceName: string;
+export interface PositionSamples {
   readonly footprintCoordinates: readonly number[];
-  readonly photoCoordinates: readonly number[];
   readonly footprintTimestamps: readonly number[];
+}
+
+export interface PointDataset extends PositionSamples {
+  readonly sourceName: string;
+  readonly photoCoordinates: readonly number[];
   readonly photoTimestamps: readonly number[];
   readonly timelineCoordinates: readonly number[];
   readonly timelineTimestamps: readonly number[];
@@ -23,4 +26,5 @@ export interface PointDataset {
   readonly skippedRowCount: number;
   readonly bounds: CoordinateBounds;
   readonly timeBounds: TimeBounds;
+  readonly processedMotion?: PositionSamples & {readonly timeBounds: TimeBounds};
 }

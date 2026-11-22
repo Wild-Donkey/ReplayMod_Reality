@@ -22,7 +22,7 @@ export function refineMotionAlignment(samples: readonly OrientationSample[], poi
     }).filter((s): s is {t:number;yaw:number} => s !== null).sort((a,b) => a.t-b.t);
   const gps = points.filter(p => [p.timeSeconds,p.longitude,p.latitude].every(Number.isFinite))
     .sort((a,b) => a.timeSeconds-b.timeSeconds);
-  if (imu.length < 10 || gps.length < 8) return manual("运动样本不足，已使用输入偏移。");
+  if (imu.length < 10 || gps.length < 8) return manual("姿态或 GPS 样本不足，保留输入值。");
   const end = imu.at(-1)!.t - 2;
   const heading = (time: number) => {
     let low=0, high=imu.length-1;
@@ -37,9 +37,9 @@ export function refineMotionAlignment(samples: readonly OrientationSample[], poi
     if(start<8 || stop>end-3 || dt<=0 || dt>15 || Math.hypot(east,north)*111195<10) return [];
     return [{start:a.timeSeconds,stop:b.timeSeconds,heading:Math.atan2(east,north),dt}];
   });
-  if(intervals.length<7) return manual("有效 GPS 转向片段不足，已使用输入偏移。");
+  if(intervals.length<7) return manual("有效 GPS 转向片段不足，保留输入值。");
   const variation = intervals.slice(1).reduce((sum,r,i)=>sum+Math.abs(wrap(r.heading-intervals[i].heading)),0);
-  if(variation<15*Math.PI/180) return manual("转向特征不明显，已使用输入偏移。");
+  if(variation<15*Math.PI/180) return manual("转向特征不明显，保留输入值。");
   const score=(offset:number,sign:number,subset=intervals) => {
     const residuals=subset.map(r=>{
       let x=0,y=0;
@@ -54,10 +54,10 @@ export function refineMotionAlignment(samples: readonly OrientationSample[], poi
   })).sort((a,b)=>a.error-b.error);
   const best=choices[0],baseline=score(estimate,best.sign);
   if(best.offset===estimate || Math.abs(best.offset-estimate)===3 || baseline<1e-8 || best.error>baseline*.8)
-    return manual("未找到稳定的小幅修正，已使用输入偏移。");
+    return manual("未找到稳定的小幅修正，保留输入值。");
   const halves=[intervals.slice(0,Math.ceil(intervals.length/2)),intervals.slice(Math.ceil(intervals.length/2))];
   if(halves.some(part=>score(best.offset,best.sign,part)>=score(estimate,best.sign,part)))
-    return manual("前后片段的修正不一致，已使用输入偏移。");
-  if(Math.sqrt(best.error)>8*Math.PI/180) return manual("镜头运动与轨迹差异较大，已使用输入偏移。");
+    return manual("前后片段的修正不一致，保留输入值。");
+  if(Math.sqrt(best.error)>8*Math.PI/180) return manual("镜头运动与轨迹差异较大，保留输入值。");
   return {offsetSeconds:best.offset,adjustmentSeconds:best.offset-estimate,refined:true,reason:"已按前后转向片段自动微调。"};
 }

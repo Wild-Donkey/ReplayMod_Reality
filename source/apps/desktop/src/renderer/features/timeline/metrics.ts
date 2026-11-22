@@ -1,4 +1,5 @@
 import type { PointDataset } from "../../../../../../packages/data/src";
+import type { PositionSamples } from "../../../../../../packages/data/src/points";
 
 export interface TimelineMetricsSettings {
   mode: "speed" | "density";
@@ -40,15 +41,15 @@ interface PositionSegment {
 
 // Only segments touched by the visible window are constructed. Each segment
 // depends solely on its two endpoints, never on neighbouring segment speeds.
-const positionCache = new WeakMap<PointDataset, Map<number, PositionSegment>>();
+const positionCache = new WeakMap<PositionSamples, Map<number, PositionSegment>>();
 const EARTH_RADIUS = 6371000;
-function position(dataset: PointDataset, index: number): Vector {
+function position(dataset: PositionSamples, index: number): Vector {
   const lon = dataset.footprintCoordinates[index * 2] * Math.PI / 180;
   const lat = dataset.footprintCoordinates[index * 2 + 1] * Math.PI / 180;
   return [EARTH_RADIUS * Math.cos(lat) * Math.cos(lon), EARTH_RADIUS * Math.cos(lat) * Math.sin(lon), EARTH_RADIUS * Math.sin(lat)];
 }
 
-function segmentAt(dataset: PointDataset, time: number): PositionSegment | null {
+function segmentAt(dataset: PositionSamples, time: number, maxGapMs = Infinity): PositionSegment | null {
   const times = dataset.footprintTimestamps;
   if (times.length < 2 || time < times[0] || time > times[times.length - 1]) return null;
   // Upper bound selects the last fix when multiple fixes share a timestamp.
@@ -64,7 +65,7 @@ function segmentAt(dataset: PointDataset, time: number): PositionSegment | null 
     while (index > 0 && times[index - 1] === times[index]) index--;
     index--;
   }
-  if (index < 0 || times[index + 1] <= times[index]) return null;
+  if (index < 0 || times[index + 1] <= times[index] || times[index + 1] - times[index] > maxGapMs) return null;
   let cache = positionCache.get(dataset);
   if (!cache) { cache = new Map(); positionCache.set(dataset, cache); }
   const hit = cache.get(index);
@@ -84,7 +85,8 @@ function segmentAt(dataset: PointDataset, time: number): PositionSegment | null 
  * derivative (and the left-hand derivative at the final point).
  */
 export function interpolatedMotion(dataset: PointDataset, time: number): { position: Vector; velocity: Vector } | null {
-  const segment = segmentAt(dataset, time);
+  const processed = processedSamplesAt(dataset, time);
+  const segment = processed ? segmentAt(processed, time, 10_000) : segmentAt(dataset, time);
   if (!segment) return null;
   const seconds = (segment.end - segment.start) / 1000;
   const u = (time - segment.start) / (segment.end - segment.start);
@@ -93,10 +95,25 @@ export function interpolatedMotion(dataset: PointDataset, time: number): { posit
   return { position: p as unknown as Vector, velocity: v as unknown as Vector };
 }
 
+function processedSamplesAt(dataset: PointDataset, time: number) {
+  const processed = dataset.processedMotion;
+  return processed && time >= processed.timeBounds[0] && time <= processed.timeBounds[1] ? processed : undefined;
+}
+
+export function hasProcessedCoverage(dataset: PointDataset, time: number) {
+  const processed = processedSamplesAt(dataset, time);
+  return !processed || segmentAt(processed, time, 10_000) !== null;
+}
+
 export function continuousSpeed(dataset: PointDataset, time: number): number | null {
-  const motion = interpolatedMotion(dataset, time);
-  if (!motion || !motion.velocity.every(Number.isFinite)) return null;
-  return Math.hypot(...motion.velocity) * 3.6;
+  const processed = processedSamplesAt(dataset, time);
+  return speedAt(processed ?? dataset, time, Boolean(processed));
+}
+
+function speedAt(samples: PositionSamples, time: number, processed: boolean) {
+  const segment = segmentAt(samples, time, processed ? 10_000 : Infinity);
+  if (!segment || !segment.delta.every(Number.isFinite)) return null;
+  return Math.hypot(...segment.delta) * 3600 / (segment.end - segment.start);
 }
 
 // Dataset ownership permits automatic reclamation. Both caches are bounded LRU;
@@ -229,21 +246,53 @@ export function smoothDisplayValues(values: Float64Array, sigma: number): Float6
   return result;
 }
 const smoothSpeedCache = new WeakMap<PointDataset, Map<string, [number, number | null][]>>();
+const speedDisplayCache = new WeakMap<PositionSamples, Map<number, number>>();
+const SPEED_SAMPLE_MS = 250;
+const SPEED_WEIGHTS = Array.from({length: 13}, (_, index) => Math.exp(-0.5 * (index / 5) ** 2));
+
+export function smoothedSpeed(dataset: PointDataset, time: number): number | null {
+  const processed = processedSamplesAt(dataset, time);
+  const samples = processed ?? dataset;
+  const sampleSpeed = (timeMs: number) => speedAt(samples, timeMs, Boolean(processed));
+  const center = sampleSpeed(time);
+  if (center === null || center === 0) return center;
+  let cache = speedDisplayCache.get(samples);
+  if (!cache) { cache = new Map(); speedDisplayCache.set(samples, cache); }
+  const gridSpeed = (timeMs: number) => {
+    const existing = cache.get(timeMs);
+    if (existing !== undefined) return existing;
+    const speed = sampleSpeed(timeMs);
+    if (speed === null) return NaN;
+    if (speed === 0) return remember(cache, timeMs, 0, 32768);
+    let sum = speed, weight = 1;
+    for (const direction of [-1, 1]) {
+      for (let index = 1; index < SPEED_WEIGHTS.length; index++) {
+        const sample = sampleSpeed(timeMs + direction * index * SPEED_SAMPLE_MS);
+        if (sample === null) break;
+        sum += sample * SPEED_WEIGHTS[index];
+        weight += SPEED_WEIGHTS[index];
+      }
+    }
+    return remember(cache, timeMs, sum / weight, 32768);
+  };
+  const lowerTime = Math.floor(time / SPEED_SAMPLE_MS) * SPEED_SAMPLE_MS;
+  const lower = gridSpeed(lowerTime), upper = gridSpeed(lowerTime + SPEED_SAMPLE_MS);
+  if (!Number.isFinite(lower)) return Number.isFinite(upper) ? upper : center;
+  if (!Number.isFinite(upper)) return lower;
+  return lower + (upper - lower) * (time - lowerTime) / SPEED_SAMPLE_MS;
+}
+
 export function smoothSpeedCurve(dataset: PointDataset, start: number, end: number, count: number): [number, number | null][] {
   let cache = smoothSpeedCache.get(dataset);
   if (!cache) { cache = new Map(); smoothSpeedCache.set(dataset, cache); }
   const key = `${start}:${end}:${count}`;
   const hit = cache.get(key);
   if (hit) return remember(cache, key, hit, 16);
-  // Two samples per pixel: sigma 2 samples is roughly one display pixel.
-  const halo = 6;
   const step = (end - start) / count;
-  const raw = metricCurve(dataset, "speed", start - step * halo, end + step * halo, count + halo * 2, 0);
-  const filtered = smoothDisplayValues(raw, 2);
   const data: [number, number | null][] = [];
   for (let i = 0; i <= count; i++) {
-    const value = filtered[i + halo];
-    data.push([start + step * i, Number.isFinite(value) ? value : null]);
+    const time = start + step * i;
+    data.push([time, smoothedSpeed(dataset, time)]);
   }
   return remember(cache, key, data, 16);
 }
