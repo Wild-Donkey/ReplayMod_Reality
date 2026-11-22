@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { PointDataset, TimeBounds } from "../../../../../../packages/data/src";
 import { TrajectoryBuffer } from "../../render-engine/buffers/TrajectoryBuffer";
@@ -6,14 +6,15 @@ import type { ReplayMetricSeries } from "../../render-engine/MetricSeries";
 import { MetricCanvasFallback } from "../../render-engine/MetricCanvasFallback";
 import { useReplayVisual } from "../../render-engine/useReplayVisual";
 import type { ReplayScene } from "../../render-engine/ReplayScene";
-import { smoothSpeedCurve, metricCurve, continuousSpeed, continuousDensity, type TimelineMetricsSettings } from "./metrics";
+import { smoothSpeedCurve, metricCurve, smoothedSpeed, continuousDensity, type TimelineMetricsSettings } from "./metrics";
 
-export function MetricChart({ scene, dataset, viewRange, metrics, axisContainer }: {
+export function MetricChart({ scene, dataset, viewRange: requestedRange, metrics, axisContainer }: {
   scene: ReplayScene; dataset: PointDataset | null; viewRange: TimeBounds | null; metrics: TimelineMetricsSettings; axisContainer: RefObject<HTMLDivElement | null>;
 }) {
   const [width, setWidth] = useState(0);
   const [hover, setHover] = useState<{ x: number; y: number; time: number; value: number | null } | null>(null);
   const element = useRef<HTMLDivElement>(null);
+  const viewRange = useDeferredValue(requestedRange);
   const engineVisual = useReplayVisual(scene, "timeline");
   const density = metrics.mode === "density";
   useEffect(() => {
@@ -72,7 +73,7 @@ export function MetricChart({ scene, dataset, viewRange, metrics, axisContainer 
         const time = picked?.timestamp ?? viewRange[0] + ratio * (viewRange[1] - viewRange[0]);
         const value = density
           ? continuousDensity(dataset.footprintTimestamps, time, (metrics.densitySmoothingSeconds ?? 60) * 1000)
-          : continuousSpeed(dataset, time);
+          : smoothedSpeed(dataset, time);
         setHover({ x: event.clientX, y: rect.top, time, value });
       }}
       onPointerLeave={() => setHover(null)}
@@ -89,7 +90,7 @@ export function MetricChart({ scene, dataset, viewRange, metrics, axisContainer 
         background: "#18202af5", color: "#edf4ff", fontSize: 11, lineHeight: "18px", fontVariantNumeric: "tabular-nums",
       }}>
         <div>{new Date(hover.time).toLocaleString("zh-CN", { hour12: false })}.{String(Math.floor(hover.time) % 1000).padStart(3, "0")}</div>
-        <div>{density ? "时间密度" : "瞬时速度"}：{hover.value === null ? "无定位数据" : `${hover.value.toLocaleString("zh-CN", { maximumFractionDigits: 4 })} ${density ? "点/分钟" : "km/h"}`}</div>
+        <div>{density ? "时间密度" : "速度"}：{hover.value === null ? "无定位数据" : `${hover.value.toLocaleString("zh-CN", { maximumFractionDigits: 4 })} ${density ? "点/分钟" : "km/h"}`}</div>
       </div>, document.body)}
     </>}
   </>;

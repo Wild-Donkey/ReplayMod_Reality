@@ -1970,12 +1970,17 @@ h2.section-label { margin: 0; }
 .astronomy-playhead { stroke: #fff; stroke-width: 1.5; }
 .astronomy-hours { display: flex; justify-content: space-between; margin-left: 35px; color: #bbb; font-size: 10px; }
 .astronomy-time-range { width: calc(100% - 35px); height: 14px; margin: 0 0 0 35px; accent-color: #d8e4f4; cursor: ew-resize; }
-.media-alignment { margin-top: 18px; padding: 14px 11px 0; border-top: 1px solid rgba(128,128,128,.24); }
+.media-page h2.section-label:hover { color: var(--level-2); background: rgb(66 66 66 / 38%); }
+.media-page .library-section + .library-section { margin-top: 8px; }
+.media-alignment { padding: 0 11px 10px; }
 .media-alignment label { display: block; margin: 10px 0 6px; font-size: 12px; }
 .alignment-controls { display: flex; gap: 8px; }
 .alignment-controls input { min-width: 0; width: 90px; flex: 1; padding: 8px; border: 1px solid rgba(128,128,128,.4); border-radius: 6px; background: transparent; color: inherit; font: inherit; }
 .alignment-controls button { padding: 8px 10px; border: 1px solid rgba(128,128,128,.4); border-radius: 6px; background: transparent; color: inherit; cursor: pointer; white-space: nowrap; }
 .alignment-controls button:disabled { opacity: .5; cursor: default; }
+.alignment-slider { display: block; width: 100%; margin: 8px 0 0; accent-color: #d8e4f4; cursor: ew-resize; }
+.alignment-slider:disabled { cursor: default; }
+.alignment-slider-ticks { display: flex; justify-content: space-between; padding: 0 3px; color: #aaa; font-size: 10px; }
 .alignment-hint { font-size: 11px; line-height: 1.6; opacity: .7; margin: 8px 0; }
 .alignment-result { margin-top: 12px; font-size: 12px; line-height: 1.6; }
 .alignment-result p { margin: 6px 0; }
@@ -1985,7 +1990,8 @@ h2.section-label { margin: 0; }
 .video-preview-frame {position:relative;width:min(100cqw,calc(100cqh * 16 / 9));aspect-ratio:16/9;background:#000;}
 .video-preview-frame video,.video-preview-overlay,.video-preview-overlay canvas {position:absolute;inset:0;width:100%;height:100%;display:block;border:0;padding:0;background:transparent;object-fit:contain;}
 .video-preview-overlay {pointer-events:none;}
-.video-preview-error {position:absolute;top:12px;left:16px;color:#ddd;background:#222;padding:8px;}
+.video-preview-status {position:absolute;top:12px;left:16px;color:#ddd;background:#222;padding:8px;pointer-events:none;}
+.video-preview-status button { margin-left:8px; pointer-events:auto; cursor:pointer; }
 .media-workspace .titlebar-map-tools > .tool-button,.media-workspace .titlebar-legend-slot {display:none;}
 
 .audio-text-editor { display: flex; flex-direction: column; width: min(1140px, 96vw); height: min(900px, calc(100dvh - 68px)); max-height: calc(100dvh - 68px); overflow: hidden; }

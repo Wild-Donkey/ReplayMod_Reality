@@ -7,6 +7,7 @@ import { createPortal } from "react-dom";
 import { timelineWheelRange } from "./gestures";
 import { pixelDensity, type TimelineMetricsSettings } from "./metrics";
 import { MetricChart } from "./MetricChart";
+import { formatMediaTime } from "../../shared/mediaTimeDisplay";
 import { useCachedState } from "../../shared/cache";
 import {
   type PointerEvent,
@@ -25,7 +26,7 @@ const PAN_DECELERATION = 8;
 const PAN_STOP_THRESHOLD = 0.001;
 const TARGET_TICK_SPACING = 105;
 
-type TickUnit = "minute" | "hour" | "day" | "month" | "year";
+type TickUnit = "second" | "minute" | "hour" | "day" | "month" | "year";
 
 interface TickScale {
   readonly unit: TickUnit;
@@ -34,6 +35,11 @@ interface TickScale {
 }
 
 const TICK_SCALES: readonly TickScale[] = [
+  { unit: "second", step: 1, approximateMilliseconds: 1_000 },
+  { unit: "second", step: 2, approximateMilliseconds: 2_000 },
+  { unit: "second", step: 5, approximateMilliseconds: 5_000 },
+  { unit: "second", step: 10, approximateMilliseconds: 10_000 },
+  { unit: "second", step: 30, approximateMilliseconds: 30_000 },
   { unit: "minute", step: 1, approximateMilliseconds: 60_000 },
   { unit: "minute", step: 2, approximateMilliseconds: 120_000 },
   { unit: "minute", step: 5, approximateMilliseconds: 300_000 },
@@ -99,6 +105,7 @@ const formatTimelineDate = (timestamp: number, span: number) => {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    ...(span < 10 * 60_000 ? {second: "2-digit"} : {}),
     hour12: false,
   });
 };
@@ -120,7 +127,9 @@ const chooseTickScale = (span: number, width: number) => {
 const floorTick = (timestamp: number, scale: TickScale) => {
   const date = new Date(timestamp);
 
-  if (scale.unit === "minute") {
+  if (scale.unit === "second") {
+    return Math.floor(timestamp / scale.approximateMilliseconds) * scale.approximateMilliseconds;
+  } else if (scale.unit === "minute") {
     date.setSeconds(0, 0);
     date.setMinutes(
       Math.floor(date.getMinutes() / scale.step) * scale.step,
@@ -160,7 +169,9 @@ const floorTick = (timestamp: number, scale: TickScale) => {
 const advanceTick = (timestamp: number, scale: TickScale) => {
   const date = new Date(timestamp);
 
-  if (scale.unit === "minute") {
+  if (scale.unit === "second") {
+    return timestamp + scale.approximateMilliseconds;
+  } else if (scale.unit === "minute") {
     date.setMinutes(date.getMinutes() + scale.step);
   } else if (scale.unit === "hour") {
     date.setHours(date.getHours() + scale.step);
@@ -177,6 +188,9 @@ const advanceTick = (timestamp: number, scale: TickScale) => {
 
 const formatTickLabel = (timestamp: number, scale: TickScale) => {
   const date = new Date(timestamp);
+  if (scale.unit === "second") {
+    return date.toLocaleTimeString("zh-CN", {hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false});
+  }
 
   if (scale.unit === "year") {
     return `${date.getFullYear()}`;
@@ -328,7 +342,7 @@ function TimelineCanvas({
     context.fillRect(0, rulerHeight, size.width, trackHeight);
 
 
-    if (!dataset || !viewRange) {
+    if (!viewRange) {
       context.fillStyle = "#777";
       context.font = '12px "Microsoft YaHei UI", sans-serif';
       context.textAlign = "center";
@@ -376,7 +390,7 @@ function TimelineCanvas({
 
   }, [dataset, size, viewRange, metrics]);
 
-  const selectionStyle = selectionRange && viewRange
+  const selectionStyle = selectionRange && viewRange && selectionRange[0] < viewRange[1] && selectionRange[1] > viewRange[0]
     ? {
         left: `${Math.max(0, (selectionRange[0] - viewRange[0]) / (viewRange[1] - viewRange[0]) * 100)}%`,
         right: `${Math.max(0, (viewRange[1] - selectionRange[1]) / (viewRange[1] - viewRange[0]) * 100)}%`,
@@ -392,7 +406,7 @@ function TimelineCanvas({
       : null;
 
   const updateCurrentTime = (event: PointerEvent<HTMLDivElement>) => {
-    if (!dataset || !viewRange) {
+    if (!viewRange) {
       return;
     }
 
@@ -467,6 +481,8 @@ interface TimelineProps {
   onTogglePlayback: () => void;
   onStepFrame: (direction: -1 | 1) => void;
   dataset: PointDataset | null;
+  mediaRange?: TimeBounds | null;
+  mediaOffsetMs?: number;
   currentTime: number | null;
   onCurrentTimeChange: (timestamp: number) => void;
   onHoverTimeChange?: (timestamp: number | null) => void;
@@ -486,6 +502,8 @@ export function Timeline({
   onTogglePlayback,
   onStepFrame,
   dataset,
+  mediaRange = null,
+  mediaOffsetMs = 0,
   currentTime,
   onCurrentTimeChange,
   onHoverTimeChange,
@@ -501,11 +519,19 @@ export function Timeline({
   const panVelocityRef = useRef(0);
   const panFrameRef = useRef<number | null>(null);
   const lastPanFrameTimeRef = useRef<number | null>(null);
-  const [viewRange, setViewRange] = useCachedState<TimeBounds | null>("timeline-view", null);
+  const [trajectoryView, setTrajectoryView] = useCachedState<TimeBounds | null>("timeline-view", null);
+  const [mediaView, setMediaView] = useState<TimeBounds | null>(mediaRange);
+  const unshiftedView = mediaRange ? mediaView ?? mediaRange : trajectoryView;
+  // Pan and zoom in the clip's stored time domain, then display the draft time.
+  const viewRange = useMemo<TimeBounds | null>(() => unshiftedView && mediaOffsetMs !== 0
+    ? [unshiftedView[0] + mediaOffsetMs, unshiftedView[1] + mediaOffsetMs] : unshiftedView, [unshiftedView, mediaOffsetMs]);
+  const setViewRange = mediaRange ? setMediaView : setTrajectoryView;
+  const bounds = mediaRange ?? dataset?.timeBounds ?? null;
+  useEffect(() => { setMediaView(mediaRange); }, [mediaRange]);
 
   useEffect(() => {
     if (!dataset) return;
-    setViewRange(previous => previous && previous[0] >= dataset.timeBounds[0] && previous[1] <= dataset.timeBounds[1]
+    setTrajectoryView(previous => previous && previous[0] >= dataset.timeBounds[0] && previous[1] <= dataset.timeBounds[1]
       ? previous : dataset.timeBounds);
   }, [dataset]);
 
@@ -514,7 +540,7 @@ export function Timeline({
       return;
     }
 
-    setViewRange((currentRange) => {
+    setTrajectoryView((currentRange) => {
       const span = currentRange
         ? currentRange[1] - currentRange[0]
         : dataset.timeBounds[1] - dataset.timeBounds[0];
@@ -538,7 +564,7 @@ export function Timeline({
       panVelocityRef.current = 0;
     };
 
-    if (!dataset) {
+    if (!bounds) {
       stopPanAnimation();
       pressedPanKeysRef.current.clear();
       return;
@@ -580,7 +606,7 @@ export function Timeline({
           currentRange[0] +
             span * panVelocityRef.current * deltaSeconds,
           span,
-          dataset.timeBounds,
+          bounds,
         );
       });
 
@@ -648,7 +674,7 @@ export function Timeline({
       pressedPanKeysRef.current.clear();
       stopPanAnimation();
     };
-  }, [dataset]);
+  }, [bounds]);
 
   const visibleRangeLabel = useMemo(() => {
     if (!viewRange) {
@@ -659,10 +685,12 @@ export function Timeline({
     return `${formatTimelineDate(viewRange[0], span)} - ${formatTimelineDate(viewRange[1], span)}`;
   }, [viewRange]);
 
+  const mediaTimeline = mediaRange !== null;
   const currentTimeLabel = useMemo(() => {
     if (currentTime === null) {
       return "--";
     }
+    if (mediaTimeline) return formatMediaTime(currentTime, true);
 
     return new Date(currentTime).toLocaleString("zh-CN", {
       year: "numeric",
@@ -673,7 +701,7 @@ export function Timeline({
       second: "2-digit",
       hour12: false,
     });
-  }, [currentTime]);
+  }, [currentTime, mediaTimeline]);
 
   useEffect(() => {
     const timeline = timelineRef.current;
@@ -683,33 +711,33 @@ export function Timeline({
     }
 
     const handleWheel = (event: globalThis.WheelEvent) => {
-      if (!dataset || isEditableTarget(event.target)) return;
+      if (!bounds || isEditableTarget(event.target)) return;
       event.preventDefault();
       event.stopPropagation();
       const plot = timeline.querySelector(".timeline-canvas-shell") ?? timeline;
-      const bounds = plot.getBoundingClientRect();
-      const pointerRatio = (event.clientX - bounds.left) / Math.max(1, bounds.width);
+      const rect = plot.getBoundingClientRect();
+      const pointerRatio = (event.clientX - rect.left) / Math.max(1, rect.width);
       setViewRange(previous => previous
-        ? timelineWheelRange(previous, dataset.timeBounds, event, bounds.width, bounds.height, pointerRatio)
+        ? timelineWheelRange(previous, bounds, event, rect.width, rect.height, pointerRatio)
         : previous);
 
     };
 
     timeline.addEventListener("wheel", handleWheel, { passive: false, capture: true });
     return () => timeline.removeEventListener("wheel", handleWheel, true);
-  }, [dataset]);
+  }, [bounds]);
 
   return (
     <section ref={timelineRef} className="timeline" data-replay-renderer={engineMetric ? "engine" : undefined} data-density-renderer={engineDensity ? "engine" : undefined}>
       <header className="timeline-toolbar">
         <div className="playback-controls">
-          <button type="button" aria-label="上一帧" disabled={!dataset} onClick={() => onStepFrame(-1)}>
+          <button type="button" aria-label="上一帧" disabled={!bounds} onClick={() => onStepFrame(-1)}>
             |&lt;
           </button>
-          <button className="play-button" type="button" aria-label={playing ? "暂停" : "播放"} disabled={!dataset} onClick={onTogglePlayback}>
+          <button className="play-button" type="button" aria-label={playing ? "暂停" : "播放"} disabled={!bounds} onClick={onTogglePlayback}>
             {playing ? "Ⅱ" : ">"}
           </button>
-          <button type="button" aria-label="下一帧" disabled={!dataset} onClick={() => onStepFrame(1)}>
+          <button type="button" aria-label="下一帧" disabled={!bounds} onClick={() => onStepFrame(1)}>
             &gt;|
           </button>
         </div>
@@ -719,8 +747,8 @@ export function Timeline({
           <span>横滚移动 · 竖滚/双指缩放 · Q/E 移动</span>
           <button
             type="button"
-            disabled={!dataset}
-            onClick={() => setViewRange(dataset?.timeBounds ?? null)}
+            disabled={!bounds}
+            onClick={() => setViewRange(bounds)}
           >
             适配
           </button>

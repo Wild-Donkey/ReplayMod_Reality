@@ -1,6 +1,12 @@
 import type { AppSettings } from "./settings";
 import type { ConfirmedFlightsFile } from "./confirmedFlight";
 
+export interface MediaClockAdjustment {
+  readonly size: number;
+  readonly containerTime: number;
+  readonly residualMs: number;
+}
+
 export interface UserArchive {
   readonly format: "replaymod.user-archive";
   readonly version: 1;
@@ -10,6 +16,7 @@ export interface UserArchive {
   readonly lastDatasetSource?: { readonly mainFilePath: string; readonly photoFilePath: string | null };
   readonly lastDatasetCacheKey?: string;
   readonly lastMedia?: unknown;
+  readonly mediaClockAdjustments?: Readonly<Record<string, readonly MediaClockAdjustment[]>>;
   readonly flights?: ConfirmedFlightsFile;
   readonly services: {
     readonly airportsUpdatedAt?: string;

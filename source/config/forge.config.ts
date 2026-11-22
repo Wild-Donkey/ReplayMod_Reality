@@ -38,6 +38,11 @@ const config: ForgeConfig = {
           target: "main",
         },
         {
+          entry: "apps/desktop/src/main/trajectoryWorker.ts",
+          config: "config/vite/main.config.ts",
+          target: "main",
+        },
+        {
           entry: "apps/desktop/src/preload/preload.ts",
           config: "config/vite/preload.config.ts",
           target: "preload",
