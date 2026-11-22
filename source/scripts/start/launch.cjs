@@ -2,6 +2,7 @@
 // One startup flow shared by the platform-specific double-click entry points.
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 const { spawn } = require('node:child_process');
 const root = path.resolve(__dirname, '../..');
 process.chdir(root);
@@ -12,17 +13,23 @@ const toolDirectories = [
 ].map(directory => path.resolve(root, directory));
 process.env.PATH = [...toolDirectories, process.env.PATH || ''].join(path.delimiter);
 
-const runNpm = args => new Promise((resolve, reject) => {
-  // All arguments are fixed by this file; cmd.exe is required for npm.cmd.
-  const child = spawn(process.platform === 'win32' ? 'npm.cmd' : 'npm', args, {
-    cwd: root, env: process.env, stdio: 'inherit', shell: process.platform === 'win32',
-  });
+const run = (command, args, options = {}) => new Promise((resolve, reject) => {
+  const child = spawn(command, args, {cwd: root, env: process.env, stdio: 'inherit', ...options});
   child.on('error', reject);
   child.on('exit', (code, signal) => {
     if (code === 0) resolve();
-    else reject(new Error(`npm ${args.join(' ')} stopped (${signal || code}).`));
+    else reject(new Error(`${path.basename(command)} stopped (${signal || code}).`));
   });
 });
+
+function logDirectory() {
+  const home = os.homedir();
+  const appData = {
+    darwin: path.join(home, 'Library', 'Application Support'),
+    win32: process.env.APPDATA || path.join(home, 'AppData', 'Roaming'),
+  }[process.platform] || process.env.XDG_CONFIG_HOME || path.join(home, '.config');
+  return path.join(appData, 'ReplayMod Reality');
+}
 
 async function main() {
   const [major, minor] = process.versions.node.split('.').map(Number);
@@ -31,8 +38,8 @@ async function main() {
   }
   const electronBinary = process.platform === 'darwin' ? 'Electron.app/Contents/MacOS/Electron'
     : process.platform === 'win32' ? 'electron.exe' : 'electron';
-  const installed = fs.existsSync(path.join(root, 'node_modules/electron/dist', electronBinary))
-    && fs.existsSync(path.join(root, 'node_modules/@electron-forge/cli/dist/electron-forge.js'));
+  const forgeCli = path.join(root, 'node_modules/@electron-forge/cli/dist/electron-forge.js');
+  const installed = fs.existsSync(path.join(root, 'node_modules/electron/dist', electronBinary)) && fs.existsSync(forgeCli);
   console.log(`ReplayMod Reality | ${process.platform}/${process.arch} | Node ${process.versions.node}`);
   console.log(`Project: ${root}`);
   if (process.argv.includes('--check')) {
@@ -41,10 +48,24 @@ async function main() {
   }
   if (!installed) {
     console.log('Installing project dependencies for this computer (network required)...');
-    await runNpm(['ci']);
+    // Windows requires a command shell to execute npm.cmd.
+    const windows = process.platform === 'win32';
+    await run(windows ? 'npm.cmd' : 'npm', ['ci'], {shell: windows});
   }
-  console.log('Starting desktop app. Keep this terminal open while using the app.');
-  await runNpm(['start']);
+  const directory = logDirectory();
+  fs.mkdirSync(directory, {recursive: true, mode: 0o700});
+  const logPath = path.join(directory, 'desktop-start.log');
+  console.log(`Desktop startup log: ${logPath}`);
+  const log = fs.openSync(logPath, 'a', 0o600);
+  try {
+    fs.writeSync(log, `\n[${new Date().toISOString()}] Starting ReplayMod Reality\n`);
+    // Give Forge and Electron a file descriptor that survives terminal closure.
+    await run(process.execPath, [forgeCli, 'start', ...process.argv.slice(2)], {stdio: ['inherit', log, log]});
+  } catch (error) {
+    throw new Error(`${error.message} See ${logPath}`, {cause: error});
+  } finally {
+    fs.closeSync(log);
+  }
 }
 main().catch(error => {
   console.error(`\nUnable to start: ${error.message}`);

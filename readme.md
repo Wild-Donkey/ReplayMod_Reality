@@ -48,7 +48,7 @@ Windows 如果 PowerShell 阻止执行 npm 脚本，可将 `npm` 换成 `npm.cmd
 | Windows | 双击 `Start-Windows.cmd` |
 | Linux | 执行 `./Start-Linux.sh` |
 
-启动后保持终端窗口打开。首次进入应用时输入 MapTiler API Key，配置会保存到本机，所有启动方式共用。macOS 当前原生窗口背景模块还需要 Xcode Command Line Tools 与 Node.js C headers。
+启动后保持终端窗口打开。启动日志写入 `desktop-start.log`，终端会显示文件路径。首次进入应用时输入 MapTiler API Key，配置会保存到本机，所有启动方式共用。macOS 当前原生窗口背景模块还需要 Xcode Command Line Tools 与 Node.js C headers。
 
 macOS 可双击 `Install-MacOS.command`，打包并安装到 `~/Applications/ReplayMod Reality.app`；更新前退出旧版。其他打包方式、本地工具链与启动排错见 [安装与开发](docs/development.md)。视频与字幕工具按需准备，见 [媒体处理](docs/media.md)。
 

@@ -1,3 +1,4 @@
+import "./guardStdio";
 import {processMotionGps} from "../../../../packages/media/src/gps-motion";
 import {PROCESS_GPS_CHANNEL,type MotionGpsRequest,type MotionGpsResult} from "../shared/mediaAlignment";
 import {restoreDataset,resolveDatasetSource} from "./restoreDataset";
@@ -75,8 +76,14 @@ ipcMain.handle("export:offline-cancel", (event, id: string) => offlineExports.ca
 app.on("web-contents-created", (_event, contents) => {
   const cancel = () => { void offlineExports.cancelOwner(contents.id); };
   contents.once("destroyed", cancel);
-  contents.on("render-process-gone", cancel);
+  contents.on("render-process-gone", (_event, details) => {
+    if (details.reason !== "clean-exit") console.error("Renderer exited", details.reason, details.exitCode);
+    cancel();
+  });
   contents.on("did-start-navigation", (_navigation, _url, inPlace, mainFrame) => { if (mainFrame && !inPlace) cancel(); });
+});
+app.on("child-process-gone", (_event, details) => {
+  if (details.type === "GPU" && details.reason !== "clean-exit") console.error("GPU process exited", details.reason, details.exitCode);
 });
 let quittingOfflineExports = false;
 app.on("before-quit", event => {
@@ -1037,16 +1044,19 @@ const createWindow = (): void => {
     return { action: "deny" };
   });
 
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    void mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-  } else {
-    void mainWindow.loadFile(
+  const page = MAIN_WINDOW_VITE_DEV_SERVER_URL
+    ? mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL)
+    : mainWindow.loadFile(
       path.join(
         __dirname,
         `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
       ),
     );
-  }
+  void page.catch(error => {
+    if (mainWindow.isDestroyed()) return;
+    console.error("Failed to load the ReplayMod Reality window", error);
+    app.quit();
+  });
 };
 
 void app.whenReady().then(() => {
@@ -1059,6 +1069,27 @@ void app.whenReady().then(() => {
   installMediaPreviewProtocol(openedMediaPaths);
   installDisplayHDR();
   installMacMenu();
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    // Forge owns the renderer server. Release the single-instance lock when it exits.
+    const forgePid = process.ppid;
+    const checkForge = () => {
+      if (process.platform !== "win32") return process.ppid > 1 && process.ppid === forgePid;
+      try {
+        process.kill(forgePid, 0);
+        return true;
+      } catch (error) {
+        return (error as NodeJS.ErrnoException).code !== "ESRCH";
+      }
+    };
+    if (!checkForge()) { app.quit(); return; }
+    const watchdog = setInterval(() => {
+      if (checkForge()) return;
+      clearInterval(watchdog);
+      app.quit();
+    }, 1000);
+    watchdog.unref();
+    app.once("quit", () => clearInterval(watchdog));
+  }
   createWindow();
 
   app.on("activate", () => {
