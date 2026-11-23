@@ -3,6 +3,8 @@ import {GPS_RESULT_CHANNEL,POST_GPS_CHANNEL,type MotionGpsRequest,type MotionGps
 import { LatestJobQueue } from "./latestJobQueue";
 import type { TrajectoryWorkerInput, TrajectoryWorkerOutput } from "./trajectoryWorker";
 import { Worker } from "node:worker_threads";
+import { killChildren, stopChildren } from "../../../../packages/media/src/childProcesses";
+import { installShutdown } from "./shutdown";
 import {restoreDataset,resolveDatasetSource} from "./restoreDataset";
 import {LocalSpeech} from "./localSpeech";
 import { renderAudioEdit, saveRecordedAudio } from "../../../../packages/media/src/audio-edit";
@@ -74,7 +76,8 @@ ipcMain.handle("export:offline-segment", (event, id: string, segment: number) =>
 ipcMain.handle("export:offline-complete", (event, id: string) => offlineExports.complete(event.sender.id, id));
 ipcMain.handle("export:offline-cancel", (event, id: string) => offlineExports.cancel(event.sender.id, id));
 app.on("web-contents-created", (_event, contents) => {
-  const cancel = () => { void offlineExports.cancelOwner(contents.id); };
+  const owner = contents.id;
+  const cancel = () => { void offlineExports.cancelOwner(owner); };
   contents.once("destroyed", cancel);
   contents.on("render-process-gone", (_event, details) => {
     if (details.reason !== "clean-exit") console.error("Renderer exited", details.reason, details.exitCode);
@@ -85,13 +88,6 @@ app.on("web-contents-created", (_event, contents) => {
 app.on("child-process-gone", (_event, details) => {
   if (details.type === "GPU" && details.reason !== "clean-exit") console.error("GPU process exited", details.reason, details.exitCode);
 });
-let quittingOfflineExports = false;
-app.on("before-quit", event => {
-  if (quittingOfflineExports || !offlineExports.active) return;
-  event.preventDefault(); quittingOfflineExports = true;
-  void offlineExports.cancelAll().then(() => app.quit(), () => app.quit());
-});
-
 app.setName("ReplayMod Reality");
 process.title = "ReplayMod Reality";
 
@@ -105,7 +101,6 @@ if (!app.requestSingleInstanceLock()) process.exit(0);
 
 const storage = new AppStorage(platform, home, appData, env);
 const localSpeech = new LocalSpeech(app.getAppPath(),process.resourcesPath,app.isPackaged,storage.paths.localSpeech);
-app.on("will-quit",()=>localSpeech.close());
 ipcMain.handle("speech:status",()=>localSpeech.status());
 ipcMain.handle("speech:download",(event,id:string)=>localSpeech.download(id,update=>{if(!event.sender.isDestroyed())event.sender.send("speech:progress",update);}));
 ipcMain.handle("speech:select",(_event,role:"asr"|"aligner",id:string)=>localSpeech.select(role,id));
@@ -132,15 +127,6 @@ const updateUserArchive = (change: (current: UserArchive) => UserArchive) => {
   storage.archive.write(next);
   userArchive = next;
 };
-let cacheDrained = false;
-app.on("will-quit", event => {
-  if (cacheDrained) return;
-  event.preventDefault();
-  void screeningMigration.then(() => resources.drain()).finally(() => {
-    cacheDrained = true;
-    app.quit();
-  });
-});
 app.on("second-instance", () => {
   const window = BrowserWindow.getAllWindows()[0];
   if (!window) {
@@ -759,6 +745,17 @@ ipcMain.handle(OPEN_MEDIA_CHANNEL, async (): Promise<MediaSource | null> => {
 
 let trajectoryWorker: Worker | undefined;
 
+async function closeTrajectoryWorker() {
+  const worker = trajectoryWorker;
+  if (!worker) return;
+  await new Promise<void>(resolve => {
+    // The worker first stops ExifTool. Termination covers synchronous computation.
+    const deadline = setTimeout(() => { void worker.terminate().catch(console.error); }, 2500);
+    worker.once("exit", () => { clearTimeout(deadline); resolve(); });
+    worker.postMessage({shutdown: true});
+  });
+}
+
 function runTrajectoryWorker(input: TrajectoryWorkerInput): Promise<MotionGpsResult> {
   if (!trajectoryWorker) {
     const worker = new Worker(path.join(__dirname, "trajectoryWorker.js"));
@@ -792,8 +789,6 @@ function runTrajectoryWorker(input: TrajectoryWorkerInput): Promise<MotionGpsRes
     catch (error) { onError(error); }
   });
 }
-app.once("will-quit", () => { void trajectoryWorker?.terminate(); });
-
 const gpsJobs = new LatestJobQueue<{sender: Electron.WebContents; id: string; request: MotionGpsRequest}>(async (
   {sender, id, request}, isCurrent,
 ) => {
@@ -832,6 +827,7 @@ const gpsJobs = new LatestJobQueue<{sender: Electron.WebContents; id: string; re
 });
 
 ipcMain.on(POST_GPS_CHANNEL, (event, id: string, request: MotionGpsRequest | null) => {
+  if (shutdown.isQuitting()) return;
   if (typeof id !== "string" || id.length > 100) return;
   if (request) gpsJobs.post({sender:event.sender,id,request});
   else gpsJobs.cancel(job => job.sender === event.sender && job.id === id);
@@ -1095,6 +1091,7 @@ ipcMain.on(MENU_STATE_CHANNEL, (event, state: MenuState) => {
 });
 
 const createWindow = (): void => {
+  if (shutdown.isQuitting()) return;
   const mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -1133,13 +1130,30 @@ const createWindow = (): void => {
       ),
     );
   void page.catch(error => {
-    if (mainWindow.isDestroyed()) return;
+    if (mainWindow.isDestroyed() || shutdown.isQuitting()) return;
     console.error("Failed to load the ReplayMod Reality window", error);
     app.quit();
   });
 };
 
+const shutdown = installShutdown(async () => {
+  gpsJobs.cancel(() => true);
+  const results = await Promise.allSettled([
+    offlineExports.cancelAll(),
+    localSpeech.close(),
+    closeTrajectoryWorker(),
+    stopChildren(),
+    Promise.allSettled([screeningMigration, confirmedFlightSaveQueue]).then(() => resources.drain()),
+  ]);
+  for (const result of results) {
+    if (result.status === "rejected") console.error("Shutdown cleanup failed", result.reason);
+  }
+}, killChildren);
+
+if (MAIN_WINDOW_VITE_DEV_SERVER_URL) shutdown.watchLauncher(process.ppid);
+
 void app.whenReady().then(() => {
+  if (shutdown.isQuitting()) return;
   try { storage.settings.read(); }
   catch {
     dialog.showErrorBox("无法读取应用配置", `请检查配置文件：${storage.paths.config}\n原文件已保留，未重置配置。`);
@@ -1149,27 +1163,6 @@ void app.whenReady().then(() => {
   installMediaPreviewProtocol(openedMediaPaths);
   installDisplayHDR();
   installMacMenu();
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    // Forge owns the renderer server. Release the single-instance lock when it exits.
-    const forgePid = process.ppid;
-    const checkForge = () => {
-      if (process.platform !== "win32") return process.ppid > 1 && process.ppid === forgePid;
-      try {
-        process.kill(forgePid, 0);
-        return true;
-      } catch (error) {
-        return (error as NodeJS.ErrnoException).code !== "ESRCH";
-      }
-    };
-    if (!checkForge()) { app.quit(); return; }
-    const watchdog = setInterval(() => {
-      if (checkForge()) return;
-      clearInterval(watchdog);
-      app.quit();
-    }, 1000);
-    watchdog.unref();
-    app.once("quit", () => clearInterval(watchdog));
-  }
   createWindow();
 
   app.on("activate", () => {
@@ -1177,10 +1170,4 @@ void app.whenReady().then(() => {
       createWindow();
     }
   });
-});
-
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
 });
