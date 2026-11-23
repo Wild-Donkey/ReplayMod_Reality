@@ -1,9 +1,7 @@
 import { app, BrowserWindow, ipcMain, screen } from "electron";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { runChild } from "../../../../packages/media/src/childProcesses";
 import path from "node:path";
 import type { DisplayHDRInfo } from "../shared/display";
-const run = promisify(execFile);
 type NativeDisplay = Pick<DisplayHDRInfo, "displayId" | "currentHeadroom" | "potentialHeadroom" | "referenceHeadroom">;
 let pending: Promise<NativeDisplay[]> | undefined;
 let expires = 0;
@@ -13,7 +11,7 @@ function readNative(): Promise<NativeDisplay[]> {
     const helper = app.isPackaged
       ? path.join(process.resourcesPath, "hdr-display")
       : path.join(app.getAppPath(), "native/build/hdr-display");
-    pending = run(helper, [], { timeout: 2000, maxBuffer: 64 * 1024 })
+    pending = runChild(helper, [], { timeout: 2000, maxBuffer: 64 * 1024 })
       .then(({ stdout }) => JSON.parse(stdout) as NativeDisplay[]).catch(() => []);
     expires = Date.now() + 500;
   }

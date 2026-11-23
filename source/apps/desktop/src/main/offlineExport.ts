@@ -20,6 +20,8 @@ interface Session {
 }
 export class OfflineExportManager {
   private readonly sessions = new Map<string, Session>();
+  private readonly cancellations = new Map<string, Promise<void>>();
+  private readonly operations = new Set<Promise<unknown>>();
   get active() { return this.sessions.size > 0; }
   begin(owner: number, options: OfflineExportOptions, destination: string, encoderPath: string) {
     if ([...this.sessions.values()].some(session => session.owner === owner)) throw new Error("An export is already running");
@@ -27,7 +29,10 @@ export class OfflineExportManager {
     this.sessions.set(id, {owner, plan, destination, encoderPath, paths: [], segment: 0, frames: 0, busy: false, cancelled: false, encoder: null, temporary: null});
     return {id, segmentCount: plan.segmentCount};
   }
-  async write(owner: number, id: string, segment: number, index: number, rgba: Uint8Array) {
+  write(owner: number, id: string, segment: number, index: number, rgba: Uint8Array) {
+    return this.track(this.writeFrame(owner, id, segment, index, rgba));
+  }
+  private async writeFrame(owner: number, id: string, segment: number, index: number, rgba: Uint8Array) {
     const session = this.get(owner, id);
     if (session.busy || segment !== session.segment || index !== session.frames) throw new Error("Export frames must be submitted sequentially");
     session.plan.frame(segment, index);
@@ -44,7 +49,10 @@ export class OfflineExportManager {
     } catch (error) { await this.cancel(owner, id); throw error; }
     finally { session.busy = false; }
   }
-  async finishSegment(owner: number, id: string, segment: number): Promise<OfflineExportSegment> {
+  finishSegment(owner: number, id: string, segment: number) {
+    return this.track(this.saveSegment(owner, id, segment));
+  }
+  private async saveSegment(owner: number, id: string, segment: number): Promise<OfflineExportSegment> {
     const session = this.get(owner, id);
     if (session.busy || segment !== session.segment || session.frames !== session.plan.segmentFrames(segment) || !session.encoder || !session.temporary) throw new Error("Export segment is incomplete");
     session.busy = true;
@@ -88,11 +96,25 @@ export class OfflineExportManager {
     if (!session || session.owner !== owner) return;
     session.cancelled = true;
     this.sessions.delete(id);
+    const cancellation = this.removePartialExport(session);
+    this.cancellations.set(id, cancellation);
+    try { await cancellation; }
+    finally { this.cancellations.delete(id); }
+  }
+  private async removePartialExport(session: Session) {
     await session.encoder?.cancel();
     if (session.temporary) await unlink(session.temporary).catch(() => {});
   }
   async cancelOwner(owner: number) { await Promise.all([...this.sessions].filter(([, session]) => session.owner === owner).map(([id]) => this.cancel(owner, id))); }
-  async cancelAll() { await Promise.all([...this.sessions].map(([id, session]) => this.cancel(session.owner, id))); }
+  async cancelAll() {
+    const pending = [...this.operations, ...this.cancellations.values()];
+    for (const [id, session] of this.sessions) pending.push(this.cancel(session.owner, id));
+    await Promise.allSettled(pending);
+  }
+  private track<T>(operation: Promise<T>) {
+    this.operations.add(operation);
+    return operation.finally(() => this.operations.delete(operation));
+  }
   private get(owner: number, id: string) {
     const session = this.sessions.get(id);
     if (!session || session.owner !== owner || session.cancelled) throw new Error("Unknown export session");
