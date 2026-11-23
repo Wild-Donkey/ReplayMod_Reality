@@ -22,12 +22,15 @@ bash source/scripts/tools/with-local-tools.sh npm --prefix source start
 
 `.tools` 不随仓库分发，包装脚本不会自动下载其中的工具。切换电脑或系统后重新安装依赖，不复制其他平台的 node_modules。
 
+关闭最后一个窗口会退出应用并结束开发启动命令。也可在启动终端按 Ctrl+C。退出时会取消进行中的导出和语音任务，并等待缓存写入。开发启动日志保存在应用数据目录的 `desktop-start.log`。
+
 ## 检查与打包
 
 以下命令均从项目根目录执行：
 
 ```bash
 npm --prefix source run check
+npm --prefix source run check:shutdown
 npm --prefix source run check:annotations
 npm --prefix source run check:export:encoder
 npm --prefix source run check:picking:gpu
@@ -36,6 +39,7 @@ npm --prefix source run make
 ```
 
 - `check`：类型、存储、缓存、标注、时间轴、天文、渲染、地形和飞行检查。标注检查使用下述本地样本。
+- `check:shutdown`：验证子进程退出。在 macOS 和 Linux 图形会话中，还会用临时配置启动真实应用，验证关窗、Ctrl+C、超时兜底及进程回收。运行前请退出已有的开发实例。
 - `check:annotations`：JSON / KML 往返检查，需要本机 `RawData/annotations/annotations.json`。
 - `check:export:encoder`：实际编码并解码透明 VP9，检查帧数、帧率、Alpha、分段、取消与文件保护；需要支持 `libvpx-vp9` 的 FFmpeg 和 FFprobe，不启动 Electron。
 - `check:picking:gpu`：独立 Electron 窗口验证 18 万点拾取、DPR 1/2/3、可见标注与曲线、背景交接、图层隐藏恢复和离屏尺寸；需要可正常启动 Electron 与 WebGL2 的图形会话，无法由普通类型检查代替。

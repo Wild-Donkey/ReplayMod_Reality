@@ -3,7 +3,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const { spawn } = require('node:child_process');
+const { execFileSync, spawn } = require('node:child_process');
+const { setTimeout: delay } = require('node:timers/promises');
 const root = path.resolve(__dirname, '../..');
 process.chdir(root);
 const toolDirectories = [
@@ -13,14 +14,70 @@ const toolDirectories = [
 ].map(directory => path.resolve(root, directory));
 process.env.PATH = [...toolDirectories, process.env.PATH || ''].join(path.delimiter);
 
-const run = (command, args, options = {}) => new Promise((resolve, reject) => {
-  const child = spawn(command, args, {cwd: root, env: process.env, stdio: 'inherit', ...options});
-  child.on('error', reject);
-  child.on('exit', (code, signal) => {
-    if (code === 0) resolve();
-    else reject(new Error(`${path.basename(command)} stopped (${signal || code}).`));
+const windows = process.platform === 'win32';
+let stopping;
+let requestStop;
+const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'];
+function onSignal(signal) {
+  if (stopping) return;
+  stopping = signal;
+  requestStop?.();
+}
+
+function signalGroup(pid, signal) {
+  try { process.kill(-pid, signal); return true; }
+  catch (error) {
+    if (error.code === 'ESRCH') return false;
+    throw error;
+  }
+}
+
+async function run(command, args, {stopFile, ...options} = {}) {
+  if (stopping) return;
+  // Keep Ctrl+C in the launcher. Forge's own SIGINT handler exits immediately.
+  const child = spawn(command, args, {
+    cwd: root, env: process.env, stdio: [windows ? 'ignore' : 'inherit', 'inherit', 'inherit'],
+    detached: true, windowsHide: true, ...options,
   });
-});
+  let deadline;
+  let forceSent = false;
+  function forceStop() {
+    if (!child.pid || forceSent) return;
+    forceSent = true;
+    if (!windows) { signalGroup(child.pid, 'SIGKILL'); return; }
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    try { execFileSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], {timeout: 3000, windowsHide: true, stdio: 'ignore'}); }
+    catch { child.kill('SIGKILL'); }
+  }
+  requestStop = () => {
+    deadline = setTimeout(forceStop, stopFile ? 8000 : 1500);
+    if (stopFile) {
+      try { fs.writeFileSync(stopFile, ''); }
+      catch (error) { console.error('Unable to request application shutdown:', error.message); }
+    } else if (!windows && child.pid) {
+      signalGroup(child.pid, 'SIGTERM');
+    } else {
+      forceStop();
+    }
+  };
+  try {
+    const {code, signal} = await new Promise((resolve, reject) => {
+      child.once('error', reject);
+      child.once('exit', (code, signal) => resolve({code, signal}));
+    });
+    if (!stopping && code !== 0) throw new Error(`${path.basename(command)} stopped (${signal || code}).`);
+  } finally {
+    clearTimeout(deadline);
+    requestStop = undefined;
+    // Forge can leave helpers alive even after its own process has exited.
+    if (!windows && child.pid && !forceSent && signalGroup(child.pid, 'SIGTERM')) {
+      const gracePeriod = stopFile ? 6500 : 1500;
+      const expires = Date.now() + gracePeriod;
+      while (Date.now() < expires && signalGroup(child.pid, 0)) await delay(100);
+      forceStop();
+    }
+  }
+}
 
 function logDirectory() {
   const home = os.homedir();
@@ -49,26 +106,36 @@ async function main() {
   if (!installed) {
     console.log('Installing project dependencies for this computer (network required)...');
     // Windows requires a command shell to execute npm.cmd.
-    const windows = process.platform === 'win32';
     await run(windows ? 'npm.cmd' : 'npm', ['ci'], {shell: windows});
   }
+  if (stopping) return;
   const directory = logDirectory();
   fs.mkdirSync(directory, {recursive: true, mode: 0o700});
   const logPath = path.join(directory, 'desktop-start.log');
   console.log(`Desktop startup log: ${logPath}`);
-  const log = fs.openSync(logPath, 'a', 0o600);
+  const controlDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'replay-launch-'));
+  const stopFile = path.join(controlDirectory, 'stop');
+  let log;
   try {
+    log = fs.openSync(logPath, 'a', 0o600);
     fs.writeSync(log, `\n[${new Date().toISOString()}] Starting ReplayMod Reality\n`);
     // Give Forge and Electron a file descriptor that survives terminal closure.
-    await run(process.execPath, [forgeCli, 'start', ...process.argv.slice(2)], {stdio: ['inherit', log, log]});
+    await run(process.execPath, [forgeCli, 'start', ...process.argv.slice(2)], {
+      stopFile, stdio: [windows ? 'ignore' : 'inherit', log, log], env: {...process.env, REPLAYMOD_STOP_FILE: stopFile},
+    });
   } catch (error) {
     throw new Error(`${error.message} See ${logPath}`, {cause: error});
   } finally {
-    fs.closeSync(log);
+    if (log !== undefined) fs.closeSync(log);
+    fs.rmSync(controlDirectory, {recursive: true, force: true});
   }
 }
+for (const signal of signals) process.on(signal, onSignal);
 main().catch(error => {
   console.error(`\nUnable to start: ${error.message}`);
   console.error('Check that Node.js and npm are installed. First launch requires internet access.');
   process.exitCode = 1;
+}).finally(() => {
+  for (const signal of signals) process.off(signal, onSignal);
+  if (stopping) process.exitCode = 128 + os.constants.signals[stopping];
 });

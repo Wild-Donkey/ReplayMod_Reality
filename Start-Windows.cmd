@@ -10,8 +10,12 @@ if errorlevel 1 (
   exit /b 1
 )
 node "%~dp0source\scripts\start\launch.cjs"
-if errorlevel 1 (
+set "result=%errorlevel%"
+if "%result%"=="130" exit /b 130
+if "%result%"=="143" exit /b 143
+if "%result%"=="129" exit /b 129
+if not "%result%"=="0" (
   pause
-  exit /b 1
+  exit /b %result%
 )
 endlocal
