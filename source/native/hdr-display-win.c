@@ -7,7 +7,14 @@
 #include <stdlib.h>
 #include <wchar.h>
 
-static double sdr_white(const wchar_t *device) {
+// This request is newer than the DisplayConfig definitions in some MinGW SDKs.
+enum { get_advanced_color_info_2 = 15, high_dynamic_range_supported = 1 << 4 };
+typedef struct {
+  DISPLAYCONFIG_DEVICE_INFO_HEADER header;
+  UINT32 flags, encoding, bits_per_channel, active_mode;
+} AdvancedColorInfo2;
+
+static double read_target(const wchar_t *device, int hdr, int *supported) {
   for (int attempt = 0; attempt < 3; ++attempt) {
     UINT32 path_count, mode_count;
     if (GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &path_count, &mode_count)) break;
@@ -21,6 +28,12 @@ static double sdr_white(const wchar_t *device) {
       DISPLAYCONFIG_PATH_SOURCE_INFO source = paths[i].sourceInfo;
       DISPLAYCONFIG_SOURCE_DEVICE_NAME name = {{DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME, sizeof(name), source.adapterId, source.id}};
       if (DisplayConfigGetDeviceInfo(&name.header) || _wcsicmp(name.viewGdiDeviceName, device)) continue;
+      AdvancedColorInfo2 color = {{get_advanced_color_info_2, sizeof(color), target.adapterId, target.id}};
+      if (!DisplayConfigGetDeviceInfo(&color.header)) {
+        if (!(color.flags & high_dynamic_range_supported)) *supported = 0;
+        else if (*supported < 0) *supported = 1;
+      }
+      if (!hdr) continue;
       DISPLAYCONFIG_SDR_WHITE_LEVEL level = {{DISPLAYCONFIG_DEVICE_INFO_GET_SDR_WHITE_LEVEL, sizeof(level), target.adapterId, target.id}};
       if (!DisplayConfigGetDeviceInfo(&level.header) && level.SDRWhiteLevel) {
         double value = level.SDRWhiteLevel * 0.08;
@@ -58,11 +71,14 @@ int main(int argc, char **argv) {
   IDXGIFactory1_Release(factory);
   if (!found) return 1;
   int hdr = display.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
-  double white = hdr ? sdr_white(display.DeviceName) : 0;
+  int supported = -1;
+  double white = read_target(display.DeviceName, hdr, &supported);
+  if (hdr) supported = 1;
+  double headroom = 1;
   if (hdr && white > 0 && isfinite(display.MaxLuminance) && display.MaxLuminance > white) {
-    printf("{\"currentHeadroom\":%.4f,\"hdrActive\":true}\n", display.MaxLuminance / white);
-  } else {
-    printf("{\"currentHeadroom\":1,\"hdrActive\":%s}\n", hdr ? "true" : "false");
+    headroom = display.MaxLuminance / white;
   }
+  printf("{\"currentHeadroom\":%.4f,\"hdrActive\":%s,\"hdrSupported\":%s}\n",
+         headroom, hdr ? "true" : "false", supported < 0 ? "null" : supported ? "true" : "false");
   return 0;
 }

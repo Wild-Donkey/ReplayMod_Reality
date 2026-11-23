@@ -5,14 +5,15 @@ import type { DisplayHDRInfo } from "../shared/display";
 type NativeDisplay = Pick<DisplayHDRInfo, "displayId" | "currentHeadroom" | "potentialHeadroom" | "referenceHeadroom">;
 let pending: Promise<NativeDisplay[]> | undefined;
 let expires = 0;
-let windowsReading: {key: string; expires: number; result: Promise<{currentHeadroom: number; hdrActive: boolean} | null>} | undefined;
+type WindowsDisplay = Pick<DisplayHDRInfo, "currentHeadroom" | "hdrActive" | "hdrSupported">;
+let windowsReading: {key: string; expires: number; result: Promise<WindowsDisplay | null>} | undefined;
 function readWindows(window: BrowserWindow, displayId: number) {
   const handle = window.getNativeWindowHandle().reduceRight((hex, byte) => hex + byte.toString(16).padStart(2, "0"), "");
   const key = `${displayId}:${handle}`;
   if (!windowsReading || windowsReading.key !== key || Date.now() >= windowsReading.expires) {
     const helper = app.isPackaged ? path.join(process.resourcesPath, "hdr-display.exe") : path.join(app.getAppPath(), "native/build/hdr-display.exe");
     const result = runChild(helper, [handle], {timeout: 2000, maxBuffer: 4096})
-      .then(({stdout}) => JSON.parse(stdout) as {currentHeadroom: number; hdrActive: boolean}).catch(() => null);
+      .then(({stdout}) => JSON.parse(stdout) as WindowsDisplay).catch(() => null);
     windowsReading = {key, expires: Date.now() + 750, result};
   }
   return windowsReading.result;
@@ -43,6 +44,7 @@ export function installDisplayHDR() {
       potentialHeadroom: native?.potentialHeadroom ?? null,
       referenceHeadroom: native?.referenceHeadroom ?? null,
       hdrActive: windows?.hdrActive,
+      hdrSupported: windows?.hdrSupported,
       source: windows ? "windows-dxgi" : native ? "macos-nsscreen" : "unavailable",
     } satisfies DisplayHDRInfo;
   });

@@ -8,17 +8,17 @@ let reading = false;
 let detected = false;
 let enabled = readCached("hdr-enabled", true);
 const media = matchMedia("(dynamic-range: high)");
-export interface HDRState { enabled: boolean; supported: boolean | null; active: boolean; label: string; headroom: number }
+export interface HDRState { enabled: boolean; supported: boolean | null; active: boolean; systemActive?: boolean; label: string; headroom: number }
 let state: HDRState = {enabled,supported:null,active:false,label:"",headroom:1};
 export const currentDisplayHDR = () => info;
 export const getHDRState = () => state;
 export const currentHDRHeadroom = () => state.headroom;
 function publish() {
   const potential = info?.potentialHeadroom;
-  const capable = typeof potential === "number" && Number.isFinite(potential) ? potential > 1 : info?.hdrActive === true || media.matches;
+  const capable = info?.hdrSupported ?? (typeof potential === "number" && Number.isFinite(potential) ? potential > 1 : info?.hdrActive === true || media.matches);
   const supported = detected ? capable && Boolean((navigator as Navigator & {gpu?: unknown}).gpu) : null;
   const active = enabled && supported === true && (info?.hdrActive ?? true);
-  const next = {enabled,supported,active,label:info?.label ?? "",headroom:active ? displayHeadroom(info) : 1};
+  const next = {enabled,supported,active,systemActive:info?.hdrActive,label:info?.label ?? "",headroom:active ? displayHeadroom(info) : 1};
   if (JSON.stringify(next) !== JSON.stringify(state)) {
     state = next;
     listeners.forEach(listener => listener());

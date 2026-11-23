@@ -8,6 +8,9 @@ for(const supported of [null,false,true]){
  const html=renderToStaticMarkup(React.createElement(settings.exports.HDRSettings));
  assert(html.includes('role="switch"'));assert.equal(html.includes('disabled=""'),supported!==true);assert.equal(html.includes('checked=""'),supported===true);
 }
+state={supported:true,enabled:true,active:false,systemActive:false,label:'OLED'};
+const windowsSDR=renderToStaticMarkup(React.createElement(settings.exports.HDRSettings));
+assert(windowsSDR.includes('OLED支持 HDR')&&windowsSDR.includes('使用 HDR')&&windowsSDR.includes('disabled=""'));
 const exposure={exports:{}};vm.runInNewContext(compile('features/map/terrainExposure.ts'),{exports:exposure.exports});
 const legend={exports:{}};vm.runInNewContext(compile('features/map/TerrainLegend.tsx'),{exports:legend.exports,require:name=>name.includes('terrainExposure')?exposure.exports:name.startsWith('.')?{}:require(name)});
 const html=renderToStaticMarkup(React.createElement(legend.exports.TerrainLegend,{appearance:{land:[123,1494],depth:[120,830],black:100,white:1500,headroom:2.67}}));

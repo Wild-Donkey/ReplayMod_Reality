@@ -21,9 +21,11 @@ const {getHDRState,setHDREnabled,watchDisplayHDR,currentHDRHeadroom}=mod.exports
  info={potentialHeadroom:16,currentHeadroom:1,label:'HDR'};await events.get('focus')();
  assert.equal(getHDRState().supported,true);assert.equal(getHDRState().active,false,'retain disabled preference across displays');
  setHDREnabled(true);assert.equal(getHDRState().active,true,'potential capability is distinct from temporary available headroom');
- info={hdrActive:false,currentHeadroom:1,label:'Windows SDR'};await events.get('focus')();
+ media.matches=false;info={hdrSupported:true,hdrActive:false,currentHeadroom:1,label:'Windows SDR'};await events.get('focus')();
+ assert.equal(getHDRState().supported,true,'the screen remains HDR-capable with Windows HDR off');
+ assert.equal(getHDRState().systemActive,false);
  assert.equal(getHDRState().active,false,'Windows SDR mode overrides a stale high media query');
- media.matches=false;info={hdrActive:true,currentHeadroom:3.25,label:'Windows HDR'};await events.get('focus')();
+ info={hdrSupported:true,hdrActive:true,currentHeadroom:3.25,label:'Windows HDR'};await events.get('focus')();
  assert.equal(getHDRState().active,true);assert.equal(currentHDRHeadroom(),3.25);
  navigator.gpu=undefined;await events.get('focus')();assert.equal(getHDRState().supported,false);
  stop();assert.equal(events.size,0);

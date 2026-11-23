@@ -9,6 +9,7 @@ export interface DisplayHDRInfo {
   potentialHeadroom: number | null;
   referenceHeadroom: number | null;
   hdrActive?: boolean;
+  hdrSupported?: boolean | null;
   source: "macos-nsscreen" | "windows-dxgi" | "unavailable";
 }
 
