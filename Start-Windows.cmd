@@ -9,7 +9,7 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-node "%~dp0source\scripts\start\launch.cjs"
+node "%~dp0source\scripts\start\launch.cjs" %*
 set "result=%errorlevel%"
 if "%result%"=="130" exit /b 130
 if "%result%"=="143" exit /b 143

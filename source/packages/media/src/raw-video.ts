@@ -6,7 +6,10 @@ import { assertCanStartChild, runChild, stopChild, trackChild } from "./childPro
 
 export async function findTransparentVideoEncoder(searchPath = process.env.PATH ?? ""): Promise<string | null> {
   const names = process.platform === "win32" ? ["ffmpeg.exe"] : ["ffmpeg"];
-  const candidates = new Set(searchPath.split(path.delimiter).filter(Boolean).flatMap(directory => names.map(name => path.join(directory, name))));
+  const directories = searchPath.split(path.delimiter)
+    .map(directory => process.platform === "win32" ? directory.replace(/^"|"$/g, "") : directory)
+    .filter(Boolean);
+  const candidates = new Set(directories.flatMap(directory => names.map(name => path.join(directory, name))));
   for (const candidate of candidates) {
     try {
       await access(candidate, constants.X_OK);

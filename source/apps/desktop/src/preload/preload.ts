@@ -7,7 +7,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import { ALIGN_MEDIA_CHANNEL, type MediaAlignmentRequest, type MediaAlignmentResult } from "../shared/mediaAlignment";
 import type { AppSettings } from "../shared/settings";
 import type { ConfirmedFlightRecord, FlightScreeningCache } from "../shared/confirmedFlight";
-import { SCROLL_SOURCE_CHANNEL, type ScrollSource } from "../shared/scrollInput";
+import { MAP_SCROLL_GESTURE_CHANNEL, MAP_SCROLL_TARGET_CHANNEL, SCROLL_SOURCE_CHANNEL, type MapScrollGesture, type ScrollSource } from "../shared/scrollInput";
 import { MENU_ACTION_CHANNEL, MENU_STATE_CHANNEL, type MenuAction, type MenuState } from "../shared/menu";
 import type { PointDataset } from "../../../../packages/data/src";
 import type {
@@ -48,6 +48,9 @@ export interface DesktopBridge {
   onMenuAction(listener: (action: MenuAction) => void): () => void;
   updateMenuState(state: MenuState): void;
   onScrollSource(listener: (source: ScrollSource) => void): () => void;
+  identifyWheelFromDeltas: boolean;
+  setMapScrollTarget?(active: boolean): void;
+  onMapScrollGesture(listener: (gesture: MapScrollGesture) => void): () => void;
   readonly workspaceState: Record<string, unknown>;
   readonly cacheDirectory: string;
   saveWorkspaceState(state: Record<string, unknown>): string | null;
@@ -121,6 +124,13 @@ const bridge: DesktopBridge = Object.freeze({
     const handler = (_event: Electron.IpcRendererEvent, source: ScrollSource) => listener(source);
     ipcRenderer.on(SCROLL_SOURCE_CHANNEL, handler);
     return () => { ipcRenderer.removeListener(SCROLL_SOURCE_CHANNEL, handler); };
+  },
+  identifyWheelFromDeltas: process.platform === "win32",
+  ...(process.platform === "win32" ? { setMapScrollTarget: (active: boolean) => ipcRenderer.send(MAP_SCROLL_TARGET_CHANNEL, active) } : {}),
+  onMapScrollGesture: (listener: (gesture: MapScrollGesture) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, gesture: MapScrollGesture) => listener(gesture);
+    ipcRenderer.on(MAP_SCROLL_GESTURE_CHANNEL, handler);
+    return () => { ipcRenderer.removeListener(MAP_SCROLL_GESTURE_CHANNEL, handler); };
   },
   workspaceState: bootstrap.state,
   cacheDirectory: bootstrap.directory,

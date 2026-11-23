@@ -96,11 +96,18 @@ async function main() {
   const electronBinary = process.platform === 'darwin' ? 'Electron.app/Contents/MacOS/Electron'
     : process.platform === 'win32' ? 'electron.exe' : 'electron';
   const forgeCli = path.join(root, 'node_modules/@electron-forge/cli/dist/electron-forge.js');
-  const installed = fs.existsSync(path.join(root, 'node_modules/electron/dist', electronBinary)) && fs.existsSync(forgeCli);
+  const manifest = require(path.join(root, 'package.json'));
+  const dependencies = Object.keys({...manifest.dependencies, ...manifest.devDependencies});
+  const missing = dependencies.filter(name => !fs.existsSync(path.join(root, 'node_modules', name, 'package.json')));
+  const installed = missing.length === 0 && fs.existsSync(forgeCli);
+  const electronInstalled = fs.existsSync(path.join(root, 'node_modules/electron/dist', electronBinary));
   console.log(`ReplayMod Reality | ${process.platform}/${process.arch} | Node ${process.versions.node}`);
   console.log(`Project: ${root}`);
   if (process.argv.includes('--check')) {
-    console.log(installed ? 'Startup prerequisites found.' : 'Dependencies will be installed on first launch (network required).');
+    if (installed && electronInstalled) console.log('Startup prerequisites found.');
+    else if (installed) console.log('npm dependencies found. Electron will be installed on first launch.');
+    else console.log('Dependencies will be installed on first launch (network required).');
+    if (missing.length) console.log(`Missing packages: ${missing.join(', ')}`);
     return;
   }
   if (!installed) {
@@ -109,6 +116,10 @@ async function main() {
     await run(windows ? 'npm.cmd' : 'npm', ['ci'], {shell: windows});
   }
   if (stopping) return;
+  if (windows) {
+    try { require('../native/build-hdr.cjs')(); }
+    catch (error) { console.warn(`Windows HDR helper: ${error.message} ReplayMod Reality can still start in SDR.`); }
+  }
   const directory = logDirectory();
   fs.mkdirSync(directory, {recursive: true, mode: 0o700});
   const logPath = path.join(directory, 'desktop-start.log');
@@ -133,7 +144,6 @@ async function main() {
 for (const signal of signals) process.on(signal, onSignal);
 main().catch(error => {
   console.error(`\nUnable to start: ${error.message}`);
-  console.error('Check that Node.js and npm are installed. First launch requires internet access.');
   process.exitCode = 1;
 }).finally(() => {
   for (const signal of signals) process.off(signal, onSignal);

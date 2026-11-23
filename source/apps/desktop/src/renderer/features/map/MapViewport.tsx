@@ -20,7 +20,7 @@ import type { FeatureCollection, Geometry } from "geojson";
 import { visibleAnnotations } from "../annotations/annotations";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
-import type { ScrollSource } from "../../../shared/scrollInput";
+import { installMapScrollInput } from "./mapScrollInput";
 import type { MapLanguage } from "../../../shared/settings";
 import { TRANSIT_MIN_ZOOM, TRANSIT_NETWORKS } from "../../../shared/transitTiles";
 import { createPortal } from "react-dom";
@@ -304,7 +304,6 @@ export function MapViewport({
   const refreshMapChannels = useRef<(() => void) | null>(null);
   useEffect(() => { astronomyActiveRef.current = astronomyActive; }, [astronomyActive]);
   const restoreCameraRef = useRef(Boolean(readCached("map-camera", null)));
-  const scrollSourceRef = useRef<ScrollSource>("unknown");
   const [terrainAppearance,setTerrainAppearance] = useState<TerrainAppearance | null>(null);
   const [elevationUnavailable, setElevationUnavailable] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -337,9 +336,6 @@ export function MapViewport({
     }
     return {coordinates, timestamps};
   }, [pointDataset, flightRouteSegments]);
-  useEffect(() => window.replaymod?.onScrollSource(source => {
-    scrollSourceRef.current = source;
-  }), []);
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
     "loading",
   );
@@ -439,32 +435,7 @@ export function MapViewport({
     map.boxZoom.disable();
     map.doubleClickZoom.disable();
 
-    const canvasContainer = map.getCanvasContainer();
-    const handleWheel = (event: WheelEvent) => {
-      // Chromium emits trackpad pinch gestures as Ctrl+wheel. Let MapLibre
-      // handle those with the doubled zoom rates configured above.
-      if (event.ctrlKey) return;
-      if (scrollSourceRef.current === "mouse-wheel") return;
-
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      const horizontalScale = event.deltaMode === WheelEvent.DOM_DELTA_LINE
-        ? 40
-        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
-          ? canvasContainer.clientWidth
-          : 1;
-      const verticalScale = event.deltaMode === WheelEvent.DOM_DELTA_PAGE
-        ? canvasContainer.clientHeight
-        : horizontalScale;
-      map.panBy(
-        [event.deltaX * horizontalScale, event.deltaY * verticalScale],
-        { duration: 0 },
-      );
-    };
-    canvasContainer.addEventListener("wheel", handleWheel, {
-      capture: true,
-      passive: false,
-    });
+    const stopScrollInput = installMapScrollInput(map);
 
     map.addControl(
       new maplibregl.NavigationControl({
@@ -483,7 +454,7 @@ export function MapViewport({
     });
 
     return () => {
-      canvasContainer.removeEventListener("wheel", handleWheel, true);
+      stopScrollInput();
       elevationController.abort();
       refreshMapChannels.current = null;
       channels.destroy();

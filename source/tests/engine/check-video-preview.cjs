@@ -7,12 +7,14 @@ const cache=fs.mkdtempSync(path.join(os.tmpdir(),'replay-video-preview-'));app.s
 app.whenReady().then(async()=>{
  let win;
  try{
-  const fixture=process.env.REPLAY_PREVIEW_FIXTURE || path.join(cache,'preview.mp4');
-  if(!process.env.REPLAY_PREVIEW_FIXTURE)require('node:child_process').execFileSync(process.env.FFMPEG_PATH || path.resolve('../.tools/ffmpeg/ffmpeg'),['-v','error','-f','lavfi','-i','color=c=red:s=320x180:r=24:d=2','-c:v','libx264','-pix_fmt','yuv420p','-y',fixture]);
+  const fixture=process.env.REPLAY_PREVIEW_FIXTURE || path.join(cache,'测试 预览.mp4');
+  const ffmpegName=process.platform==='win32'?'ffmpeg.exe':'ffmpeg';
+  const localFfmpeg=['ffmpeg/bin','ffmpeg','ffmpeg-native/bin'].map(directory=>path.resolve('../.tools',directory,ffmpegName)).find(file=>fs.existsSync(file));
+  if(!process.env.REPLAY_PREVIEW_FIXTURE)require('node:child_process').execFileSync(process.env.FFMPEG_PATH || localFfmpeg || ffmpegName,['-v','error','-f','lavfi','-i','color=c=red:s=320x180:r=24:d=2','-c:v','libx264','-pix_fmt','yuv420p','-y',fixture]);
   mod.exports.installMediaPreviewProtocol(new Set([fixture]));
   const response=await net.fetch('replay-media://preview/'+encodeURIComponent(fixture),{headers:{Range:'bytes=0-31'}});
   assert.equal(response.status,206);assert.equal((await response.arrayBuffer()).byteLength,32);
-  assert.equal((await net.fetch('replay-media://preview/'+encodeURIComponent('/tmp/not-authorized.mp4'))).status,404);
+  assert.equal((await net.fetch('replay-media://preview/'+encodeURIComponent(path.join(cache,'not-authorized.mp4')))).status,404);
   const entry=path.join(cache,'entry.tsx');
   fs.writeFileSync(entry,`import React from ${JSON.stringify(require.resolve("react"))};import {createRoot} from ${JSON.stringify(require.resolve("react-dom/client"))};import {flushSync} from ${JSON.stringify(require.resolve("react-dom"))};import {VideoPreview, videoTimeBounds} from ${JSON.stringify(path.join(root,'renderer/features/export/VideoPreview.tsx'))};
   const root=createRoot(document.getElementById('root'));const source={sourcePath:${JSON.stringify(fixture)},creationTimeSeconds:1000,durationSeconds:2};

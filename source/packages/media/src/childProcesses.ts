@@ -22,7 +22,7 @@ export function trackChild<T extends ChildProcess>(child: T): T {
 
 export function runChild(file: string, args: string[], options: ExecFileOptions) {
   assertCanStartChild();
-  const result = exec(file, args, {...options, encoding: "utf8"});
+  const result = exec(file, args, {windowsHide: true, ...options, encoding: "utf8"});
   trackChild(result.child);
   return result;
 }

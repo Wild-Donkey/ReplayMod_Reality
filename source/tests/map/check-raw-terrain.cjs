@@ -1,9 +1,10 @@
+const os = require('node:os');
 const {app,BrowserWindow} = require('electron');
 const fs=require('node:fs'),path=require('node:path'),ts=require('typescript'),assert=require('node:assert/strict'),http=require('node:http');
 const root=path.resolve(__dirname,'../../apps/desktop/src/renderer');
 const sources={};
 for(const file of ['features/map/RawTerrain','features/map/terrainExposure','features/map/terrainShaders','shared/gpu','shared/mapResource','features/map/elevation','features/map/water','features/map/elevationRange','features/map/terrainWaterMask']) sources[file]=ts.transpileModule(fs.readFileSync(path.join(root,file+'.ts'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;
-app.setPath('userData',fs.mkdtempSync('/tmp/replay-terrain-test-'));
+app.setPath('userData',fs.mkdtempSync(path.join(os.tmpdir(), 'replay-terrain-test-')));
 app.whenReady().then(async()=>{
  const server=http.createServer((req,res)=>res.end('<html></html>'));
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));

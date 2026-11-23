@@ -24,6 +24,23 @@ bash source/scripts/tools/with-local-tools.sh npm --prefix source start
 
 关闭最后一个窗口会退出应用并结束开发启动命令。也可在启动终端按 Ctrl+C。退出时会取消进行中的导出和语音任务，并等待缓存写入。开发启动日志保存在应用数据目录的 `desktop-start.log`。
 
+## Windows
+
+在项目根目录双击 `Start-Windows.cmd`，或用 PowerShell 执行：
+
+```powershell
+.\Start-Windows.cmd --check
+.\Start-Windows.cmd
+npm.cmd --prefix source run package
+npm.cmd --prefix source run make
+```
+
+Windows 开启「使用 HDR」后，源码版会根据窗口所在屏幕的 DXGI 峰值亮度和系统 SDR 白亮度计算 HDR 余量。首次构建检测程序需要 PATH 中的 MinGW-w64 `gcc.exe`，启动脚本会自动编译。缺少编译器时应用仍可按 SDR 亮度启动。
+
+`package` 生成可直接运行的应用目录。`make` 在 `source/out/make/` 生成 Squirrel 安装器和便携 ZIP。启动日志位于 `%APPDATA%\ReplayMod Reality\desktop-start.log`。
+
+视频工具可以放进 PATH，也可放进项目根目录或应用 EXE 旁的 `.tools`。在 `.tools/ffmpeg/bin` 或 `.tools/ffmpeg` 中放置 `ffmpeg.exe` 和 `ffprobe.exe`。在 `.tools/exiftool` 中放置 `exiftool.exe` 和随包的 `exiftool_files`。在 `.tools/gpac` 中放置 GPAC 的 `MP4Box.exe` 及其依赖。透明 WebM 导出需要包含 `libvpx-vp9` 的 FFmpeg。本地 Qwen 语音识别依赖 Apple Silicon 上的 MLX 后端。
+
 ## 检查与打包
 
 以下命令均从项目根目录执行：

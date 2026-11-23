@@ -8,7 +8,9 @@ export interface DisplayHDRInfo {
   currentHeadroom: number | null;
   potentialHeadroom: number | null;
   referenceHeadroom: number | null;
-  source: "macos-nsscreen" | "unavailable";
+  hdrActive?: boolean;
+  hdrSupported?: boolean | null;
+  source: "macos-nsscreen" | "windows-dxgi" | "unavailable";
 }
 
 export function displayHeadroom(info: DisplayHDRInfo | null): number {
