@@ -15,9 +15,9 @@ export const getHDRState = () => state;
 export const currentHDRHeadroom = () => state.headroom;
 function publish() {
   const potential = info?.potentialHeadroom;
-  const capable = typeof potential === "number" && Number.isFinite(potential) ? potential > 1 : media.matches;
+  const capable = typeof potential === "number" && Number.isFinite(potential) ? potential > 1 : info?.hdrActive === true || media.matches;
   const supported = detected ? capable && Boolean((navigator as Navigator & {gpu?: unknown}).gpu) : null;
-  const active = enabled && supported === true;
+  const active = enabled && supported === true && (info?.hdrActive ?? true);
   const next = {enabled,supported,active,label:info?.label ?? "",headroom:active ? displayHeadroom(info) : 1};
   if (JSON.stringify(next) !== JSON.stringify(state)) {
     state = next;

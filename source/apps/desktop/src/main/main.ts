@@ -1,4 +1,5 @@
 import "./guardStdio";
+import { prepareWindows } from "./windowsSetup";
 import {GPS_RESULT_CHANNEL,POST_GPS_CHANNEL,type MotionGpsRequest,type MotionGpsResult,type MotionGpsUpdate} from "../shared/mediaAlignment";
 import { LatestJobQueue } from "./latestJobQueue";
 import type { TrajectoryWorkerInput, TrajectoryWorkerOutput } from "./trajectoryWorker";
@@ -46,6 +47,7 @@ import type {
   SubtitleTrack,
 } from "../../../../packages/media/src";
 
+prepareWindows();
 registerMediaPreviewScheme();
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
@@ -811,12 +813,13 @@ const gpsJobs = new LatestJobQueue<{sender: Electron.WebContents; id: string; re
       if(cached) { publish({id,result:cached}); return; }
     }
     const roots = [path.resolve(process.cwd(),".."),process.cwd(),app.getAppPath(),path.dirname(app.getPath("exe"))];
-    const exiftool = await firstExistingPath(roots.flatMap(root => [path.join(root,".tools/exiftool/exiftool"),path.join(root,".tools/exiftool/exiftool.exe")]));
+    const exiftoolName = platform === "win32" ? "exiftool.exe" : "exiftool";
+    const exiftool = await firstExistingPath(roots.map(root => path.join(root, ".tools", "exiftool", exiftoolName)));
     if (!isCurrent() || sender.isDestroyed()) return;
     const end=source.durationSeconds===null
       ? request.points.reduce((latest,point)=>Number.isFinite(point.timeSeconds)?Math.max(latest,point.timeSeconds):latest,start)
       : start+source.durationSeconds;
-    const result = await runTrajectoryWorker({sourcePath: request.sourcePath, revision, exiftool: exiftool ?? "exiftool", points: request.points, start, end});
+    const result = await runTrajectoryWorker({sourcePath: request.sourcePath, revision, exiftool: exiftool ?? exiftoolName, points: request.points, start, end});
     if (!isCurrent() || sender.isDestroyed()) return;
     if(result.points.length<2)throw new Error("GPS 与视频时间不重叠，请先完成时间对齐。");
     publish({id,result});

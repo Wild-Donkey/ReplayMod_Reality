@@ -14,7 +14,11 @@ const storageModule = { exports: {} };
 vm.runInNewContext(ts.transpileModule(fs.readFileSync('apps/desktop/src/main/storage/paths.ts', 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
 }).outputText, { exports: storageModule.exports, require });
-const { systemCacheDirectory } = storageModule.exports;
+const { storagePaths, systemCacheDirectory } = storageModule.exports;
+const windows = storagePaths('win32', 'C:\\Users\\test', 'C:\\Users\\test\\AppData\\Roaming', {});
+assert.equal(windows.data, 'C:\\Users\\test\\AppData\\Roaming\\ReplayMod Reality');
+assert.equal(windows.legacyCache, 'C:\\Users\\test\\AppData\\Local\\ReplayMod Reality\\Cache');
+assert.equal(systemCacheDirectory('win32', '', '', {LOCALAPPDATA: 'D:\\AppData'}), 'D:\\AppData\\ReplayMod Reality\\Cache');
 assert.equal(systemCacheDirectory('darwin', '/Users/test', '/Users/test/Library/Application Support', {}), '/Users/test/Library/Caches/ReplayMod Reality');
 assert.equal(systemCacheDirectory('linux', '/home/test', '/home/test/.config', { XDG_CACHE_HOME: '/cache' }), '/cache/ReplayMod Reality');
 assert.equal(systemCacheDirectory('linux', '/home/test', '/home/test/.config', { XDG_CACHE_HOME: 'relative' }), '/home/test/.cache/ReplayMod Reality');

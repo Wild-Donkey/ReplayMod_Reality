@@ -1,10 +1,11 @@
+const os = require('node:os');
 const {app, BrowserWindow} = require('electron');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const ts = require('typescript');
 
-const userData = fs.mkdtempSync('/tmp/replay-building-test-');
+const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'replay-building-test-'));
 app.setPath('userData', userData);
 const root = path.resolve(__dirname, '../../apps/desktop/src/renderer/features/map');
 const sources = Object.fromEntries(['BuildingHeightOverlay', 'basemapStyle'].map(name => [name,

@@ -26,7 +26,9 @@ export async function renderAudioEdit(input: string, blocks: AudioBlock[], durat
     }
     await writeFile(path.join(dir, "list.txt"), blocks.map((_, i) => `file '${i}.wav'`).join("\n"));
     const encoded = path.join(dir, "edited.wav");
-    await runChild(ffmpeg, ["-v", "error", "-nostdin", "-y", "-f", "concat", "-safe", "1", "-i", path.join(dir, "list.txt"), "-c:a", "pcm_s16le", encoded], {maxBuffer: 4*1024*1024});
+    // The concat demuxer interprets '#' in the list's parent path as a URL fragment.
+    const executable = ffmpeg === path.basename(ffmpeg) ? ffmpeg : path.resolve(ffmpeg);
+    await runChild(executable, ["-v", "error", "-nostdin", "-y", "-f", "concat", "-safe", "1", "-i", "list.txt", "-c:a", "pcm_s16le", "edited.wav"], {cwd: dir, maxBuffer: 4*1024*1024});
     await copyFile(encoded, output);
   } finally { await rm(dir, {recursive: true, force: true}); }
 }

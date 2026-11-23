@@ -1,3 +1,4 @@
+const os = require('node:os');
 const {app,BrowserWindow}=require('electron');
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),ts=require('typescript'),http=require('node:http'),assert=require('node:assert/strict');
 const root=path.resolve(__dirname,'../../apps/desktop/src/renderer/features/map');
@@ -5,7 +6,7 @@ const compile=file=>ts.transpileModule(fs.readFileSync(path.join(root,file),'utf
 const hdrCode=ts.transpileModule(fs.readFileSync(path.resolve(root,'../../shared/hdr.ts'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 const exposure={exports:{}};vm.runInNewContext(compile('terrainExposure.ts'),{exports:exposure.exports});
 const shaders={exports:{}};vm.runInNewContext(compile('terrainShaders.ts'),{exports:shaders.exports,require:()=>exposure.exports});
-app.setPath('userData',fs.mkdtempSync('/tmp/replay-gray-test-'));
+app.setPath('userData',fs.mkdtempSync(path.join(os.tmpdir(), 'replay-gray-test-')));
 app.whenReady().then(async()=>{
  const server=http.createServer((q,r)=>r.end('<body style="margin:0;display:flex"><canvas width="200" height="100" style="flex-shrink:0;width:200px;height:100px"></canvas><div style="flex-shrink:0;width:100px;height:100px;background:rgb(26,26,26)"></div><div style="flex-shrink:0;width:100px;height:100px;background:rgb(20,20,20)"></div>'));
  await new Promise(r=>server.listen(0,'127.0.0.1',r));

@@ -21,6 +21,9 @@ function load(file) {
   const {OfflineExportManager} = load('apps/desktop/src/main/offlineExport.ts');
   const encoder = await findTransparentVideoEncoder();
   assert(encoder, 'A libvpx-vp9 FFmpeg binary is required for this explicit encoder gate');
+  if (process.platform === 'win32') {
+    assert.equal(await findTransparentVideoEncoder(`"${path.dirname(encoder)}"`), encoder);
+  }
   const directory = await fsp.mkdtemp(path.join(tmpdir(), 'replay-offline-'));
   const manager = new OfflineExportManager(), options = {width: 16, height: 16, fps: 24, bitrate: 1000000, start: 1000, end: 1125, segmentMilliseconds: 1000};
   const rgba = (r, g, b, a) => {const pixels = new Uint8Array(16 * 16 * 4); for (let i = 0; i < pixels.length; i += 4) pixels.set([r, g, b, a], i); return pixels;};

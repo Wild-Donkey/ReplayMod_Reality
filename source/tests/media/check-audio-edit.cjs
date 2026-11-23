@@ -24,7 +24,11 @@ const refined=refineAudioBlock({...a,start:1,end:3},cues,uid);assert.equal(refin
 const coarse=coarseAudioBlocks(cues,3,uid);assert.equal(audioSequenceDuration(coarse),3,'coarse import retains original gaps');assert.equal(coarse[0].text,'');assert.equal(coarse.at(-1).end,3);
 const raw={transcription:[{tokens:[{id:1,text:' test',offsets:{from:100,to:300}},{id:2,text:'ing',offsets:{from:300,to:500}},{id:3,text:'中',offsets:{from:500,to:700}},{id:4,text:'文',offsets:{from:700,to:900}},{id:50364,text:'[_TT_0]',offsets:{from:900,to:1000}}]}]};
 assert.equal(parseWhisperWordCues(raw)[0].text,'testing');assert.equal(parseWhisperWordCues(raw,false).length,4,'finer model tokens remain available');
-(async()=>{const dir=fs.mkdtempSync(path.join(os.tmpdir(),'replay-audio-token-test-'));try{
+(async()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'replay-audio-token-#-测试-'));
+ const tempKey=process.platform==='win32'?'TEMP':'TMPDIR', previousTemp=process.env[tempKey];
+ process.env[tempKey]=dir;
+ try{
  const input=path.join(dir,'input.wav'),output=path.join(dir,'edited.wav');
  cp.execFileSync('ffmpeg',['-v','error','-f','lavfi','-i','aevalsrc=0.1*sin(2*PI*(220+220*floor(t))*t):s=48000:d=4','-c:a','pcm_s16le',input]);
  await renderAudioEdit(input,sequence,4,output);
@@ -35,12 +39,16 @@ assert.equal(parseWhisperWordCues(raw)[0].text,'testing');assert.equal(parseWhis
  for(let i=Math.floor(.62*48000);i<Math.floor(.78*48000);i++)assert.equal(pcm.readInt16LE(i*2),0,'inserted silence must be silent PCM');
  const silent=path.join(dir,'silence.wav');await renderAudioEdit(input,[control('0.2s')],4,silent);assert.ok(fs.statSync(silent).size>0,'silence-only edits export');
  const capture=path.join(dir,'capture.webm'),recorded=path.join(dir,'recorded.wav');
- cp.execFileSync('ffmpeg',['-v','error','-f','lavfi','-i','sine=frequency=880:duration=0.5:sample_rate=48000','-c:a','opus','-strict','-2',capture]);
+ cp.execFileSync('ffmpeg',['-v','error','-f','lavfi','-i','sine=frequency=880:duration=0.5:sample_rate=48000','-c:a','libopus',capture]);
  await saveRecordedAudio(new Uint8Array(fs.readFileSync(capture)),recorded);
- const recordingDuration=Number(cp.execFileSync('ffprobe',['-v','error','-show_entries','format=duration','-of','default=nw=1:nk=1',recorded],{encoding:'utf8'}));assert.ok(Math.abs(recordingDuration-.5)<.002);
+ const recordingDuration=Number(cp.execFileSync('ffprobe',['-v','error','-show_entries','format=duration','-of','default=nw=1:nk=1',recorded],{encoding:'utf8'}));assert.ok(Math.abs(recordingDuration-.5)<.002,`recording duration ${recordingDuration}`);
  const inserted={id:uid(),kind:'speech',sourcePath:recorded,sourceDuration:recordingDuration,start:0,end:.3,text:'录音'};
  const mix=path.join(dir,'mixed.wav');await renderAudioEdit(input,[a,inserted],4,mix);
  const mixedPcm=cp.execFileSync('ffmpeg',['-v','error','-i',mix,'-ac','1','-f','s16le','-']);let crossings=0;for(let i=30001;i<36000;i++)if(mixedPcm.readInt16LE((i-1)*2)<=0&&mixedPcm.readInt16LE(i*2)>0)crossings++;assert.ok(Math.abs(crossings*8-880)<20,'inserted recording must render from its own source');
  const inherited=resolveAudioBlocks([inserted,control('+0.1s')],4)[1];assert.equal(inherited.sourcePath,recorded);assert.equal(inherited.sourceDuration,recordingDuration);
  assert.ok(fs.existsSync(input));console.log('Audio tokens passed: copy/repetition, silence, relative extensions/chains/bounds, split duration, original gaps, subtitle timing, PCM audio order and exact silence.');
-}finally{fs.rmSync(dir,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1});
+ }finally{
+  if(previousTemp===undefined)delete process.env[tempKey];else process.env[tempKey]=previousTemp;
+  fs.rmSync(dir,{recursive:true,force:true});
+ }
+})().catch(e=>{console.error(e);process.exitCode=1});
