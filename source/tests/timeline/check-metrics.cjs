@@ -152,7 +152,7 @@ pixelDensity(hugeTimes, 400000, 600000, 500);
 assert.ok(histogramReads < 15000); // binary searches per pixel, no full point scan
 console.log('Pixel density passed: exact boundaries, duplicates, transparent empty bins, relative brightness, viewport counts, bounded lookups and cache reuse.');
 
-const { smoothDisplayValues, smoothSpeedCurve } = exportsObject;
+const { smoothDisplayValues, smoothSpeedCurve, smoothedSpeed } = exportsObject;
 const plateau = new Float64Array(101).fill(0);
 for (let i = 30; i <= 70; i++) plateau[i] = 100;
 const blurred = smoothDisplayValues(plateau, 2);
@@ -171,4 +171,10 @@ assert.strictEqual(smoothSpeedCurve(drift, 0, 3000, 400), display);
 assert.equal(continuousSpeed(drift, 999.999), 0); // raw analytic speed is untouched
 assert.equal(continuousSpeed(drift, 1500), driftSpeed);
 assert.equal(display.length, 401);
+const varying={footprintTimestamps:[0,6000,12000,18000],footprintCoordinates:[0,0,.0006,0,.0018,0,.003,0]};
+const rawJump=Math.abs(continuousSpeed(varying,6001)-continuousSpeed(varying,5999));
+const filteredJump=Math.abs(smoothedSpeed(varying,6001)-smoothedSpeed(varying,5999));
+assert(rawJump>30&&filteredJump<rawJump*.01,'A GPS speed step must become a continuous transition');
+assert.equal(smoothSpeedCurve(varying,0,12000,40)[20][1],smoothSpeedCurve(varying,3000,9000,200)[100][1]);
+assert.equal(smoothedSpeed(drift,500),0,'Keep a measured stop at zero speed');
 console.log('Display smoothing passed: symmetric edges, flat interior, no overshoot, no mutation, missing values and cache reuse.');

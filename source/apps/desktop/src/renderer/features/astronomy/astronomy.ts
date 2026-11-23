@@ -1,6 +1,6 @@
 import {
   Body, Equator, EquatorFromVector, GeoVector, Horizon, Observer, RotateVector,
-  Rotation_EQJ_EQD, SearchRiseSet, SiderealTime, Spherical, VectorFromSphere,
+  Rotation_EQJ_EQD, SearchAltitude, SearchRiseSet, SiderealTime, Spherical, VectorFromSphere,
 } from "astronomy-engine";
 
 export type ObservationPoint = readonly [longitude: number, latitude: number];
@@ -16,12 +16,14 @@ export const skyObjects = [
   { id: "galacticCenter", label: "银心", color: "#e8afff" },
 ] as const;
 
+export const daylightDisplayZones = { land: "5b", water: "4b" } as const;
+
 export const twilightBands = [
-  { label: "白昼", minAltitude: 0, opacity: 0 },
-  { label: "民用曙暮光", minAltitude: -6, opacity: 0.16 },
-  { label: "航海曙暮光", minAltitude: -12, opacity: 0.32 },
-  { label: "天文曙暮光", minAltitude: -18, opacity: 0.49 },
-  { label: "夜晚", minAltitude: -90, opacity: 0.66 },
+  { label: "白昼", minAltitude: 0, zone: "7b" },
+  { label: "民用曙暮光", minAltitude: -6, zone: "3a" },
+  { label: "航海曙暮光", minAltitude: -12, zone: "2a" },
+  { label: "天文曙暮光", minAltitude: -18, zone: "1a" },
+  { label: "夜晚", minAltitude: -90, zone: "0" },
 ] as const;
 
 export type SkyObject = typeof skyObjects[number]["id"];
@@ -83,6 +85,29 @@ const horizonEvents = [
   { label: "月出", color: "#76dec0", direction: 1, target: Body.Moon },
   { label: "月落", color: "#7997ff", direction: -1, target: Body.Moon },
 ] as const;
+
+export const solarTwilight = twilightBands.slice(1, 4);
+
+export function solarYear(point: ObservationPoint, year: number, offset: number) {
+  const observer = toObserver(point);
+  const date = `${year}-01-01`;
+  const start = observationStart(date, offset);
+  const dayMs = minutesPerDay * minuteMs;
+  const count = (observationStart(`${year + 1}-01-01`, offset) - start) / dayMs;
+  return Array.from({ length: count }, (_, index) => {
+    const midnight = new Date(start + index * dayMs);
+    const timeOf = (event: ReturnType<typeof SearchRiseSet>) => {
+      const minute = event ? (event.date.getTime() - midnight.getTime()) / minuteMs : null;
+      return minute !== null && minute >= 0 && minute < minutesPerDay ? minute : null;
+    };
+    const crossings = (direction: 1 | -1) => [
+      timeOf(SearchRiseSet(Body.Sun, observer, direction, midnight, 1)),
+      ...solarTwilight.map(({ minAltitude }) =>
+        timeOf(SearchAltitude(Body.Sun, observer, direction, midnight, 1, minAltitude))),
+    ];
+    return { date: observationDateAfter(date, index), rise: crossings(1), set: crossings(-1) };
+  });
+}
 
 export function observationDay(point: ObservationPoint, start: number) {
   const observer = toObserver(point);

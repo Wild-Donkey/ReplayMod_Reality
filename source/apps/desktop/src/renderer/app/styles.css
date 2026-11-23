@@ -861,15 +861,6 @@ button:focus-visible {
   filter: none;
 }
 
-.maplibregl-ctrl-attrib {
-  color: #aaa;
-  background: rgb(8 8 8 / 74%);
-}
-
-.maplibregl-ctrl-attrib a {
-  color: #ddd;
-}
-
 .timeline {
   border-top: 1px solid var(--line);
   background: var(--panel-solid);
@@ -1398,11 +1389,6 @@ body,
   right: 8px;
 }
 
-.maplibregl-ctrl-bottom-right {
-  right: 8px;
-  bottom: 137px;
-}
-
 .maplibregl-ctrl-group {
   border: 0;
   background: rgb(18 18 18 / 62%);
@@ -1540,8 +1526,7 @@ body,
     right: 10px;
   }
 
-  .maplibregl-ctrl-top-right,
-  .maplibregl-ctrl-bottom-right {
+  .maplibregl-ctrl-top-right {
     right: 8px;
   }
 }
@@ -1663,10 +1648,6 @@ body,
 
 .viewport-badge {
   bottom: 175px;
-}
-
-.maplibregl-ctrl-bottom-right {
-  bottom: 137px;
 }
 
 @media (max-width: 1250px) {
@@ -1883,10 +1864,17 @@ h2.section-label { margin: 0; }
 .route-elevation[data-replay-renderer="engine"] { background: transparent; }
 
 /* Astronomy workspace */
-.astronomy-basemap .maplibregl-canvas-container > canvas {
-  filter: grayscale(1) contrast(.5) brightness(.8);
+.light-pollution-legend, .light-pollution-scale { display: inline-flex; align-items: center; }
+.light-pollution-legend { gap: 6px; color: inherit; text-decoration: none; }
+.light-pollution-legend:hover { text-decoration: underline; }
+.light-pollution-scale { gap: 2px; }
+.light-pollution-scale i { display: block; width: 7px; height: 9px; border: 1px solid #626262; }
+.astronomy-basemap > [data-road-composite] {
+  --road-composite-opacity: 0.58;
+  z-index: 1;
 }
 .astronomy-map-overlay {
+  z-index: 2;
   position: absolute;
   inset: 0;
   width: 100%;
@@ -1982,12 +1970,17 @@ h2.section-label { margin: 0; }
 .astronomy-playhead { stroke: #fff; stroke-width: 1.5; }
 .astronomy-hours { display: flex; justify-content: space-between; margin-left: 35px; color: #bbb; font-size: 10px; }
 .astronomy-time-range { width: calc(100% - 35px); height: 14px; margin: 0 0 0 35px; accent-color: #d8e4f4; cursor: ew-resize; }
-.media-alignment { margin-top: 18px; padding: 14px 11px 0; border-top: 1px solid rgba(128,128,128,.24); }
+.media-page h2.section-label:hover { color: var(--level-2); background: rgb(66 66 66 / 38%); }
+.media-page .library-section + .library-section { margin-top: 8px; }
+.media-alignment { padding: 0 11px 10px; }
 .media-alignment label { display: block; margin: 10px 0 6px; font-size: 12px; }
 .alignment-controls { display: flex; gap: 8px; }
 .alignment-controls input { min-width: 0; width: 90px; flex: 1; padding: 8px; border: 1px solid rgba(128,128,128,.4); border-radius: 6px; background: transparent; color: inherit; font: inherit; }
 .alignment-controls button { padding: 8px 10px; border: 1px solid rgba(128,128,128,.4); border-radius: 6px; background: transparent; color: inherit; cursor: pointer; white-space: nowrap; }
 .alignment-controls button:disabled { opacity: .5; cursor: default; }
+.alignment-slider { display: block; width: 100%; margin: 8px 0 0; accent-color: #d8e4f4; cursor: ew-resize; }
+.alignment-slider:disabled { cursor: default; }
+.alignment-slider-ticks { display: flex; justify-content: space-between; padding: 0 3px; color: #aaa; font-size: 10px; }
 .alignment-hint { font-size: 11px; line-height: 1.6; opacity: .7; margin: 8px 0; }
 .alignment-result { margin-top: 12px; font-size: 12px; line-height: 1.6; }
 .alignment-result p { margin: 6px 0; }
@@ -1997,7 +1990,8 @@ h2.section-label { margin: 0; }
 .video-preview-frame {position:relative;width:min(100cqw,calc(100cqh * 16 / 9));aspect-ratio:16/9;background:#000;}
 .video-preview-frame video,.video-preview-overlay,.video-preview-overlay canvas {position:absolute;inset:0;width:100%;height:100%;display:block;border:0;padding:0;background:transparent;object-fit:contain;}
 .video-preview-overlay {pointer-events:none;}
-.video-preview-error {position:absolute;top:12px;left:16px;color:#ddd;background:#222;padding:8px;}
+.video-preview-status {position:absolute;top:12px;left:16px;color:#ddd;background:#222;padding:8px;pointer-events:none;}
+.video-preview-status button { margin-left:8px; pointer-events:auto; cursor:pointer; }
 .media-workspace .titlebar-map-tools > .tool-button,.media-workspace .titlebar-legend-slot {display:none;}
 
 .audio-text-editor { display: flex; flex-direction: column; width: min(1140px, 96vw); height: min(900px, calc(100dvh - 68px)); max-height: calc(100dvh - 68px); overflow: hidden; }
@@ -2054,3 +2048,44 @@ h2.section-label { margin: 0; }
 .local-speech-models pre { white-space: pre-wrap; user-select: text; }
 .local-model-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .local-model-download { margin-top: 12px; }
+
+.solar-year-button {
+  padding: 5px 9px;
+  color: #ddd;
+  background: #222;
+  border: 1px solid #fff3;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.solar-year-button:hover:not(:disabled) { background: #333; }
+.solar-year-button:disabled { opacity: .45; cursor: default; }
+.astronomy-workspace .map-interaction-area { anchor-name: --solar-year-map; }
+.solar-year-popup {
+  position: fixed;
+  position-anchor: --solar-year-map;
+  inset: anchor(top) anchor(right) anchor(bottom) anchor(left);
+  margin: 0;
+  box-sizing: border-box;
+  width: auto;
+  height: auto;
+  padding: 16px;
+  color: #eee;
+  background: #181818;
+  border: 1px solid #444;
+}
+.solar-year-popup:popover-open { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 8px; }
+.solar-year-heading, .solar-year-readout, .solar-year-readout small {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+.solar-year-heading { justify-content: space-between; }
+.solar-year-heading span, .solar-year-readout small { color: #aaa; font-size: 11px; }
+.solar-year-chart { display: block; width: 100%; height: 100%; cursor: crosshair; }
+.solar-year-chart text { fill: #aaa; font-size: 11px; }
+.solar-year-chart line { stroke: #fff2; }
+.solar-year-chart .solar-year-cursor { stroke: #fffc; stroke-dasharray: 3 3; }
+.solar-year-chart .solar-year-break { stroke: #aaa; stroke-dasharray: 2 2; }
+.solar-year-readout { font-size: 13px; font-variant-numeric: tabular-nums; }
+.solar-year-readout small { flex-basis: 100%; }

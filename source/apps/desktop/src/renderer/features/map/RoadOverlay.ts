@@ -26,7 +26,7 @@ export class RoadOverlay {
   constructor(private base: GLMap, style: StyleSpecification) {
     this.container.dataset.roadComposite = "true";
     Object.assign(this.container.style, {
-      position: "absolute", inset: "0", pointerEvents: "none", opacity: String(ROAD_OPACITY_SCALE),
+      position: "absolute", inset: "0", pointerEvents: "none", opacity: `var(--road-composite-opacity, ${ROAD_OPACITY_SCALE})`,
       mixBlendMode: "screen", visibility: "hidden",
     });
     this.base.getCanvasContainer().before(this.container);

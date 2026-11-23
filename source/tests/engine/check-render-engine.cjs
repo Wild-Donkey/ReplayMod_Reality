@@ -1087,6 +1087,23 @@ function checkMinimapTrail() {
 }
 checkMinimapTrail();
 
+function checkMinimapHeading() {
+  const {minimapHeading}=loadModule(path.join('apps','desktop','src','renderer','features','export','MinimapHeading.ts'));
+  const corner=TrajectoryBuffer.fromPointDataset({
+    timelineTimestamps:[0,3000,6000],
+    timelineCoordinates:[0,0,0,.0003,.0003,.0003],
+    timelineAltitudes:[0,0,0],
+  });
+  const at=time=>minimapHeading(corner,time,[0,6000],0);
+  const forward=[1000,2999,3000,3001,5000].map(at);
+  assert.equal(forward[0],0);
+  assert.ok(Math.abs(forward[2]-45)<.01);
+  assert.ok(Math.abs(forward[1]-forward[3])<.2,'Heading should not snap at a GPS knot');
+  assert.ok(Math.abs(forward[4]-90)<.01);
+  assert.deepEqual([5000,3001,3000,2999,1000].map(at).reverse(),forward,'Reverse seeking must reproduce the same headings');
+}
+checkMinimapHeading();
+
 async function checkFrameBarrier() {
   const {waitForMapFrame}=load('MapFrameBarrier');
   const listeners=new Map([['idle',new Set()],['error',new Set()]]);

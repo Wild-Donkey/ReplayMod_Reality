@@ -1,6 +1,5 @@
-import { execFile } from "node:child_process";
+import { runChild } from "./childProcesses";
 import path from "node:path";
-import { promisify } from "node:util";
 import type {
   AccelerationBackend,
   EncoderCapability,
@@ -10,7 +9,6 @@ import type {
   MediaTrackKind,
 } from "./types";
 
-const execFileAsync = promisify(execFile);
 
 interface ProbeStream {
   readonly index?: number;
@@ -78,14 +76,14 @@ export const detectMediaCapabilities = async (): Promise<MediaCapabilityReport> 
   let encoderOutput = "";
 
   try {
-    await execFileAsync("ffprobe", ["-version"]);
+    await runChild("ffprobe", ["-version"], {});
     ffprobeAvailable = true;
   } catch {
     diagnostics.push("未找到 ffprobe；无法读取媒体轨道。");
   }
 
   try {
-    const result = await execFileAsync("ffmpeg", ["-hide_banner", "-encoders"], {
+    const result = await runChild("ffmpeg", ["-hide_banner", "-encoders"], {
       maxBuffer: 8 * 1024 * 1024,
     });
     ffmpegAvailable = true;
@@ -117,7 +115,7 @@ export const probeMediaFile = async (sourcePath: string): Promise<MediaSource> =
     throw new Error(capabilities.diagnostics.join(" "));
   }
 
-  const { stdout } = await execFileAsync("ffprobe", [
+  const { stdout } = await runChild("ffprobe", [
     "-v",
     "error",
     "-show_format",

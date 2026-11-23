@@ -2,9 +2,9 @@ import {withProcessedTrajectory} from "../features/timeline/processedTrajectory"
 import type {MotionGpsResult} from "../../../../../packages/media/src/gps-motion";
 import {LocalSpeechModels} from "../features/audio/LocalSpeechModels";
 import { AudioTextEditor } from "../features/audio/AudioTextEditor";
-import {VideoPreview} from "../features/export/VideoPreview";
+import {VideoPreview, videoTimeBounds} from "../features/export/VideoPreview";
 import { HDRSettings } from "../features/settings/HDRSettings";
-import { defaultTimelineMetrics, type TimelineMetricsSettings } from "../features/timeline/metrics";
+import { defaultTimelineMetrics, hasProcessedCoverage, type TimelineMetricsSettings } from "../features/timeline/metrics";
 import { useCachedState, readCached, writeCached, cacheError } from "../shared/cache";
 import type { AnnotationProject, MapCoordinate } from "../../../../../packages/data/src";
 import type { TerrainProfilePoint } from "../features/map/elevation";
@@ -12,7 +12,7 @@ import { DEFAULT_CACHE_LIMIT_MB, type AppSettings, type MapLanguage } from "../.
 import { AnnotationPanel } from "../features/annotations/AnnotationPanel";
 import { ElevationProfile } from "../features/annotations/ElevationProfile";
 import { emptyAnnotations, parseAnnotationProject, serializeAnnotationProject } from "../features/annotations/annotations";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PointDataset, TimeBounds } from "../../../../../packages/data/src";
 import type { MediaSource, SubtitleTrack } from "../../../../../packages/media/src";
 import { MapTokenSetup, MapViewport } from "../features/map/MapViewport";
@@ -165,9 +165,16 @@ export function App() {
   };
   const finishRoute = () => {if(draftCoordinates.length>=2)addAnnotation(draftCoordinates,"route");};
   const [mediaSource, setMediaSource] = useState<MediaSource | null>(null);
+  const [mediaOpenVersion, setMediaOpenVersion] = useState(0);
+  const [showVideo, setShowVideo] = useState(true);
+  const [alignmentPreviewOffset, setAlignmentPreviewOffset] = useState(0);
+  const mediaRange = useMemo(() => mediaActive ? videoTimeBounds(mediaSource) : null, [mediaActive, mediaSource]);
   const [rawPointDataset, setPointDataset] = useState<PointDataset | null>(null);
   const [motionGps,setMotionGps]=useState<{raw:PointDataset;path:string;result:MotionGpsResult}|null>(null);
-  const pointDataset=useMemo(()=>rawPointDataset&&motionGps?.raw===rawPointDataset&&motionGps.path===mediaSource?.sourcePath&&motionGps.result.videoStartSeconds===mediaSource?.creationTimeSeconds?withProcessedTrajectory(rawPointDataset,motionGps.result):rawPointDataset,[rawPointDataset,motionGps,mediaSource?.sourcePath,mediaSource?.creationTimeSeconds]);
+  const pointDataset=useMemo(()=>rawPointDataset&&motionGps?.raw===rawPointDataset&&motionGps.path===mediaSource?.sourcePath
+    && (mediaActive || motionGps.result.videoStartSeconds===mediaSource.creationTimeSeconds)
+    ? withProcessedTrajectory(rawPointDataset,motionGps.result) : rawPointDataset,
+  [rawPointDataset,motionGps,mediaSource?.sourcePath,mediaSource?.creationTimeSeconds,mediaActive]);
   const gpsInputRef=useRef<{raw:PointDataset|null;path:string|null}>({raw:rawPointDataset,path:null});
   const [flightRoutes, setFlightRoutes] = useState<readonly (readonly [number, number])[][]>([]);
   const [flightRouteSegments, setFlightRouteSegments] = useState<readonly FlightRouteSegment[]>([]);
@@ -183,6 +190,12 @@ export function App() {
       : null);
   }, [pointDataset, flightRouteSegments, replayScene]);
   const [currentTime, displayCurrentTime] = useState<number | null>(() => readCached("currentTime", null));
+  const mediaOffsetMs = mediaRange ? Math.round(alignmentPreviewOffset * 1000) : 0;
+  const overlayPreviewTime = currentTime === null ? null : currentTime + mediaOffsetMs;
+  const hasTrajectoryAtPreviewTime = pointDataset !== null && overlayPreviewTime !== null
+    && overlayPreviewTime >= pointDataset.timeBounds[0] && overlayPreviewTime <= pointDataset.timeBounds[1];
+  const hasGpsGap = pointDataset !== null && overlayPreviewTime !== null && !hasProcessedCoverage(pointDataset, overlayPreviewTime);
+  const playbackBounds = mediaRange ?? pointDataset?.timeBounds;
   const [playing, setPlaying] = useState(false);
   const playbackRef = useRef<ReplayPlayback | null>(null);
   useEffect(() => {
@@ -205,11 +218,17 @@ export function App() {
     return () => { unsubscribe(); };
   }, [replayScene]);
   useEffect(() => {
-    if (!pointDataset) return;
-    const playback = new ReplayPlayback(replayScene.clock, pointDataset.timeBounds);
+    if (!playbackBounds) return;
+    const playback = new ReplayPlayback(replayScene.clock, playbackBounds);
     playbackRef.current = playback;
     return () => { playback.destroy(); playbackRef.current = null; };
-  }, [pointDataset?.timeBounds, replayScene]);
+  }, [playbackBounds, replayScene]);
+  useEffect(() => {
+    const time = replayScene.clock.current.time;
+    if (mediaRange && (time === null || time < mediaRange[0] || time > mediaRange[1])) {
+      setCurrentTime(mediaRange[0]);
+    }
+  }, [mediaRange, replayScene, setCurrentTime]);
   const [exportRange, setExportRange] = useCachedState<TimeBounds | null>("exportRange", null);
   const [timelineFocusRequest, setTimelineFocusRequest] =
     useState<TimelineFocusRequest | null>(null);
@@ -294,7 +313,7 @@ export function App() {
     const handleRangeShortcut = (event: KeyboardEvent) => {
       const target = event.target;
       if (
-        currentTime === null ||
+        overlayPreviewTime === null ||
         !exportRange ||
         event.ctrlKey ||
         event.metaKey ||
@@ -310,16 +329,16 @@ export function App() {
       const key = event.key.toLowerCase();
       if (key === "i") {
         event.preventDefault();
-        setExportRange([Math.min(currentTime, exportRange[1]), exportRange[1]]);
+        setExportRange([Math.min(overlayPreviewTime, exportRange[1]), exportRange[1]]);
       } else if (key === "o") {
         event.preventDefault();
-        setExportRange([exportRange[0], Math.max(currentTime, exportRange[0])]);
+        setExportRange([exportRange[0], Math.max(overlayPreviewTime, exportRange[0])]);
       }
     };
 
     window.addEventListener("keydown", handleRangeShortcut);
     return () => window.removeEventListener("keydown", handleRangeShortcut);
-  }, [currentTime, exportRange]);
+  }, [overlayPreviewTime, exportRange]);
 
   const selectMapPoint = useCallback((timestamp: number) => {
     setAnnotationSelectedId(null);
@@ -375,7 +394,7 @@ export function App() {
   useEffect(() => {
     let active = true;
     window.replaymod?.loadCachedMedia().then(source => {
-      if (active) setMediaSource(source);
+      if (active) setMediaSource(current => current ?? source);
     }).catch(error => { if (active) setDataError(String(error)); });
     return () => { active = false; };
   }, []);
@@ -393,7 +412,7 @@ export function App() {
 
       if (dataset) {
         setPointDataset(dataset);
-        setCurrentTime(dataset.timeBounds[0]);
+        if (!mediaRange) setCurrentTime(dataset.timeBounds[0]);
         setExportRange(dataset.timeBounds);
         setTimelineFocusRequest(null);
       }
@@ -415,6 +434,15 @@ export function App() {
       const source = await window.replaymod.openMedia();
       if (source) {
         setMediaSource(source);
+        setMediaOpenVersion(version => version + 1);
+        setAlignmentPreviewOffset(0);
+        setShowVideo(true);
+        setActiveTab("sources");
+        const bounds = videoTimeBounds(source);
+        if (bounds) {
+          setBottomPanelCollapsed(false);
+          setCurrentTime(bounds[0]);
+        }
         setSubtitleTrack(null);
         setSubtitleStatus("");
       }
@@ -462,7 +490,7 @@ export function App() {
       openLocation: !isLoadingData,
       openMedia: !isLoadingMedia,
       subtitles: mediaSource !== null,
-      range: currentTime !== null && exportRange !== null,
+      range: overlayPreviewTime !== null && exportRange !== null,
     });
     update();
     window.addEventListener("focus", update);
@@ -472,15 +500,15 @@ export function App() {
         case "open-media": void openMedia(); break;
         case "open-subtitles": if (mediaSource) setIsSubtitleEditorOpen(true); break;
         case "set-in":
-          if (currentTime !== null && exportRange) setExportRange([Math.min(currentTime, exportRange[1]), exportRange[1]]);
+          if (overlayPreviewTime !== null && exportRange) setExportRange([Math.min(overlayPreviewTime, exportRange[1]), exportRange[1]]);
           break;
         case "set-out":
-          if (currentTime !== null && exportRange) setExportRange([exportRange[0], Math.max(currentTime, exportRange[0])]);
+          if (overlayPreviewTime !== null && exportRange) setExportRange([exportRange[0], Math.max(overlayPreviewTime, exportRange[0])]);
           break;
       }
     });
     return () => { unsubscribe(); window.removeEventListener("focus", update); };
-  }, [isMac, isLoadingData, isLoadingMedia, mediaSource, currentTime, exportRange]);
+  }, [isMac, isLoadingData, isLoadingMedia, mediaSource, mediaRange, overlayPreviewTime, exportRange, setActiveTab, setBottomPanelCollapsed, setCurrentTime]);
 
   return (
     <main className={`app-shell ${mediaActive ? "media-workspace" : ""}`}>
@@ -590,10 +618,10 @@ export function App() {
           <div className="workspace-page" hidden={activeTab !== "annotations"}>
           <AnnotationPanel project={annotations} onChange={setAnnotations} selectedId={annotationSelectedId} onSelect={selectAnnotation} onFocus={focusAnnotation} status={annotationStatus} ready={annotationsReady}/>
           </div>
-          <div className="workspace-page" hidden={!mediaActive}>
+          <div className="workspace-page media-page" hidden={!mediaActive}>
           <section className="library-section">
             <h2 className="section-label">
-              数据源
+              足迹 CSV
             </h2>
             <div className={pointDataset ? "data-source-item" : "empty-list"}>
               {pointDataset ? (
@@ -607,9 +635,12 @@ export function App() {
                   </span>
                 </>
               ) : (
-                "尚未载入数据"
+                "尚未载入足迹 CSV"
               )}
             </div>
+            <button className="primary-action" type="button" disabled={isLoadingData} onClick={() => void openLocationCsv()}>
+              {isLoadingData ? "正在读取 CSV..." : pointDataset ? "更换足迹 CSV" : "载入足迹 CSV"}
+            </button>
           </section>
           <section className="library-section">
             <h2 className="section-label">
@@ -639,46 +670,50 @@ export function App() {
                 </>
               ) : "尚未载入视频"}
             </div>
-            {mediaSource&&<MediaAlignmentPanel key={mediaSource.sourcePath} source={mediaSource} dataset={rawPointDataset}
-              onProcessed={result=>{if(rawPointDataset&&gpsInputRef.current.raw===rawPointDataset&&gpsInputRef.current.path===mediaSource.sourcePath)setMotionGps({raw:rawPointDataset,path:mediaSource.sourcePath,result});}}
-              onAligned={next=>setMediaSource(current=>current?.sourcePath===next.sourcePath?next:current)} />}
+            <button className="primary-action" type="button" disabled={isLoadingMedia} onClick={() => void openMedia()}>
+              {isLoadingMedia ? "正在检查视频..." : "载入视频"}
+            </button>
+            {mediaSource && <button type="button" className="primary-action" onClick={() => setShowVideo(value => !value)}>
+              {showVideo ? "使用黑底预览" : "显示视频预览"}
+            </button>}
           </section>
-          <button
-            className="primary-action"
-            type="button"
-            disabled={isLoadingData}
-            onClick={() => void openLocationCsv()}
-          >
-            {isLoadingData ? "正在读取 CSV..." : "载入数据源"}
-          </button>
-          <button
-            className="primary-action"
-            type="button"
-            disabled={isLoadingMedia}
-            onClick={() => void openMedia()}
-          >
-            {isLoadingMedia ? "正在检查视频..." : "载入视频"}
-          </button>
-          {mediaSource && <button type="button" className="primary-action" onClick={()=>setMediaSource(null)}>使用黑底预览</button>}
+          {mediaSource&&<MediaAlignmentPanel key={`${mediaSource.sourcePath}:${mediaOpenVersion}`} source={mediaSource} dataset={rawPointDataset} active={mediaActive}
+              onPreviewOffsetChange={setAlignmentPreviewOffset}
+              onProcessed={result=>{
+                if(rawPointDataset&&gpsInputRef.current.raw===rawPointDataset&&gpsInputRef.current.path===mediaSource.sourcePath) {
+                  startTransition(()=>setMotionGps({raw:rawPointDataset,path:mediaSource.sourcePath,result}));
+                }
+              }}
+              onAligned={next=>{
+                const nextRange = videoTimeBounds(next);
+                const time = replayScene.clock.current.time;
+                if (mediaRange && nextRange && time !== null && time >= mediaRange[0] && time <= mediaRange[1]) {
+                  setCurrentTime(nextRange[0] + (time - mediaRange[0]));
+                }
+                setAlignmentPreviewOffset(0);
+                setMediaSource(current=>current?.sourcePath===next.sourcePath?next:current);
+              }} />}
           {dataError && <div className="data-error">{dataError}</div>}
-            <p className="page-intro">将轨迹与仪表导出为透明视频，叠加到拍摄素材上。</p>
-          <section className="range-editor">
+          <section className="library-section">
+          <h2 className="section-label">透明叠加导出</h2>
+          <div className="range-editor">
             <p>移动红色播放头，再设置导出区间。</p>
             <div>
-              <button type="button" disabled={currentTime === null || !exportRange} onClick={() => {
-                if (currentTime !== null && exportRange) setExportRange([Math.min(currentTime, exportRange[1]), exportRange[1]]);
+              <button type="button" disabled={overlayPreviewTime === null || !exportRange} onClick={() => {
+                if (overlayPreviewTime !== null && exportRange) setExportRange([Math.min(overlayPreviewTime, exportRange[1]), exportRange[1]]);
               }}>设为入点 (I)</button>
-              <button type="button" disabled={currentTime === null || !exportRange} onClick={() => {
-                if (currentTime !== null && exportRange) setExportRange([exportRange[0], Math.max(currentTime, exportRange[0])]);
+              <button type="button" disabled={overlayPreviewTime === null || !exportRange} onClick={() => {
+                if (overlayPreviewTime !== null && exportRange) setExportRange([exportRange[0], Math.max(overlayPreviewTime, exportRange[0])]);
               }}>设为出点 (O)</button>
             </div>
             {exportRange && <code>{new Date(exportRange[0]).toLocaleString("zh-CN")}<br />— {new Date(exportRange[1]).toLocaleString("zh-CN")}</code>}
-          </section>
+          </div>
           {pointDataset && exportRange ? (
-            <OverlayExport dataset={pointDataset} range={exportRange} apiKey={maptilerKey} scene={replayScene} active={mediaActive} previewContainer={previewHost} previewTime={currentTime} />
+            <OverlayExport dataset={pointDataset} range={exportRange} apiKey={maptilerKey} scene={replayScene} active={mediaActive} previewContainer={previewHost} previewTime={overlayPreviewTime} />
           ) : (
             <div className="inspector-empty"><div className="inspector-icon">i</div><p>载入轨迹后可输出透明视频。</p></div>
           )}
+          </section>
 
           </div>
           <div className="workspace-page" hidden={activeTab !== "flights"}>
@@ -693,7 +728,8 @@ export function App() {
               onFlightAirportsChange={setFlightAirports}
             />
           </div>
-          {astronomyMap && <AstronomyPanel state={astronomyMap} onTimeChange={setObservationMinute}/>}
+          {astronomyMap && <AstronomyPanel state={astronomyMap} date={observationClock.date}
+            offset={observationOffset} onTimeChange={setObservationMinute}/>}
           <div className="workspace-page settings-page" hidden={activeTab !== "settings"}>
             <div className="settings-heading"><small>REPLAY MOD REALITY</small><h2>设置</h2><p>工作区偏好自动保存在本机。</p></div>
             <HDRSettings/>
@@ -751,7 +787,8 @@ export function App() {
         <section className="stage-column">
 
 
-          {mediaActive ? <VideoPreview source={mediaSource} time={currentTime} playing={playing} onOverlayHost={setPreviewHost}/> : <div className="map-interaction-area" aria-label="地图视图" />}
+          {mediaActive ? <VideoPreview source={showVideo ? mediaSource : null} range={mediaRange} time={currentTime} playing={playing}
+            showOverlay={mediaRange ? hasTrajectoryAtPreviewTime && !hasGpsGap : !showVideo || mediaSource === null} onOverlayHost={setPreviewHost}/> : <div className="map-interaction-area" aria-label="地图视图" />}
 
           <div className="bottom-panel">
             <button className="bottom-panel-toggle" type="button"
@@ -765,11 +802,13 @@ export function App() {
                 offset={observationOffset} onOffsetChange={setObservationOffset}
                 onDateChange={date => setObservationClock(clock => ({ ...clock, date }))}
                 onTimeChange={setObservationMinute} onNow={() => setObservationClock(observationNow(observationOffset))}
-              /> : selectedRoute ? <ElevationProfile scene={replayScene} coordinates={annotationElevationProfile} routeName={selectedRoute.name} onHover={syncElevationHover}/> : <Timeline
+              /> : selectedRoute && !mediaActive ? <ElevationProfile scene={replayScene} coordinates={annotationElevationProfile} routeName={selectedRoute.name} onHover={syncElevationHover}/> : <Timeline
                 scene={replayScene}
                 dataset={pointDataset}
-                currentTime={currentTime}
-                onCurrentTimeChange={setCurrentTime}
+                mediaRange={mediaRange}
+                mediaOffsetMs={mediaOffsetMs}
+                currentTime={overlayPreviewTime}
+                onCurrentTimeChange={timestamp => setCurrentTime(timestamp - mediaOffsetMs)}
                 playing={playing}
                 onTogglePlayback={() => playing ? playbackRef.current?.pause() : playbackRef.current?.play()}
                 onStepFrame={direction => playbackRef.current?.step(direction)}

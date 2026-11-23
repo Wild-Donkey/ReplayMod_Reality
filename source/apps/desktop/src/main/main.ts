@@ -1,15 +1,18 @@
-import {processMotionGps} from "../../../../packages/media/src/gps-motion";
-import {PROCESS_GPS_CHANNEL,type MotionGpsRequest,type MotionGpsResult} from "../shared/mediaAlignment";
+import "./guardStdio";
+import {GPS_RESULT_CHANNEL,POST_GPS_CHANNEL,type MotionGpsRequest,type MotionGpsResult,type MotionGpsUpdate} from "../shared/mediaAlignment";
+import { LatestJobQueue } from "./latestJobQueue";
+import type { TrajectoryWorkerInput, TrajectoryWorkerOutput } from "./trajectoryWorker";
+import { Worker } from "node:worker_threads";
+import { killChildren, stopChildren } from "../../../../packages/media/src/childProcesses";
+import { installShutdown } from "./shutdown";
 import {restoreDataset,resolveDatasetSource} from "./restoreDataset";
 import {LocalSpeech} from "./localSpeech";
 import { renderAudioEdit, saveRecordedAudio } from "../../../../packages/media/src/audio-edit";
 import { audioOutputCues, validateAudioBlocks, refineAudioBlock, coarseAudioBlocks, type AudioDocument, type AudioBlock } from "../../../../packages/media/src/audio-document";
 import {registerMediaPreviewScheme,installMediaPreviewProtocol} from "./mediaPreviewProtocol";
 import { OfflineExportManager } from "./offlineExport";
-import { ALIGN_MEDIA_CHANNEL, type MediaAlignmentRequest, type MediaAlignmentResult } from "../shared/mediaAlignment";
-import { refineMotionAlignment, type MotionAlignmentResult } from "../../../../packages/media/src/motion-alignment";
+import { ALIGN_MEDIA_CHANNEL, alignedMediaStart, splitAlignmentOffset, validAlignmentOffset, type MediaAlignmentRequest, type MediaAlignmentResult } from "../shared/mediaAlignment";
 import { shiftVideoTimestamps } from "../../../../packages/media/src/video-timestamps";
-import { extractDjiOrientation } from "../../../../packages/media/src/dji";
 import { OfflineFramePlan, type OfflineExportOptions } from "../shared/overlayExport";
 import { findTransparentVideoEncoder } from "../../../../packages/media/src/raw-video";
 import { installDisplayHDR } from "./displayHDR";
@@ -73,18 +76,18 @@ ipcMain.handle("export:offline-segment", (event, id: string, segment: number) =>
 ipcMain.handle("export:offline-complete", (event, id: string) => offlineExports.complete(event.sender.id, id));
 ipcMain.handle("export:offline-cancel", (event, id: string) => offlineExports.cancel(event.sender.id, id));
 app.on("web-contents-created", (_event, contents) => {
-  const cancel = () => { void offlineExports.cancelOwner(contents.id); };
+  const owner = contents.id;
+  const cancel = () => { void offlineExports.cancelOwner(owner); };
   contents.once("destroyed", cancel);
-  contents.on("render-process-gone", cancel);
+  contents.on("render-process-gone", (_event, details) => {
+    if (details.reason !== "clean-exit") console.error("Renderer exited", details.reason, details.exitCode);
+    cancel();
+  });
   contents.on("did-start-navigation", (_navigation, _url, inPlace, mainFrame) => { if (mainFrame && !inPlace) cancel(); });
 });
-let quittingOfflineExports = false;
-app.on("before-quit", event => {
-  if (quittingOfflineExports || !offlineExports.active) return;
-  event.preventDefault(); quittingOfflineExports = true;
-  void offlineExports.cancelAll().then(() => app.quit(), () => app.quit());
+app.on("child-process-gone", (_event, details) => {
+  if (details.type === "GPU" && details.reason !== "clean-exit") console.error("GPU process exited", details.reason, details.exitCode);
 });
-
 app.setName("ReplayMod Reality");
 process.title = "ReplayMod Reality";
 
@@ -98,7 +101,6 @@ if (!app.requestSingleInstanceLock()) process.exit(0);
 
 const storage = new AppStorage(platform, home, appData, env);
 const localSpeech = new LocalSpeech(app.getAppPath(),process.resourcesPath,app.isPackaged,storage.paths.localSpeech);
-app.on("will-quit",()=>localSpeech.close());
 ipcMain.handle("speech:status",()=>localSpeech.status());
 ipcMain.handle("speech:download",(event,id:string)=>localSpeech.download(id,update=>{if(!event.sender.isDestroyed())event.sender.send("speech:progress",update);}));
 ipcMain.handle("speech:select",(_event,role:"asr"|"aligner",id:string)=>localSpeech.select(role,id));
@@ -125,15 +127,6 @@ const updateUserArchive = (change: (current: UserArchive) => UserArchive) => {
   storage.archive.write(next);
   userArchive = next;
 };
-let cacheDrained = false;
-app.on("will-quit", event => {
-  if (cacheDrained) return;
-  event.preventDefault();
-  void screeningMigration.then(() => resources.drain()).finally(() => {
-    cacheDrained = true;
-    app.quit();
-  });
-});
 app.on("second-instance", () => {
   const window = BrowserWindow.getAllWindows()[0];
   if (!window) {
@@ -707,19 +700,37 @@ ipcMain.handle("flights:save-screening-cache", async (_event, cache: FlightScree
   await save;
 });
 
+let alignmentProbe: {revision: string; source: Promise<MediaSource>} | undefined;
+
+async function probeAlignedMedia(sourcePath: string) {
+  const info = await stat(sourcePath);
+  const revision = JSON.stringify([sourcePath, info.size, info.mtimeMs, info.ino]);
+  if (alignmentProbe?.revision !== revision) {
+    const source = probeMediaFile(sourcePath);
+    alignmentProbe = {revision, source};
+    void source.catch(() => { if (alignmentProbe?.source === source) alignmentProbe = undefined; });
+  }
+  const source = await alignmentProbe.source;
+  const containerTime = source.creationTimeSeconds;
+  const residualMs = userArchive.mediaClockAdjustments?.[sourcePath]?.find(record =>
+    record.size === info.size && record.containerTime === containerTime)?.residualMs ?? 0;
+  const aligned = containerTime === undefined ? source : {...source, creationTimeSeconds: alignedMediaStart(containerTime, residualMs / 1000)};
+  return {source: aligned, info, revision, containerTime, residualMs};
+}
+
 ipcMain.handle("cache:media", async () => {
   let source = userArchive.lastMedia as MediaSource | undefined;
   if (!source) return null;
   try { await access(source.sourcePath); } catch { return null; }
   // Refresh timestamps: the file may have been aligned since the archive was saved.
-  source = await probeMediaFile(source.sourcePath);
+  ({source} = await probeAlignedMedia(source.sourcePath));
   openedMediaPaths.add(source.sourcePath);
   return source;
 });
 
 ipcMain.handle(OPEN_MEDIA_CHANNEL, async (): Promise<MediaSource | null> => {
   const result = await dialog.showOpenDialog({
-    title: "载入 DJI 视频",
+    title: "载入视频",
     properties: ["openFile"],
     filters: [{ name: "视频", extensions: ["mp4", "mov"] }],
   });
@@ -727,56 +738,127 @@ ipcMain.handle(OPEN_MEDIA_CHANNEL, async (): Promise<MediaSource | null> => {
 
   if (result.canceled || !selectedFilePath) return null;
   openedMediaPaths.add(selectedFilePath);
-  const source = await probeMediaFile(selectedFilePath);
+  const {source} = await probeAlignedMedia(selectedFilePath);
   updateUserArchive(current=>({...current,lastMedia:source}));
   return source;
 });
 
-ipcMain.handle(PROCESS_GPS_CHANNEL,async (_event,request:MotionGpsRequest):Promise<MotionGpsResult>=>{
-  if(!openedMediaPaths.has(request.sourcePath))throw new Error("请先载入该视频。");
-  if(!Array.isArray(request.points)||request.points.length>100000||request.points.length<2)throw new Error("匹配视频时段的 GPS 样本不足或范围过大。");
-  const source=await probeMediaFile(request.sourcePath);
-  if(source.creationTimeSeconds===undefined)throw new Error("请先对齐视频拍摄时间。");
-  const info=await stat(request.sourcePath);
-  const key=createHash("sha256").update(JSON.stringify(["motion-gps-v2",request.sourcePath,info.size,info.mtimeMs,source.creationTimeSeconds,request.points])).digest("hex");
-  const cached=await resources.read<MotionGpsResult>("snapshots",key);if(cached)return cached;
-  const roots=[path.resolve(process.cwd(),".."),process.cwd(),app.getAppPath(),path.dirname(app.getPath("exe"))];
-  const exiftool=await firstExistingPath(roots.flatMap(root=>[path.join(root,".tools/exiftool/exiftool"),path.join(root,".tools/exiftool/exiftool.exe")]));
-  let orientation:Awaited<ReturnType<typeof extractDjiOrientation>>=[];
-  try {orientation=await extractDjiOrientation(request.sourcePath,exiftool??"exiftool");}catch { /* GPS-only fallback remains usable. */ }
-  const result=processMotionGps(orientation,request.points,source.creationTimeSeconds);
-  const end=source.creationTimeSeconds+(source.durationSeconds??Infinity);
-  result.points=result.points.filter(p=>p.timeSeconds>=source.creationTimeSeconds!&&p.timeSeconds<=end);
-  if(result.points.length<2)throw new Error("GPS 与视频时间不重叠，请先完成时间对齐。");
-  await resources.write("snapshots",key,result);
-  return result;
+let trajectoryWorker: Worker | undefined;
+
+async function closeTrajectoryWorker() {
+  const worker = trajectoryWorker;
+  if (!worker) return;
+  await new Promise<void>(resolve => {
+    // The worker first stops ExifTool. Termination covers synchronous computation.
+    const deadline = setTimeout(() => { void worker.terminate().catch(console.error); }, 2500);
+    worker.once("exit", () => { clearTimeout(deadline); resolve(); });
+    worker.postMessage({shutdown: true});
+  });
+}
+
+function runTrajectoryWorker(input: TrajectoryWorkerInput): Promise<MotionGpsResult> {
+  if (!trajectoryWorker) {
+    const worker = new Worker(path.join(__dirname, "trajectoryWorker.js"));
+    worker.on("error", error => {
+      if (trajectoryWorker === worker) trajectoryWorker = undefined;
+      console.error("Trajectory worker failed", error);
+    });
+    worker.once("exit", () => { if (trajectoryWorker === worker) trajectoryWorker = undefined; });
+    trajectoryWorker = worker;
+  }
+  const worker = trajectoryWorker;
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      worker.off("message", onMessage);
+      worker.off("error", onError);
+      worker.off("exit", onExit);
+      worker.unref();
+    };
+    const onError = (error: unknown) => { cleanup(); reject(error); };
+    const onExit = () => onError(new Error("轨迹计算进程已退出。"));
+    const onMessage = (output: TrajectoryWorkerOutput) => {
+      cleanup();
+      if ("error" in output) reject(new Error(output.error));
+      else resolve(output.result);
+    };
+    worker.ref();
+    worker.once("message", onMessage);
+    worker.once("error", onError);
+    worker.once("exit", onExit);
+    try { worker.postMessage(input); }
+    catch (error) { onError(error); }
+  });
+}
+const gpsJobs = new LatestJobQueue<{sender: Electron.WebContents; id: string; request: MotionGpsRequest}>(async (
+  {sender, id, request}, isCurrent,
+) => {
+  const publish = (update: MotionGpsUpdate) => {
+    if (isCurrent() && !sender.isDestroyed()) sender.send(GPS_RESULT_CHANNEL, update);
+  };
+  try {
+    if(!openedMediaPaths.has(request.sourcePath))throw new Error("请先载入该视频。");
+    if(!Array.isArray(request.points)||request.points.length>100000||request.points.length<1)throw new Error("匹配视频时段的 GPS 样本不足或范围过大。");
+    if (!validAlignmentOffset(request.offsetSeconds)) throw new Error("姿态对齐偏移无效。");
+    const {source,revision}=await probeAlignedMedia(request.sourcePath);
+    if (!isCurrent() || sender.isDestroyed()) return;
+    if(source.creationTimeSeconds===undefined)throw new Error("请先对齐视频拍摄时间。");
+    if(source.creationTimeSeconds!==request.creationTimeSeconds)throw new Error("视频拍摄时间已变化，请重新载入视频。");
+    const start=alignedMediaStart(source.creationTimeSeconds,request.offsetSeconds);
+    const key=request.offsetSeconds===0
+      ? createHash("sha256").update(JSON.stringify(["motion-gps-v8",revision,start,request.points])).digest("hex") : null;
+    if (key) {
+      const cached=await resources.read<MotionGpsResult>("snapshots",key);
+      if(cached) { publish({id,result:cached}); return; }
+    }
+    const roots = [path.resolve(process.cwd(),".."),process.cwd(),app.getAppPath(),path.dirname(app.getPath("exe"))];
+    const exiftool = await firstExistingPath(roots.flatMap(root => [path.join(root,".tools/exiftool/exiftool"),path.join(root,".tools/exiftool/exiftool.exe")]));
+    if (!isCurrent() || sender.isDestroyed()) return;
+    const end=source.durationSeconds===null
+      ? request.points.reduce((latest,point)=>Number.isFinite(point.timeSeconds)?Math.max(latest,point.timeSeconds):latest,start)
+      : start+source.durationSeconds;
+    const result = await runTrajectoryWorker({sourcePath: request.sourcePath, revision, exiftool: exiftool ?? "exiftool", points: request.points, start, end});
+    if (!isCurrent() || sender.isDestroyed()) return;
+    if(result.points.length<2)throw new Error("GPS 与视频时间不重叠，请先完成时间对齐。");
+    publish({id,result});
+    if (key) void resources.write("snapshots",key,result).catch(console.warn);
+  } catch (error) {
+    publish({id,error:error instanceof Error?error.message:String(error)});
+  }
+});
+
+ipcMain.on(POST_GPS_CHANNEL, (event, id: string, request: MotionGpsRequest | null) => {
+  if (shutdown.isQuitting()) return;
+  if (typeof id !== "string" || id.length > 100) return;
+  if (request) gpsJobs.post({sender:event.sender,id,request});
+  else gpsJobs.cancel(job => job.sender === event.sender && job.id === id);
 });
 
 const aligningMedia = new Set<string>();
+function validateAlignmentRequest({sourcePath, offsetSeconds}: MediaAlignmentRequest) {
+  if (!openedMediaPaths.has(sourcePath)) throw new Error("请先载入该视频。");
+  if (!validAlignmentOffset(offsetSeconds)) throw new Error("请输入一天以内的偏移，最多三位小数。");
+  if (aligningMedia.has(sourcePath)) throw new Error("该视频正在写入对齐结果，请稍候。");
+}
+
 ipcMain.handle(ALIGN_MEDIA_CHANNEL, async (_event, request: MediaAlignmentRequest): Promise<MediaAlignmentResult> => {
-  const {sourcePath,offsetSeconds,points}=request;
-  if(!openedMediaPaths.has(sourcePath))throw new Error("请先载入该视频。");
-  if(!Number.isSafeInteger(offsetSeconds)||Math.abs(offsetSeconds)>86400)throw new Error("请输入一天以内的整数秒，可使用正负号。");
-  if(aligningMedia.has(sourcePath))throw new Error("该视频正在对齐，请稍候。");
-  if(!Array.isArray(points)||points.length>100000)throw new Error("轨迹数据无效。");
+  validateAlignmentRequest(request);
+  const {sourcePath, offsetSeconds, creationTimeSeconds} = request;
+  if (offsetSeconds === 0) throw new Error("总偏移为 0 秒。");
   aligningMedia.add(sourcePath);
   try {
-    const source=await probeMediaFile(sourcePath);
-    if(source.creationTimeSeconds===undefined)throw new Error("视频没有可用的拍摄时间，无法应用秒数偏移。");
-    let alignment: MotionAlignmentResult={offsetSeconds,adjustmentSeconds:0,refined:false,reason:"已使用输入偏移。"};
-    const roots=[path.resolve(process.cwd(),".."),process.cwd(),app.getAppPath(),path.dirname(app.getPath("exe"))];
-    const exiftool=await firstExistingPath(roots.flatMap(root=>[path.join(root,".tools/exiftool/exiftool"),path.join(root,".tools/exiftool/exiftool.exe")]));
-    try {
-      const orientation=await extractDjiOrientation(sourcePath,exiftool??"exiftool");
-      alignment=refineMotionAlignment(orientation,points.map(p=>({...p,timeSeconds:p.timeSeconds-source.creationTimeSeconds!})),offsetSeconds);
-    } catch {
-      alignment.reason="无法读取运动数据，已使用输入偏移。";
+    const {source, info, containerTime, residualMs}=await probeAlignedMedia(sourcePath);
+    if(source.creationTimeSeconds===undefined||containerTime===undefined)throw new Error("视频没有可用的拍摄时间，无法应用秒数偏移。");
+    if(source.creationTimeSeconds!==creationTimeSeconds)throw new Error("视频拍摄时间已变化，请重新载入视频。");
+    const shift=splitAlignmentOffset(residualMs,offsetSeconds);
+    const next={size:info.size,containerTime:alignedMediaStart(containerTime,shift.wholeSeconds),residualMs:shift.residualMs};
+    // Match the current container timestamp on reopen, including an interrupted file replacement.
+    if (residualMs || shift.residualMs || userArchive.mediaClockAdjustments?.[sourcePath]) {
+      const corrections=shift.wholeSeconds?[next,{size:info.size,containerTime,residualMs}]:[next];
+      updateUserArchive(current=>({...current,mediaClockAdjustments:{...current.mediaClockAdjustments,[sourcePath]:corrections}}));
     }
-    if(alignment.offsetSeconds===0)throw new Error("最终偏移为 0 秒，视频无需修改。");
-    const saved=await shiftVideoTimestamps(sourcePath,alignment.offsetSeconds);
-    const updated={...source,creationTimeSeconds:source.creationTimeSeconds+alignment.offsetSeconds};
-    updateUserArchive(current=>({...current,lastMedia:updated}));
-    return {...alignment,...saved,source:updated};
+    const saved=shift.wholeSeconds?await shiftVideoTimestamps(sourcePath,shift.wholeSeconds):{timecodeUpdated:false};
+    const updated={...source,creationTimeSeconds:alignedMediaStart(source.creationTimeSeconds,offsetSeconds)};
+    return {offsetSeconds,...saved,source:updated};
   } finally {aligningMedia.delete(sourcePath);}
 });
 
@@ -1009,6 +1091,7 @@ ipcMain.on(MENU_STATE_CHANNEL, (event, state: MenuState) => {
 });
 
 const createWindow = (): void => {
+  if (shutdown.isQuitting()) return;
   const mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -1038,19 +1121,39 @@ const createWindow = (): void => {
     return { action: "deny" };
   });
 
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    void mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-  } else {
-    void mainWindow.loadFile(
+  const page = MAIN_WINDOW_VITE_DEV_SERVER_URL
+    ? mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL)
+    : mainWindow.loadFile(
       path.join(
         __dirname,
         `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
       ),
     );
-  }
+  void page.catch(error => {
+    if (mainWindow.isDestroyed() || shutdown.isQuitting()) return;
+    console.error("Failed to load the ReplayMod Reality window", error);
+    app.quit();
+  });
 };
 
+const shutdown = installShutdown(async () => {
+  gpsJobs.cancel(() => true);
+  const results = await Promise.allSettled([
+    offlineExports.cancelAll(),
+    localSpeech.close(),
+    closeTrajectoryWorker(),
+    stopChildren(),
+    Promise.allSettled([screeningMigration, confirmedFlightSaveQueue]).then(() => resources.drain()),
+  ]);
+  for (const result of results) {
+    if (result.status === "rejected") console.error("Shutdown cleanup failed", result.reason);
+  }
+}, killChildren);
+
+if (MAIN_WINDOW_VITE_DEV_SERVER_URL) shutdown.watchLauncher(process.ppid);
+
 void app.whenReady().then(() => {
+  if (shutdown.isQuitting()) return;
   try { storage.settings.read(); }
   catch {
     dialog.showErrorBox("无法读取应用配置", `请检查配置文件：${storage.paths.config}\n原文件已保留，未重置配置。`);
@@ -1067,10 +1170,4 @@ void app.whenReady().then(() => {
       createWindow();
     }
   });
-});
-
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
 });

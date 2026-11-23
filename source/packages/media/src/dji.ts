@@ -1,14 +1,12 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { runChild } from "./childProcesses";
 import type { OrientationSample } from "./types";
 
-const execFileAsync = promisify(execFile);
 
 export const extractDjiOrientation = async (
   inputPath: string,
   exiftoolPath = "exiftool",
 ): Promise<OrientationSample[]> => {
-  const { stdout } = await execFileAsync(exiftoolPath, [
+  const { stdout } = await runChild(exiftoolPath, [
     "-ee", "-j", "-G3:1", "-n", "-api", "LargeFileSupport=1",
     "-Quaternion1", "-Quaternion2", "-Quaternion3", "-Quaternion4",
     "-SampleTime", "-SampleDuration", inputPath,

@@ -6,10 +6,11 @@
   "main": ".vite/build/main.js",
   "private": true,
   "scripts": {
-    "start": "electron-forge start",
+    "start": "node scripts/start/launch.cjs",
     "package": "node scripts/packaging/package.cjs",
     "make": "electron-forge make",
     "typecheck": "tsc --noEmit -p config/tsconfig.json",
+    "check:shutdown": "node tests/start/check-child-processes.cjs && node --experimental-websocket tests/start/check-shutdown.cjs",
     "check:cache": "node tests/cache/check-cache.cjs && node tests/cache/check-dataset-restore.cjs && node tests/cache/check-map-resources.cjs",
     "check:annotations": "node tests/annotations/check-annotations.cjs",
     "check:annotation-labels": "node tests/annotations/check-annotation-labels.cjs",

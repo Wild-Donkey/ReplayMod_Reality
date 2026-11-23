@@ -1,4 +1,4 @@
-import {PROCESS_GPS_CHANNEL,type MotionGpsRequest,type MotionGpsResult} from "../shared/mediaAlignment";
+import {GPS_RESULT_CHANNEL,POST_GPS_CHANNEL,type MotionGpsRequest,type MotionGpsUpdate} from "../shared/mediaAlignment";
 import type {LocalSpeechStatus,LocalSpeechUpdate} from "../shared/localSpeech";
 import type { AudioDocument, AudioBlock } from "../../../../packages/media/src/audio-document";
 import type { OfflineExportOptions, OfflineExportSession, OfflineExportSegment } from "../shared/overlayExport";
@@ -78,7 +78,8 @@ export interface DesktopBridge {
   loadFlightScreeningCache(): Promise<FlightScreeningCache | null>;
   saveFlightScreeningCache(cache: FlightScreeningCache): Promise<void>;
   openMedia(): Promise<MediaSource | null>;
-  processMediaGps(request:MotionGpsRequest):Promise<MotionGpsResult>;
+  postMediaGps(id: string, request: MotionGpsRequest | null): void;
+  onMediaGpsResult(listener: (update: MotionGpsUpdate) => void): () => void;
   transcribeMedia(sourcePath: string): Promise<SubtitleTrack>;
   saveSubtitles(sourcePath: string, track: SubtitleTrack): Promise<SavedSubtitleTrack>;
 }
@@ -155,7 +156,12 @@ const bridge: DesktopBridge = Object.freeze({
   deleteConfirmedFlight: (id: string) => ipcRenderer.invoke("flights:delete-confirmed", id) as Promise<void>,
   loadFlightScreeningCache: () => ipcRenderer.invoke("flights:screening-cache") as Promise<FlightScreeningCache | null>,
   saveFlightScreeningCache: (cache: FlightScreeningCache) => ipcRenderer.invoke("flights:save-screening-cache", cache) as Promise<void>,
-  processMediaGps:(request:MotionGpsRequest)=>ipcRenderer.invoke(PROCESS_GPS_CHANNEL,request) as Promise<MotionGpsResult>,
+  postMediaGps: (id: string, request: MotionGpsRequest | null) => ipcRenderer.send(POST_GPS_CHANNEL, id, request),
+  onMediaGpsResult: (listener: (update: MotionGpsUpdate) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, update: MotionGpsUpdate) => listener(update);
+    ipcRenderer.on(GPS_RESULT_CHANNEL, handler);
+    return () => ipcRenderer.removeListener(GPS_RESULT_CHANNEL, handler);
+  },
   openMedia: () => ipcRenderer.invoke(OPEN_MEDIA_CHANNEL) as Promise<MediaSource | null>,
   transcribeMedia: (sourcePath: string) =>
     ipcRenderer.invoke(TRANSCRIBE_MEDIA_CHANNEL, sourcePath) as Promise<SubtitleTrack>,

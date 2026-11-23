@@ -1,4 +1,5 @@
 import {createPublicBasemap, publicBasemapStyle} from "./PublicBasemap";
+import { addLightPollutionLayer, defaultLightPollutionExposure, lightPollutionColorKey, lightPollutionGray, lightPollutionSource, lightPollutionZones, type LightPollutionMeter } from "../astronomy/lightPollution";
 import { AstronomyOverlay } from "../astronomy/AstronomyOverlay";
 import type { AstronomyMapState, ObservationPoint } from "../astronomy/astronomy";
 import type { FootprintDensityData } from "../../render-engine/FootprintDensityPass";
@@ -297,6 +298,11 @@ export function MapViewport({
   onMapViewStateChange,
 }: MapViewportProps) {
   const astronomyActive = astronomy !== null;
+  const [lightPollutionExposure, setLightPollutionExposure] = useState(defaultLightPollutionExposure);
+  const lightPollutionMeter = useRef<LightPollutionMeter>({}).current;
+  const astronomyActiveRef = useRef(astronomyActive);
+  const refreshMapChannels = useRef<(() => void) | null>(null);
+  useEffect(() => { astronomyActiveRef.current = astronomyActive; }, [astronomyActive]);
   const restoreCameraRef = useRef(Boolean(readCached("map-camera", null)));
   const scrollSourceRef = useRef<ScrollSource>("unknown");
   const [terrainAppearance,setTerrainAppearance] = useState<TerrainAppearance | null>(null);
@@ -370,6 +376,7 @@ export function MapViewport({
     let roadOverlay: RoadOverlay | null = null;
     let buildingOverlay: BuildingHeightOverlay | null = null;
     const channels = new RenderChannelRegistry(scene);
+    refreshMapChannels.current = () => channels.refresh();
 
     const camera = readCached<{center: [number, number]; zoom: number; bearing: number; pitch: number} | null>("map-camera", null);
     setElevationUnavailable(false);
@@ -404,7 +411,7 @@ export function MapViewport({
         onAppearance:setTerrainAppearance,onUnavailable:()=>setElevationUnavailable(true),
         onRaw:raw=>{
           if (!raw || elevationController.signal.aborted) return;
-          channels.register({id:"map/raw-terrain",group:"elevation",setVisible:visible=>raw.setVisible(visible),dispose:()=>raw.dispose()});
+          channels.register({id:"map/raw-terrain",group:"elevation",setVisible:visible=>raw.setVisible(visible && !astronomyActiveRef.current),dispose:()=>raw.dispose()});
         },
       });
       roadOverlay=publicMap.roads;buildingOverlay=publicMap.buildings;
@@ -467,8 +474,6 @@ export function MapViewport({
       }),
       "top-right",
     );
-    map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
-
 
     basemap.on("error", (event) => {
       if (!baseStyleReady) {
@@ -480,6 +485,7 @@ export function MapViewport({
     return () => {
       canvasContainer.removeEventListener("wheel", handleWheel, true);
       elevationController.abort();
+      refreshMapChannels.current = null;
       channels.destroy();
       map.off("render", hdr.render);
       map.off("move", publishCamera);
@@ -490,6 +496,20 @@ export function MapViewport({
       map.remove();
     };
   }, [apiKey, mapLanguage, onMapViewStateChange, scene]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || status !== "ready") return;
+    refreshMapChannels.current?.();
+    if (!astronomyActive) return;
+    const stopExposure = addLightPollutionLayer(map, setLightPollutionExposure, lightPollutionMeter);
+    return () => {
+      stopExposure();
+      if (mapRef.current !== map) return;
+      if (map.getLayer(lightPollutionSource)) map.removeLayer(lightPollutionSource);
+      if (map.getSource(lightPollutionSource)) map.removeSource(lightPollutionSource);
+    };
+  }, [astronomyActive, status, lightPollutionMeter]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -592,7 +612,8 @@ export function MapViewport({
     const map = mapRef.current;
     if (!map || status !== "ready") return;
     const applyVisibility = (group: keyof typeof scene.current.visibility) => {
-      applyMapLayerVisibility(map, scene.current.visibility, {
+      const visibility = scene.current.visibility;
+      applyMapLayerVisibility(map, astronomyActive ? {...visibility, elevation: false} : visibility, {
         density: Boolean(footprintDensityRef.current || scene.visuals.current.footprint),
         line: footprintLodRef.current === "line",
         photosInEngine: scene.visuals.current.photos,
@@ -602,7 +623,7 @@ export function MapViewport({
     const disposeStyles = registerStyleRenderChannels(scene, map, "map/style", applyVisibility);
     const disposeVisuals = scene.visuals.subscribe(() => applyVisibility("trajectory"));
     return () => { disposeVisuals(); disposeStyles(); };
-  }, [scene, status]);
+  }, [scene, status, astronomyActive]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1453,8 +1474,8 @@ export function MapViewport({
 
   return (
     <section className="viewport map-viewport">
-      <div ref={containerRef} className={`map-container${astronomyActive ? " astronomy-basemap" : ""}`} />
-      {astronomy && status === "ready" && mapRef.current && <AstronomyOverlay map={mapRef.current} state={astronomy}/>}
+      <div ref={containerRef} className={astronomyActive ? "map-container astronomy-basemap" : "map-container"} />
+      {astronomy && status === "ready" && mapRef.current && <AstronomyOverlay map={mapRef.current} state={astronomy} exposure={lightPollutionExposure} meter={lightPollutionMeter}/>}
       {/* Labels must share the map's gesture container so wheel/drag events reach its handlers. */}
       {!astronomyActive && status === "ready" && mapRef.current && createPortal(<AnnotationLabels
         map={mapRef.current}
@@ -1487,7 +1508,14 @@ export function MapViewport({
             <span><i className="footprint-swatch"/>足迹 {pointDataset.footprintPointCount.toLocaleString("zh-CN")}</span>
             <span><i className="photo-swatch"/>照片 {pointDataset.photoPointCount.toLocaleString("zh-CN")}</span>
           </span>}
-          {elevationUnavailable ? <span role="status">海拔图层暂不可用</span> : <TerrainLegend appearance={terrainAppearance}/>}
+          {astronomyActive ? <a className="light-pollution-legend" href={lightPollutionColorKey}
+            target="_blank" rel="noreferrer" title="David Lorenz · 2025 年光污染图集">
+            <span>光污染等级</span><span>0</span>
+            <span className="light-pollution-scale">{lightPollutionZones.map(([zone], index) =>
+              <i key={zone} title={zone} style={{background: lightPollutionGray(index, lightPollutionExposure)}}/>
+            )}</span><span>7b</span>
+          </a> : elevationUnavailable ? <span role="status">海拔图层暂不可用</span>
+            : <TerrainLegend appearance={terrainAppearance}/>}
         </div>, legendContainer
       )}
     </section>

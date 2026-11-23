@@ -2,6 +2,7 @@ import {spawn,type ChildProcess} from "node:child_process";
 import {access,readFile,mkdir,rename,writeFile,stat} from "node:fs/promises";
 import path from "node:path";
 import {LocalQwen,type LocalTranscript} from "../../../../packages/media/src/local-qwen";
+import {assertCanStartChild,stopChild,trackChild} from "../../../../packages/media/src/childProcesses";
 import catalog from "../../../../resources/speech/models.json";
 import {discoverSpeechModels,inspectSpeechModel} from "./speechModels";
 import type {LocalSpeechStatus,LocalSpeechUpdate,SpeechModelRole} from "../shared/localSpeech";
@@ -10,6 +11,7 @@ export class LocalSpeech {
   private worker?:LocalQwen;
   private downloading?:Promise<LocalSpeechStatus>;
   private downloader?:ChildProcess;
+  private closed=false;
   private activeJobs=0;
   private workerKey="";
   private changing=false;
@@ -56,19 +58,22 @@ export class LocalSpeech {
   }
   private async doDownload(id:string,progress:(value:LocalSpeechUpdate)=>void){
     await new Promise<void>((resolve,reject)=>{
-      const child=spawn(process.execPath,[path.join(this.resources,"download.cjs"),this.modelDirectory,id],{env:{...process.env,ELECTRON_RUN_AS_NODE:"1"},stdio:["ignore","pipe","pipe"]});
+      assertCanStartChild();
+      const child=trackChild(spawn(process.execPath,[path.join(this.resources,"download.cjs"),this.modelDirectory,id],{env:{...process.env,ELECTRON_RUN_AS_NODE:"1"},stdio:["ignore","pipe","pipe"]}));
       this.downloader=child;
       let buffer="",errors="";child.stdout.setEncoding("utf8");child.stderr.setEncoding("utf8");
       child.stdout.on("data",data=>{buffer+=data;let end:number;while((end=buffer.indexOf("\n"))>=0){const line=buffer.slice(0,end);buffer=buffer.slice(end+1);try{const p=JSON.parse(line);if(p.type==="progress")progress({message:String(p.message),done:p.done,total:p.total});}catch{}}});
-      child.stderr.on("data",data=>{errors=(errors+data).slice(-1000);});child.once("error",error=>{if(this.downloader===child)this.downloader=undefined;reject(error);});child.once("exit",code=>{if(this.downloader===child)this.downloader=undefined;code===0?resolve():reject(new Error(`模型下载失败，可重试续传：${errors.trim()}`));});
+      child.stderr.on("data",data=>{errors=(errors+data).slice(-1000);});child.once("error",reject);child.once("close",code=>{if(this.downloader===child)this.downloader=undefined;code===0?resolve():reject(new Error(`模型下载失败，可重试续传：${errors.trim()}`));});
     });return this.status();
   }
   async transcribe(sourcePath:string,duration:number,progress?:(value:LocalSpeechUpdate)=>void):Promise<LocalTranscript> {
+    if(this.closed)throw new Error("应用正在退出。");
     if(this.changing)throw new Error("模型选择正在变更，请稍候。");
     this.activeJobs++;
     try {
       const status=await this.status();if(!status.ready)throw new Error(status.message);
       const file=await stat(sourcePath);
+      if(this.closed)throw new Error("应用正在退出。");
       const signature=[status.selected.asr,status.selected.aligner,...[status.selected.asr,status.selected.aligner].map(id=>status.installed.find(m=>m.id===id)!.fingerprint)].join(":");
       const key=[file.size,file.mtimeMs,duration,signature].join(":");
       const cached=this.cache.get(sourcePath);if(cached?.key===key)return await cached.result;
@@ -80,6 +85,9 @@ export class LocalSpeech {
     }finally{this.activeJobs--;}
   }
 
-  private resetWorker(){this.worker?.close();this.worker=undefined;this.workerKey="";}
-  close(){this.resetWorker();this.downloader?.kill("SIGTERM");this.downloader=undefined;}
+  private resetWorker(){const closing=this.worker?.close();this.worker=undefined;this.workerKey="";return closing;}
+  async close(){
+    this.closed=true;
+    await Promise.all([this.resetWorker(),this.downloader && stopChild(this.downloader)]);
+  }
 }

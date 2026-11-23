@@ -1,17 +1,16 @@
-import { spawn, execFile, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { access } from "node:fs/promises";
 import { constants } from "node:fs";
 import path from "node:path";
-import { promisify } from "node:util";
+import { assertCanStartChild, runChild, stopChild, trackChild } from "./childProcesses";
 
-const exec = promisify(execFile);
 export async function findTransparentVideoEncoder(searchPath = process.env.PATH ?? ""): Promise<string | null> {
   const names = process.platform === "win32" ? ["ffmpeg.exe"] : ["ffmpeg"];
   const candidates = new Set(searchPath.split(path.delimiter).filter(Boolean).flatMap(directory => names.map(name => path.join(directory, name))));
   for (const candidate of candidates) {
     try {
       await access(candidate, constants.X_OK);
-      const {stdout} = await exec(candidate, ["-hide_banner", "-encoders"], {maxBuffer: 4 * 1024 * 1024, timeout: 10000});
+      const {stdout} = await runChild(candidate, ["-hide_banner", "-encoders"], {maxBuffer: 4 * 1024 * 1024, timeout: 10000});
       if (/\blibvpx-vp9\s/.test(stdout)) return candidate;
     } catch { /* Try the next installed binary, including the bundled fallback. */ }
   }
@@ -33,7 +32,8 @@ export class RawVideoEncoder {
   private failure: Error | null = null;
   frames = 0;
   constructor(private readonly options: RawVideoOptions) {
-    this.process = spawn(options.encoder, ["-hide_banner", "-loglevel", "error", "-nostdin", "-n", "-f", "rawvideo", "-pixel_format", "rgba", "-video_size", `${options.width}x${options.height}`, "-framerate", String(options.fps), "-i", "pipe:0", "-an", "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-auto-alt-ref", "0", "-row-mt", "1", "-threads", "4", "-deadline", "good", "-cpu-used", "4", "-b:v", String(options.bitrate), "-f", "webm", options.output], {stdio: ["pipe", "pipe", "pipe"], windowsHide: true});
+    assertCanStartChild();
+    this.process = trackChild(spawn(options.encoder, ["-hide_banner", "-loglevel", "error", "-nostdin", "-n", "-f", "rawvideo", "-pixel_format", "rgba", "-video_size", `${options.width}x${options.height}`, "-framerate", String(options.fps), "-i", "pipe:0", "-an", "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-auto-alt-ref", "0", "-row-mt", "1", "-threads", "4", "-deadline", "good", "-cpu-used", "4", "-b:v", String(options.bitrate), "-f", "webm", options.output], {stdio: ["pipe", "pipe", "pipe"], windowsHide: true}));
     this.process.stdout.resume();
     this.process.stderr.on("data", chunk => { this.stderr = (this.stderr + String(chunk)).slice(-65536); });
     this.process.stdin.on("error", error => { this.failure = error; });
@@ -73,7 +73,7 @@ export class RawVideoEncoder {
     if (!this.cancelled) {
       this.cancelled = true;
       this.process.stdin.destroy();
-      this.process.kill("SIGTERM");
+      await stopChild(this.process);
     }
     await this.closed.catch(() => {});
   }
