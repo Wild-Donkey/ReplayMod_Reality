@@ -21,10 +21,16 @@ const config: ForgeConfig = {
         process.exit(1);
       });
     },
-    generateAssets: async () => {
+    generateAssets: async forge => {
       if(process.platform === "darwin" && process.arch === "arm64") execFileSync(process.execPath,[path.resolve("resources/speech/bundle-runtime.cjs")],{stdio:"inherit"});
       if (process.platform === "darwin") execFileSync(process.execPath, [path.resolve("scripts/native/build-hdr.cjs")], { stdio: "inherit" });
-      execFileSync(process.execPath, [path.resolve("scripts/native/build-scroll-input.cjs")], { stdio: "inherit" });
+      try {
+        execFileSync(process.execPath, [path.resolve("scripts/native/build-scroll-input.cjs")], { stdio: "inherit" });
+        if (process.platform === "win32") forge.packagerConfig.extraResource = ["native/build/scroll-input-win.node"];
+      } catch (error) {
+        if (process.platform !== "win32") throw error;
+        console.warn("Windows touchpad helper could not be built", error);
+      }
     },
   },
   packagerConfig: {
