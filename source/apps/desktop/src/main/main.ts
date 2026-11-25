@@ -23,7 +23,7 @@ import { windowBackgroundOptions } from "./windowBackground";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, mkdirSync } from "node:fs";
 import { access, mkdir, readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
-import { app, BrowserWindow, dialog, ipcMain, shell, net, Menu } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell, net, Menu, type OpenDialogOptions } from "electron";
 import { installScrollInput } from "./scrollInput";
 import { MENU_ACTION_CHANNEL, MENU_STATE_CHANNEL, type MenuAction, type MenuState } from "../shared/menu";
 import { buildAirportNameZhQueryUrl, pickChineseNameFromCsv } from "../shared/airportNameZh";
@@ -128,6 +128,22 @@ const updateUserArchive = (change: (current: UserArchive) => UserArchive) => {
   const next = change(userArchive);
   storage.archive.write(next);
   userArchive = next;
+};
+type OpenDialogKind = "location" | "media" | "audio";
+const openFileDialog = async (kind: OpenDialogKind, options: OpenDialogOptions) => {
+  const previousDirectory = userArchive.lastOpenDirectories?.[kind];
+  const result = await dialog.showOpenDialog({
+    ...options,
+    ...(previousDirectory ? { defaultPath: previousDirectory } : {}),
+  });
+  const selectedPath = result.filePaths[0];
+  if (!result.canceled && selectedPath) {
+    updateUserArchive(current => ({
+      ...current,
+      lastOpenDirectories: { ...current.lastOpenDirectories, [kind]: path.dirname(selectedPath) },
+    }));
+  }
+  return result;
 };
 app.on("second-instance", () => {
   const window = BrowserWindow.getAllWindows()[0];
@@ -550,7 +566,7 @@ ipcMain.handle(
 ipcMain.handle(
   OPEN_LOCATION_CSV_CHANNEL,
   async (): Promise<PointDataset | null> => {
-    const result = await dialog.showOpenDialog({
+    const result = await openFileDialog("location", {
       title: "载入位置数据",
       properties: ["openFile"],
       filters: [
@@ -731,7 +747,7 @@ ipcMain.handle("cache:media", async () => {
 });
 
 ipcMain.handle(OPEN_MEDIA_CHANNEL, async (): Promise<MediaSource | null> => {
-  const result = await dialog.showOpenDialog({
+  const result = await openFileDialog("media", {
     title: "载入视频",
     properties: ["openFile"],
     filters: [{ name: "视频", extensions: ["mp4", "mov"] }],
@@ -929,7 +945,7 @@ ipcMain.handle("audio-edit:recording", async (_event, sourcePath: string | null,
   return {document:doc,tokens};
 });
 ipcMain.handle("audio-edit:open", async (): Promise<AudioDocument | null> => {
-  const result = await dialog.showOpenDialog({title: "导入音频或提取视频音轨", properties: ["openFile"], filters: [{name: "音频 / 视频", extensions: ["m4a", "mp3", "wav", "flac", "ogg", "aac", "mp4", "mov", "mkv", "webm"]}]});
+  const result = await openFileDialog("audio", {title: "导入音频或提取视频音轨", properties: ["openFile"], filters: [{name: "音频 / 视频", extensions: ["m4a", "mp3", "wav", "flac", "ogg", "aac", "mp4", "mov", "mkv", "webm"]}]});
   if (result.canceled || !result.filePaths[0]) return null;
   const media = await probeMediaFile(result.filePaths[0]);
   if (!media.tracks.some(t => t.kind === "audio") || !media.durationSeconds) throw new Error("文件没有可用音轨或时长。");

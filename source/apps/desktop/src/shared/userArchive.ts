@@ -16,6 +16,7 @@ export interface UserArchive {
   readonly lastDatasetSource?: { readonly mainFilePath: string; readonly photoFilePath: string | null };
   readonly lastDatasetCacheKey?: string;
   readonly lastMedia?: unknown;
+  readonly lastOpenDirectories?: Readonly<Record<string, string>>;
   readonly mediaClockAdjustments?: Readonly<Record<string, readonly MediaClockAdjustment[]>>;
   readonly flights?: ConfirmedFlightsFile;
   readonly services: {
