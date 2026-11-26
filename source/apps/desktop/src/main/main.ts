@@ -5,6 +5,7 @@ import {packMotionGpsResult,type MotionGpsWireUpdate,type PackedMotionGpsResult}
 import { LatestJobQueue } from "./latestJobQueue";
 import type { TrajectoryWorkerInput, TrajectoryWorkerOutput } from "./trajectoryWorker";
 import { Worker } from "node:worker_threads";
+import { shouldFitNatively, trajectoryBackendMode, trajectoryCacheNamespace, type TrajectoryBackendConfig } from "./trajectoryBackend";
 import { killChildren, stopChildren } from "../../../../packages/media/src/childProcesses";
 import { installShutdown } from "./shutdown";
 import { NativeCore } from "./nativeCore";
@@ -736,6 +737,7 @@ ipcMain.handle(OPEN_MEDIA_CHANNEL, async (): Promise<MediaSource | null> => {
 });
 
 let trajectoryWorker: Worker | undefined;
+const trajectoryMode = trajectoryBackendMode(process.env.REPLAYMOD_NATIVE_TRAJECTORY, process.platform, process.arch);
 
 async function closeTrajectoryWorker() {
   const worker = trajectoryWorker;
@@ -753,7 +755,7 @@ function runTrajectoryWorker(input: TrajectoryWorkerInput, signal: AbortSignal,
   signal.throwIfAborted();
   if (!trajectoryWorker) {
     const worker = new Worker(path.join(__dirname, "trajectoryWorker.js"), {
-      workerData: process.env.REPLAYMOD_NATIVE_TRAJECTORY === "1" ? nativeCoreExecutable : undefined,
+      workerData: { mode: trajectoryMode, executable: nativeCoreExecutable } satisfies TrajectoryBackendConfig,
     });
     worker.on("error", error => {
       if (trajectoryWorker === worker) trajectoryWorker = undefined;
@@ -810,24 +812,25 @@ const gpsJobs = new LatestJobQueue<{sender: Electron.WebContents; id: string; re
     if(source.creationTimeSeconds===undefined)throw new Error("请先对齐视频拍摄时间。");
     if(source.creationTimeSeconds!==request.creationTimeSeconds)throw new Error("视频拍摄时间已变化，请重新载入视频。");
     const start=alignedMediaStart(source.creationTimeSeconds,request.offsetSeconds);
+    const end=source.durationSeconds===null
+      ? request.points.reduce((latest,point)=>Number.isFinite(point.timeSeconds)?Math.max(latest,point.timeSeconds):latest,start)
+      : start+source.durationSeconds;
+    const rate = 10;
+    const cacheBackend = trajectoryMode === "automatic" && !shouldFitNatively("automatic", end - start, rate, 0)
+      ? "typescript" : trajectoryMode;
     const legacyKey=request.offsetSeconds===0
       ? createHash("sha256").update(JSON.stringify(["motion-gps-v8",revision,start,request.points])).digest("hex") : null;
-    const useNativeTrajectory = process.env.REPLAYMOD_NATIVE_TRAJECTORY === "1";
-    const packedVersion = useNativeTrajectory ? "motion-gps-native-v2:" : "motion-gps-packed-v1:";
-    const key = legacyKey && createHash("sha256").update(packedVersion).update(legacyKey).digest("hex");
+    const key = legacyKey && createHash("sha256").update(trajectoryCacheNamespace[cacheBackend]).update(legacyKey).digest("hex");
     if (key && legacyKey) {
       const cached = await resources.read<PackedMotionGpsResult>("snapshots", key);
       if (cached) { publish({id,result:cached}); return; }
-      const legacy = !useNativeTrajectory && await resources.read<MotionGpsResult>("snapshots", legacyKey);
+      const legacy = cacheBackend === "typescript" && await resources.read<MotionGpsResult>("snapshots", legacyKey);
       if (legacy) { publish({id,result:packMotionGpsResult(legacy)}); return; }
     }
     const roots = [path.resolve(process.cwd(),".."),process.cwd(),app.getAppPath(),path.dirname(app.getPath("exe"))];
     const exiftoolName = platform === "win32" ? "exiftool.exe" : "exiftool";
     const exiftool = await firstExistingPath(roots.map(root => path.join(root, ".tools", "exiftool", exiftoolName)));
     if (!isCurrent() || sender.isDestroyed()) return;
-    const end=source.durationSeconds===null
-      ? request.points.reduce((latest,point)=>Number.isFinite(point.timeSeconds)?Math.max(latest,point.timeSeconds):latest,start)
-      : start+source.durationSeconds;
     const result = await runTrajectoryWorker({sourcePath: request.sourcePath, revision, exiftool: exiftool ?? exiftoolName,
       points: request.points, start, end}, signal, progress => {
       if (isCurrent() && !sender.isDestroyed()) sender.send(GPS_PROGRESS_CHANNEL, { id, ...progress });

@@ -1,23 +1,29 @@
 const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
+const { on } = require('node:events');
+const { Worker } = require('node:worker_threads');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const ts = require('typescript');
 const { buildCore } = require('../../scripts/native/build-core.cjs');
 
-require.extensions['.ts'] = (module, file) => {
-  const { outputText } = ts.transpileModule(fs.readFileSync(file, 'utf8'), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-  });
-  module._compile(outputText, file);
-};
+function installLoader(fs, ts) {
+  require.extensions['.ts'] = (module, file) => {
+    const { outputText } = ts.transpileModule(fs.readFileSync(file, 'utf8'), {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    });
+    module._compile(outputText, file);
+  };
+}
+installLoader(fs, ts);
 const { NativeCore } = require('../../apps/desktop/src/main/nativeCore.ts');
 const { readLocationCsv, restorePointColumns } = require('../../apps/desktop/src/main/locationCsv.ts');
 const { readNativeLocationCsv } = require('../../apps/desktop/src/main/nativeLocationCsv.ts');
 const { fitNativeTrajectory } = require('../../apps/desktop/src/main/nativeTrajectoryFit.ts');
 const { unpackMotionGpsResult } = require('../../apps/desktop/src/shared/motionGpsWire.ts');
 const { fitMotionTrajectory } = require('../../packages/media/src/trajectory-fit.ts');
+const { shouldFitNatively, trajectoryBackendMode, trajectoryCacheNamespace } = require('../../apps/desktop/src/main/trajectoryBackend.ts');
 
 async function checkCsv(executable) {
   const sample = path.resolve(__dirname, '../../../RawData/footprint/Example_footprint.csv');
@@ -70,6 +76,20 @@ async function checkCsv(executable) {
 }
 
 async function check() {
+  assert.equal(trajectoryBackendMode(undefined, 'darwin', 'arm64'), 'automatic');
+  assert.equal(trajectoryBackendMode(undefined, 'win32', 'x64'), 'typescript');
+  assert.equal(trajectoryBackendMode('0', 'darwin', 'arm64'), 'typescript');
+  assert.equal(trajectoryBackendMode('1', 'linux', 'x64'), 'native');
+  assert.equal(new Set(Object.values(trajectoryCacheNamespace)).size, 3);
+  assert.equal(shouldFitNatively('automatic', 69, 10, 1723), false);
+  assert.equal(shouldFitNatively('automatic', 1800, 10, 0), true);
+  assert.equal(shouldFitNatively('automatic', 3600, 10, 144000), false);
+  assert.equal(shouldFitNatively('automatic', 300, 60, 12000), true);
+  assert.equal(shouldFitNatively('automatic', 1200, 30, 48000), true);
+  assert.equal(shouldFitNatively('automatic', 1200, 30, 70000), false);
+  assert.equal(shouldFitNatively('automatic', 18000, 2, 0), false);
+  assert.equal(shouldFitNatively('typescript', 1800, 10, 0), false);
+  assert.equal(shouldFitNatively('native', 69, 10, 1723), true);
   const executable = buildCore();
   const { status, stdout, error } = spawnSync(executable, [], {
     input: 'hello 2\nping\nhello 1\nping\n',
@@ -93,8 +113,42 @@ async function check() {
   await missing.close();
   await checkCsv(executable);
   await checkTrajectory(executable);
+  await checkTrajectoryWorkerRouting(executable);
   console.log('Native core handshake, ping, EOF shutdown and missing executable checks passed.');
   console.log('Native CSV matches the reference dataset and declines unsupported records.');
+}
+
+async function checkTrajectoryWorkerRouting(executable) {
+  const entry = require.resolve('../../apps/desktop/src/main/trajectoryWorker.ts');
+  const worker = new Worker(`
+    (${installLoader})(require('node:fs'), require(${JSON.stringify(require.resolve('typescript'))}));
+    require(${JSON.stringify(entry)});
+  `, { eval: true, workerData: { mode: 'automatic', executable } });
+  try {
+    const start = 1_800_000_000;
+    for (const duration of [60, 1800]) {
+      const messages = on(worker, 'message', { signal: AbortSignal.timeout(15_000) });
+      const points = Array.from({length: duration + 1}, (_, index) => ({
+        timeSeconds: start + index, longitude: 120 + index * 0.0001, latitude: 30,
+      }));
+      worker.postMessage({
+        exiftool: executable + '.missing', sourcePath: 'fixture.mp4', revision: 'test',
+        start, end: start + duration, points, precision: 'export', sampleRateHz: 10,
+      });
+      const progress = [];
+      for await (const [message] of messages) {
+        if ('progress' in message) {
+          progress.push(message.progress);
+          continue;
+        }
+        assert(!message.error, message.error);
+        assert.equal(message.result.pointCount, duration * 10 + 1);
+        if (duration < 1800) assert.deepEqual(progress, []);
+        else assert.equal(progress.at(-1)?.completed, message.result.fittedWindows);
+        break;
+      }
+    }
+  } finally { await worker.terminate(); }
 }
 
 async function checkTrajectory(executable) {
