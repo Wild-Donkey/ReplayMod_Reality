@@ -7,8 +7,9 @@ const resource = `native/build/replaymod-core${windows ? '.exe' : ''}`;
 
 function buildCore() {
   const root = path.resolve(__dirname, '../..');
-  const sources = ['main.cpp', 'location_csv.cpp'].map(file => path.join(root, 'native/core', file));
-  const inputs = [...sources, path.join(root, 'native/core/location_csv.h'), __filename];
+  const core = path.join(root, 'native/core');
+  const sources = ['main.cpp', 'location_csv.cpp', 'trajectory_fit.cpp', 'trajectory_solver.cpp'].map(file => path.join(core, file));
+  const inputs = [...sources, ...['location_csv.h', 'trajectory_fit.h', 'trajectory_solver.h'].map(file => path.join(core, file)), __filename];
   const output = path.join(root, resource);
   const existing = statSync(output, { throwIfNoEntry: false });
   if (existing && existing.mtimeMs >= Math.max(...inputs.map(file => statSync(file).mtimeMs))) return output;
@@ -20,7 +21,7 @@ function buildCore() {
   const compiler = process.env.CXX || (windows ? 'g++.exe' : 'c++');
   const flags = windows ? ['-static'] : process.platform === 'darwin' ? ['-mmacosx-version-min=11.0'] : [];
   try {
-    execFileSync(compiler, ['-std=c++17', '-O2', ...flags, ...sources, '-o', binary], { stdio: 'inherit', windowsHide: true });
+    execFileSync(compiler, ['-std=c++17', '-O2', '-ffp-contract=off', ...flags, ...sources, '-o', binary], { stdio: 'inherit', windowsHide: true });
     renameSync(binary, output);
   } finally {
     rmSync(staging, { recursive: true, force: true });

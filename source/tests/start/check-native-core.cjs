@@ -15,6 +15,9 @@ require.extensions['.ts'] = (module, file) => {
 const { NativeCore } = require('../../apps/desktop/src/main/nativeCore.ts');
 const { readLocationCsv } = require('../../apps/desktop/src/main/locationCsv.ts');
 const { readNativeLocationCsv } = require('../../apps/desktop/src/main/nativeLocationCsv.ts');
+const { fitNativeTrajectory } = require('../../apps/desktop/src/main/nativeTrajectoryFit.ts');
+const { unpackMotionGpsResult } = require('../../apps/desktop/src/shared/motionGpsWire.ts');
+const { fitMotionTrajectory } = require('../../packages/media/src/trajectory-fit.ts');
 
 async function checkCsv(executable) {
   const sample = path.resolve(__dirname, '../../../RawData/footprint/Example_footprint.csv');
@@ -72,8 +75,55 @@ async function check() {
   await assert.rejects(missing.ping(), { code: 'ENOENT' });
   await missing.close();
   await checkCsv(executable);
+  await checkTrajectory(executable);
   console.log('Native core handshake, ping, EOF shutdown and missing executable checks passed.');
   console.log('Native CSV matches the reference dataset and declines unsupported records.');
+}
+
+async function checkTrajectory(executable) {
+  const start = 1_800_000_000.125;
+  const fixtures = [];
+  const samples = [];
+  const curved = [];
+  let east = 0, north = 0;
+  const scale = 6371000 * Math.PI / 180;
+  for (let i = 0; i <= 2400; i++) {
+    const time = i / 40, heading = .7 * Math.sin(time / 10) + .3 * Math.sin(time / 3);
+    samples.push({ timeSeconds: time, quaternion: [Math.cos(heading / 2), 0, 0, -Math.sin(heading / 2)] });
+    if (i % 80 === 0 && (time <= 12 || time >= 50)) {
+      curved.push({ timeSeconds: start + time, longitude: east / scale, latitude: north / scale, altitude: 10 + time });
+    }
+    east += Math.sin(heading) * .25;
+    north += Math.cos(heading) * .25;
+  }
+  fixtures.push({ samples, points: curved, seconds: 60, rate: 10, attitude: true });
+  fixtures.push({ samples: [], points: Array.from({ length: 81 }, (_, i) => ({
+    timeSeconds: start + i * 10,
+    longitude: ((179.99 + i * .01 + 540) % 360) - 180,
+    latitude: 40 + i * .0001,
+    altitude: i % 3 === 0 ? undefined : i * 2,
+  })), seconds: 800, rate: 10 });
+  fixtures.push({ samples: [], points: [], seconds: 20, rate: 10 });
+
+  for (const { samples, points, seconds, rate, attitude } of fixtures) {
+    const legacy = fitMotionTrajectory(samples, points, start, start + seconds);
+    const native = unpackMotionGpsResult(await fitNativeTrajectory(executable, samples, points, start, start + seconds, rate));
+    const { points: expected, contextPoints: context, ...summary } = legacy;
+    const { points: actual, contextPoints: nativeContext, ...nativeSummary } = native;
+    assert.deepEqual(nativeSummary, summary);
+    if (attitude) assert(legacy.attitudeConstraints > 0);
+    for (const [expectedRows, actualRows] of [[expected, actual], [context, nativeContext]]) {
+      assert.equal(actualRows.length, expectedRows.length);
+      for (let i = 0; i < expectedRows.length; i++) {
+        const a = expectedRows[i], b = actualRows[i];
+        assert.equal(b.timeSeconds, a.timeSeconds);
+        assert.equal(b.altitude, a.altitude);
+        const lonError = ((b.longitude - a.longitude + 540) % 360) - 180;
+        assert(Math.abs(lonError) < 1e-9 && Math.abs(b.latitude - a.latitude) < 1e-9, `point ${i}`);
+      }
+    }
+  }
+  console.log('Native trajectory fit matches the reference for attitude, overlapping windows, dateline and missing altitude.');
 }
 
 check().catch(error => { console.error(error); process.exitCode = 1; });

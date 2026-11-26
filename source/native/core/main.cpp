@@ -2,11 +2,13 @@
 #include <string>
 #include <string_view>
 #include "location_csv.h"
+#include "trajectory_fit.h"
 
 // Version 1 uses one ASCII command and one response per line.
 // EOF on stdin also shuts down the sidecar when its parent exits.
 int main(int argc, char** argv) {
     if (argc == 2 && std::string_view(argv[1]) == "--import-location-csv") return import_location_csv();
+    if (argc == 2 && std::string_view(argv[1]) == "--fit-trajectory") return fit_trajectory_stream();
     if (argc != 1) return 2;
     std::string command;
     bool ready = false;

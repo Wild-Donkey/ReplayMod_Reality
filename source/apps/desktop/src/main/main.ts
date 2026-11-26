@@ -737,7 +737,9 @@ async function closeTrajectoryWorker() {
 
 function runTrajectoryWorker(input: TrajectoryWorkerInput): Promise<PackedMotionGpsResult> {
   if (!trajectoryWorker) {
-    const worker = new Worker(path.join(__dirname, "trajectoryWorker.js"));
+    const worker = new Worker(path.join(__dirname, "trajectoryWorker.js"), {
+      workerData: process.env.REPLAYMOD_NATIVE_TRAJECTORY === "1" ? nativeCoreExecutable : undefined,
+    });
     worker.on("error", error => {
       if (trajectoryWorker === worker) trajectoryWorker = undefined;
       console.error("Trajectory worker failed", error);
@@ -785,11 +787,13 @@ const gpsJobs = new LatestJobQueue<{sender: Electron.WebContents; id: string; re
     const start=alignedMediaStart(source.creationTimeSeconds,request.offsetSeconds);
     const legacyKey=request.offsetSeconds===0
       ? createHash("sha256").update(JSON.stringify(["motion-gps-v8",revision,start,request.points])).digest("hex") : null;
-    const key = legacyKey && createHash("sha256").update("motion-gps-packed-v1:").update(legacyKey).digest("hex");
+    const useNativeTrajectory = process.env.REPLAYMOD_NATIVE_TRAJECTORY === "1";
+    const packedVersion = useNativeTrajectory ? "motion-gps-native-v1:" : "motion-gps-packed-v1:";
+    const key = legacyKey && createHash("sha256").update(packedVersion).update(legacyKey).digest("hex");
     if (key && legacyKey) {
       const cached = await resources.read<PackedMotionGpsResult>("snapshots", key);
       if (cached) { publish({id,result:cached}); return; }
-      const legacy = await resources.read<MotionGpsResult>("snapshots", legacyKey);
+      const legacy = !useNativeTrajectory && await resources.read<MotionGpsResult>("snapshots", legacyKey);
       if (legacy) { publish({id,result:packMotionGpsResult(legacy)}); return; }
     }
     const roots = [path.resolve(process.cwd(),".."),process.cwd(),app.getAppPath(),path.dirname(app.getPath("exe"))];

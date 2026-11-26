@@ -1,9 +1,10 @@
-import { parentPort } from "node:worker_threads";
+import { parentPort, workerData } from "node:worker_threads";
 import { extractDjiOrientation } from "../../../../packages/media/src/dji";
 import { stopChildren } from "../../../../packages/media/src/childProcesses";
 import { fitMotionTrajectory } from "../../../../packages/media/src/trajectory-fit";
 import type { MotionGpsRequest } from "../shared/mediaAlignment";
 import { packMotionGpsResult, type PackedMotionGpsResult } from "../shared/motionGpsWire";
+import { fitNativeTrajectory } from "./nativeTrajectoryFit";
 
 export interface TrajectoryWorkerInput {
   sourcePath: string;
@@ -33,8 +34,15 @@ port?.on("message", async (input: TrajectoryWorkerInput | {shutdown: true}) => {
       if (shuttingDown) return;
       if (samples) orientation = {revision: input.revision, samples};
     }
-    const result = fitMotionTrajectory(samples ?? [], input.points, input.start, input.end);
-    const packed = packMotionGpsResult(result);
+    const rate = 10;
+    const packed = typeof workerData === "string"
+      ? await fitNativeTrajectory(workerData, samples ?? [], input.points, input.start, input.end, rate).catch(error => {
+        if (shuttingDown) throw error;
+        console.warn("Native trajectory fit failed", error);
+        return packMotionGpsResult(fitMotionTrajectory(samples ?? [], input.points, input.start, input.end));
+      })
+      : packMotionGpsResult(fitMotionTrajectory(samples ?? [], input.points, input.start, input.end));
+    if (shuttingDown) return;
     port.postMessage({result: packed} satisfies TrajectoryWorkerOutput, [packed.pointData.buffer, packed.altitudePresent.buffer]);
   } catch (error) {
     port.postMessage({error: error instanceof Error ? error.message : String(error)} satisfies TrajectoryWorkerOutput);
