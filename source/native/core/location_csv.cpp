@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -87,11 +88,46 @@ std::string_view trim(std::string_view field) {
     return field.substr(first, field.find_last_not_of(" \t") - first + 1);
 }
 
-bool split(std::string_view row, std::vector<std::string_view>& fields) {
+bool split_quoted(std::string_view row, std::vector<std::string_view>& fields, std::deque<std::string>& decoded) {
+    for (;;) {
+        const auto first = row.find_first_not_of(" \t");
+        if (first != absent && row[first] == '"') {
+            row.remove_prefix(first + 1);
+            auto& value = decoded.emplace_back();
+            for (;;) {
+                const auto quote = row.find('"');
+                if (quote == absent) return false; // Multiline fields use the compatibility parser.
+                value.append(row.substr(0, quote));
+                row.remove_prefix(quote + 1);
+                if (row.empty() || row.front() != '"') break;
+                value.push_back('"');
+                row.remove_prefix(1);
+            }
+            fields.push_back(value);
+            const auto delimiter = row.find_first_not_of(" \t");
+            if (delimiter == absent) return true;
+            if (row[delimiter] != ',') return false;
+            row.remove_prefix(delimiter + 1);
+        } else {
+            const auto comma = row.find(',');
+            const auto value = trim(row.substr(0, comma));
+            if (value.find('"') != absent) return false;
+            fields.push_back(value);
+            if (comma == absent) return true;
+            row.remove_prefix(comma + 1);
+        }
+    }
+}
+
+bool split(std::string_view row, std::vector<std::string_view>& fields, std::deque<std::string>& decoded) {
+    bool quoted = false;
     for (const unsigned char ch : row) {
-        if (ch == '"' || (ch < 32 && ch != '\t') || ch >= 127) return false;
+        if ((ch < 32 && ch != '\t') || ch >= 127) return false;
+        if (ch == '"') quoted = true;
     }
     fields.clear();
+    decoded.clear();
+    if (quoted) return split_quoted(row, fields, decoded);
     for (;;) {
         const auto comma = row.find(',');
         fields.push_back(trim(row.substr(0, comma)));
@@ -103,6 +139,7 @@ bool split(std::string_view row, std::vector<std::string_view>& fields) {
 // The fast path accepts decimal numbers. Other spellings are delegated to
 // the compatibility parser rather than reimplementing JavaScript Number().
 bool decimal(std::string_view field, double& value) {
+    field = trim(field);
     if (field.empty()) { value = 0; return true; }
     if (field.size() > 80 || field.find_first_not_of("0123456789.eE+-") != absent) return false;
     const std::string terminated(field);
@@ -130,7 +167,8 @@ bool load_csv(const std::string& filename, bool force_photo, Dataset& dataset) {
     if (crlf) line.pop_back();
     if (line.compare(0, 3, "\xEF\xBB\xBF") == 0) line.erase(0, 3);
     std::vector<std::string_view> fields;
-    if (!split(line, fields)) return false;
+    std::deque<std::string> decoded;
+    if (!split(line, fields, decoded)) return false;
     const auto column_count = fields.size();
     const auto column = [&](std::string_view name) {
         const auto found = std::find(fields.begin(), fields.end(), name);
@@ -151,13 +189,13 @@ bool load_csv(const std::string& filename, bool force_photo, Dataset& dataset) {
     while (input.peek() != std::char_traits<char>::eof()) {
         if (!read_row(input, line, crlf)) return false;
         if (line.empty()) continue;
-        if (!split(line, fields) || fields.size() != column_count) return false;
+        if (!split(line, fields, decoded) || fields.size() != column_count) return false;
         double seconds, lon, lat, step = 0, error = 0, height = missing;
         if (!decimal(fields[time], seconds) || !decimal(fields[longitude], lon) || !decimal(fields[latitude], lat) ||
             (type != absent && !decimal(fields[type], step)) || (accuracy != absent && !decimal(fields[accuracy], error)) ||
-            (altitude != absent && !fields[altitude].empty() && !decimal(fields[altitude], height))) return false;
+            (altitude != absent && !trim(fields[altitude]).empty() && !decimal(fields[altitude], height))) return false;
         const double timestamp = seconds * 1000;
-        if (fields[time].empty() || !std::isfinite(timestamp) ||
+        if (trim(fields[time]).empty() || !std::isfinite(timestamp) ||
             !(lon >= -180 && lon <= 180 && lat >= -90 && lat <= 90) || (std::isfinite(error) && error > 100)) {
             ++dataset.skipped;
             continue;

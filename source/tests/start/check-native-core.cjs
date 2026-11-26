@@ -30,10 +30,17 @@ async function checkCsv(executable) {
     fs.writeFileSync(filename, [header, '3,10,20,120,0,8', '2,11,20,,0,', '1,12,20,0,0,-2',
       '2,13,20,100,0,4', '4,180.01,20,,0,', '', '5,15,20,,-1,'].join('\r\n'));
     assert.deepEqual(await readNativeLocationCsv(executable, filename), await readLocationCsv(filename, null));
-    for (const row of ['2,11.0000005,20,,1,0', '"2",11,20,,0,0', '2,0x10,20,,0,0', '2,11,20,,0']) {
+    for (const row of ['2,11.0000005,20,,1,0', '2,0x10,20,,0,0', '2,11,20,,0', '"2"x,11,20,,0,0']) {
       fs.writeFileSync(filename, [header, '1,0,0,,0,0', row].join('\n'));
       assert.equal(await readNativeLocationCsv(executable, filename), null, row);
     }
+    const quotedHeader = '\uFEFF"dataTime","longitude","latitude",accuracy,stepType,"elevation",note';
+    fs.writeFileSync(filename, [quotedHeader, '"2","11",20," 100 ",0," \t ","commas, and ""quotes"""',
+      '"1"," 12 ",20,"",1,"-2",""', '" ",0,0,,0,,', '"3",0,0,"101",0,,'].join('\r\n'));
+    assert.deepEqual(await readNativeLocationCsv(executable, filename), await readLocationCsv(filename, null));
+    fs.writeFileSync(filename, [quotedHeader, '2,11,20,,0,0,"a\r\nb"'].join('\r\n'));
+    assert.equal((await readLocationCsv(filename, null)).pointCount, 1);
+    assert.equal(await readNativeLocationCsv(executable, filename), null);
     const photos = path.join(directory, 'photos.csv');
     fs.writeFileSync(filename, [header, '2,12,20,,0,3', '1,11,20,,0,1', '1,10,20,,1,2'].join('\n'));
     fs.writeFileSync(photos, [header, '1,10,20,,0,4', '2,13,20,,0,5'].join('\n'));
