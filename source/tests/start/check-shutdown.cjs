@@ -42,7 +42,7 @@ async function evaluate(url, expression) {
       timeout = setTimeout(() => reject(new Error('Electron inspector request timed out')), 5000);
       socket.addEventListener('error', () => reject(new Error('Could not connect to Electron inspector')), { once: true });
       socket.addEventListener('open', () => {
-        socket.send(JSON.stringify({ id: 1, method: 'Runtime.evaluate', params: { expression, returnByValue: true } }));
+        socket.send(JSON.stringify({ id: 1, method: 'Runtime.evaluate', params: { expression, returnByValue: true, awaitPromise: true } }));
       }, { once: true });
       socket.addEventListener('message', event => {
         const message = JSON.parse(event.data);
@@ -68,10 +68,25 @@ async function check(mode) {
   const config = path.join(profile, '.config');
   const logRoot = process.platform === 'darwin' ? path.join(profile, 'Library', 'Application Support') : config;
   const log = path.join(logRoot, 'ReplayMod Reality', 'desktop-start.log');
+  if (mode === 'window') {
+    const footprint = path.join(profile, 'fixture.csv');
+    fs.writeFileSync(footprint, 'dataTime,longitude,latitude,stepType\n2,120,30,0\n1,121,31,0\n');
+    const appData = path.dirname(log);
+    fs.mkdirSync(appData, { recursive: true });
+    fs.writeFileSync(path.join(appData, 'user-archive.json'), JSON.stringify({
+      format: 'replaymod.user-archive',
+      version: 1,
+      settings: { maptilerApiKey: '' },
+      workspace: {},
+      services: {},
+      lastDatasetSource: { mainFilePath: footprint, photoFilePath: null },
+    }));
+  }
   const readLog = () => fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '';
   const npm = spawn('npm', ['start', '--', '--', '--inspect=127.0.0.1:0', '--use-mock-keychain'], {
     cwd: root, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
-    env: {...process.env, HOME: profile, CFFIXED_USER_HOME: profile, XDG_CONFIG_HOME: config, XDG_CACHE_HOME: path.join(profile, 'cache')},
+    env: {...process.env, HOME: profile, CFFIXED_USER_HOME: profile, XDG_CONFIG_HOME: config,
+      XDG_CACHE_HOME: path.join(profile, 'cache'), REPLAYMOD_NATIVE_CSV: mode === 'window' ? '1' : '0'},
   });
   let output = '';
   npm.stdout.on('data', chunk => { output += chunk; });
@@ -107,6 +122,13 @@ async function check(mode) {
 
     const started = Date.now();
     if (mode === 'window') {
+      const imported = await evaluate(url, `
+        ${electron}.BrowserWindow.getAllWindows()[0].webContents.executeJavaScript(
+          '(async () => { const data = await window.replaymod.loadDefaultLocationCsv(); ' +
+          'return {name: data.sourceName, time: data.timelineTimestamps, points: data.timelineCoordinates}; })()')
+      `);
+      assert.deepEqual(imported, { name: 'fixture.csv', time: [1000, 2000], points: [121, 31, 120, 30] });
+      assert.doesNotMatch(readLog(), /Native CSV import failed/);
       await evaluate(url, `{
         const window = ${electron}.BrowserWindow.getAllWindows()[0];
         window.on('closed', () => process.mainModule.require('node:fs').writeFileSync(${JSON.stringify(path.join(profile, 'closed'))}, ''));
