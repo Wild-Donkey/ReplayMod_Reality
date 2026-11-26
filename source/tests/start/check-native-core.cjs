@@ -25,6 +25,31 @@ const { unpackMotionGpsResult } = require('../../apps/desktop/src/shared/motionG
 const { fitMotionTrajectory } = require('../../packages/media/src/trajectory-fit.ts');
 const { shouldFitNatively, trajectoryBackendMode, trajectoryCacheNamespace } = require('../../apps/desktop/src/main/trajectoryBackend.ts');
 
+function checkCompilerFallback() {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'replay-native-toolchain-'));
+  try {
+    const source = path.resolve(__dirname, '../..');
+    const script = path.join(directory, 'scripts/native/build-core.cjs');
+    fs.mkdirSync(path.dirname(script), { recursive: true });
+    fs.copyFileSync(path.join(source, 'scripts/native/build-core.cjs'), script);
+    fs.cpSync(path.join(source, 'native/core'), path.join(directory, 'native/core'), { recursive: true });
+    const check = `
+      const assert = require('node:assert/strict');
+      const { buildCore } = require(${JSON.stringify(script)});
+      assert.equal(buildCore({ optional: true }), null);
+      assert.throws(() => buildCore(), { code: 'ENOENT' });
+    `;
+    const result = spawnSync(process.execPath, ['-e', check], {
+      env: { ...process.env, CXX: path.join(directory, 'unavailable-compiler') },
+      encoding: 'utf8', timeout: 10_000,
+    });
+    assert.ifError(result.error);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stderr, /development can continue with TypeScript fallbacks/);
+    assert.deepEqual(fs.readdirSync(path.join(directory, 'native/build')), []);
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+}
+
 async function checkCsv(executable) {
   const sample = path.resolve(__dirname, '../../../RawData/footprint/Example_footprint.csv');
   assert.deepEqual(await readNativeLocationCsv(executable, sample), await readLocationCsv(sample, null));
@@ -76,6 +101,7 @@ async function checkCsv(executable) {
 }
 
 async function check() {
+  checkCompilerFallback();
   assert.equal(trajectoryBackendMode(undefined, 'darwin', 'arm64'), 'automatic');
   assert.equal(trajectoryBackendMode(undefined, 'win32', 'x64'), 'typescript');
   assert.equal(trajectoryBackendMode('0', 'darwin', 'arm64'), 'typescript');

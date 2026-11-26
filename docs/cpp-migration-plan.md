@@ -85,7 +85,7 @@
 
 已接通阶段 1 的构建、打包资源配置、版本握手、探活和退出路径。Electron 主进程创建窗口后发起探活。版本 1 用标准输入和标准输出各传一行 ASCII，`hello 1` 对应 `ready 1`，`ping` 对应 `pong`，关闭标准输入触发退出。轨迹任务已接入请求 ID、原生拟合窗口进度和取消。
 
-运行 `npm --prefix source run check:native-core` 可用真实 C++ 进程验证接口。开发启动和打包时由 Forge 构建本机产物，需要 C++17 编译器。macOS 和 Linux 默认使用 `c++`，Windows 默认使用 MinGW-w64 的 `g++.exe`，可用 `CXX` 指定兼容编译器。
+运行 `npm --prefix source run check:native-core` 可用真实 C++ 进程验证接口。开发启动尝试构建本机产物，找不到 C++ 编译器时可继续走 TypeScript 回退。实际编译错误仍会报告。打包要求 C++17 编译器和可用的原生资源。macOS 和 Linux 默认使用 `c++`，Windows 默认使用 MinGW-w64 的 `g++.exe`，可用 `CXX` 指定兼容编译器。核心检查分别验证了缺编译器时的开发回退和严格构建失败。
 
 ### CSV 导入试点
 
