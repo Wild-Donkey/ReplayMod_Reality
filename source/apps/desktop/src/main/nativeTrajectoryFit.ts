@@ -1,14 +1,15 @@
 import { processMotionGps, type MotionPoint } from "../../../../packages/media/src/gps-motion";
 import type { OrientationSample } from "../../../../packages/media/src/types";
 import { packMotionGpsResult, type PackedMotionGpsResult } from "../shared/motionGpsWire";
-import { runNativeBinaryJob } from "./nativeBinaryJob";
+import { runNativeBinaryJob, type NativeJobProgress } from "./nativeBinaryJob";
 
 const CONTEXT_SECONDS = 4;
 const HEADER_BYTES = 8 * 8;
 const ROW_BYTES = 5 * 8;
 
 export async function fitNativeTrajectory(executable: string, samples: readonly OrientationSample[],
-    points: readonly MotionPoint[], start: number, end: number, sampleRateHz: number, signal?: AbortSignal): Promise<PackedMotionGpsResult> {
+    points: readonly MotionPoint[], start: number, end: number, sampleRateHz: number, signal?: AbortSignal,
+    onProgress?: (progress: NativeJobProgress) => void): Promise<PackedMotionGpsResult> {
   signal?.throwIfAborted();
   const fixes = points.filter(point => Number.isFinite(point.timeSeconds) && Number.isFinite(point.latitude) &&
     Number.isFinite(point.longitude) && Math.abs(point.latitude) <= 90 && Math.abs(point.longitude) <= 180)
@@ -47,7 +48,7 @@ export async function fitNativeTrajectory(executable: string, samples: readonly 
   const count = pointCount + 2 * beforeCount;
   const outputBytes = HEADER_BYTES + ROW_BYTES * count;
   const output = await runNativeBinaryJob(executable, "--fit-trajectory", input, {
-    exactBytes: outputBytes, maxBytes: outputBytes, signal,
+    exactBytes: outputBytes, maxBytes: outputBytes, signal, onProgress,
   });
   if (!output || output.readDoubleLE(0) !== 2 || output.readDoubleLE(8) !== pointCount ||
       output.readDoubleLE(16) !== count - pointCount) throw new Error("Invalid native trajectory header");

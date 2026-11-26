@@ -25,6 +25,8 @@ export interface MediaAlignmentResult {
 
 export const POST_GPS_CHANNEL = "media:post-gps";
 export const GPS_RESULT_CHANNEL = "media:gps-result";
+export const GPS_PROGRESS_CHANNEL = "media:gps-progress";
+export type MotionGpsProgress = {readonly id: string; readonly completed: number; readonly total: number};
 export interface MotionGpsRequest extends MediaAlignmentRequest {
   points: readonly import("../../../../packages/media/src/gps-motion").MotionPoint[];
 }

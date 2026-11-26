@@ -1,4 +1,4 @@
-import {GPS_RESULT_CHANNEL,POST_GPS_CHANNEL,type MotionGpsRequest,type MotionGpsUpdate} from "../shared/mediaAlignment";
+import {GPS_PROGRESS_CHANNEL,GPS_RESULT_CHANNEL,POST_GPS_CHANNEL,type MotionGpsProgress,type MotionGpsRequest,type MotionGpsUpdate} from "../shared/mediaAlignment";
 import {unpackMotionGpsResult,type MotionGpsWireUpdate} from "../shared/motionGpsWire";
 import type {LocalSpeechStatus,LocalSpeechUpdate} from "../shared/localSpeech";
 import type { AudioDocument, AudioBlock } from "../../../../packages/media/src/audio-document";
@@ -84,6 +84,7 @@ export interface DesktopBridge {
   openMedia(): Promise<MediaSource | null>;
   postMediaGps(id: string, request: MotionGpsRequest | null): void;
   onMediaGpsResult(listener: (update: MotionGpsUpdate) => void): () => void;
+  onMediaGpsProgress(listener: (update: MotionGpsProgress) => void): () => void;
   transcribeMedia(sourcePath: string): Promise<SubtitleTrack>;
   saveSubtitles(sourcePath: string, track: SubtitleTrack): Promise<SavedSubtitleTrack>;
 }
@@ -168,6 +169,11 @@ const bridge: DesktopBridge = Object.freeze({
   loadFlightScreeningCache: () => ipcRenderer.invoke("flights:screening-cache") as Promise<FlightScreeningCache | null>,
   saveFlightScreeningCache: (cache: FlightScreeningCache) => ipcRenderer.invoke("flights:save-screening-cache", cache) as Promise<void>,
   postMediaGps: (id: string, request: MotionGpsRequest | null) => ipcRenderer.send(POST_GPS_CHANNEL, id, request),
+  onMediaGpsProgress: (listener: (update: MotionGpsProgress) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, update: MotionGpsProgress) => listener(update);
+    ipcRenderer.on(GPS_PROGRESS_CHANNEL, handler);
+    return () => ipcRenderer.removeListener(GPS_PROGRESS_CHANNEL, handler);
+  },
   onMediaGpsResult: (listener: (update: MotionGpsUpdate) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, update: MotionGpsWireUpdate) => {
       listener("error" in update ? update : { id: update.id, result: unpackMotionGpsResult(update.result) });

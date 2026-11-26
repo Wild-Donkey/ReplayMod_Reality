@@ -133,7 +133,12 @@ async function checkTrajectory(executable) {
 
   for (const { samples, points, seconds, rate, attitude, corrected } of fixtures) {
     const legacy = fitMotionTrajectory(samples, points, start, start + seconds);
-    const native = unpackMotionGpsResult(await fitNativeTrajectory(executable, samples, points, start, start + seconds, rate));
+    const progress = [];
+    const native = unpackMotionGpsResult(await fitNativeTrajectory(executable, samples, points, start, start + seconds, rate,
+      undefined, update => progress.push(update)));
+    assert.deepEqual(progress, Array.from({length: native.fittedWindows ?? 0}, (_, index) => ({
+      completed: index + 1, total: native.fittedWindows,
+    })));
     const { points: expected, contextPoints: context, ...summary } = legacy;
     const { points: actual, contextPoints: nativeContext, ...nativeSummary } = native;
     assert.deepEqual(nativeSummary, summary);
@@ -151,9 +156,12 @@ async function checkTrajectory(executable) {
     }
   }
   const controller = new AbortController();
-  const active = fitNativeTrajectory(executable, [], fixtures[1].points, start, start + 800, 60, controller.signal);
+  const cancelledProgress = [];
+  const active = fitNativeTrajectory(executable, [], fixtures[1].points, start, start + 800, 60, controller.signal,
+    update => cancelledProgress.push(update));
   controller.abort();
   await assert.rejects(active, { name: 'AbortError' });
+  assert.deepEqual(cancelledProgress, []);
   console.log('Native trajectory fit matches the reference for attitude, overlapping windows, dateline and missing altitude.');
 }
 

@@ -1,6 +1,6 @@
 import "./guardStdio";
 import { prepareWindows } from "./windowsSetup";
-import {GPS_RESULT_CHANNEL,POST_GPS_CHANNEL,type MotionGpsRequest,type MotionGpsResult} from "../shared/mediaAlignment";
+import {GPS_PROGRESS_CHANNEL,GPS_RESULT_CHANNEL,POST_GPS_CHANNEL,type MotionGpsProgress,type MotionGpsRequest,type MotionGpsResult} from "../shared/mediaAlignment";
 import {packMotionGpsResult,type MotionGpsWireUpdate,type PackedMotionGpsResult} from "../shared/motionGpsWire";
 import { LatestJobQueue } from "./latestJobQueue";
 import type { TrajectoryWorkerInput, TrajectoryWorkerOutput } from "./trajectoryWorker";
@@ -748,7 +748,8 @@ async function closeTrajectoryWorker() {
   });
 }
 
-function runTrajectoryWorker(input: TrajectoryWorkerInput, signal: AbortSignal): Promise<PackedMotionGpsResult> {
+function runTrajectoryWorker(input: TrajectoryWorkerInput, signal: AbortSignal,
+    onProgress: (progress: Omit<MotionGpsProgress, "id">) => void): Promise<PackedMotionGpsResult> {
   signal.throwIfAborted();
   if (!trajectoryWorker) {
     const worker = new Worker(path.join(__dirname, "trajectoryWorker.js"), {
@@ -777,12 +778,16 @@ function runTrajectoryWorker(input: TrajectoryWorkerInput, signal: AbortSignal):
       catch (error) { onError(error); }
     };
     const onMessage = (output: TrajectoryWorkerOutput) => {
+      if ("progress" in output) {
+        if (!signal.aborted) onProgress(output.progress);
+        return;
+      }
       cleanup();
       if ("error" in output) reject(new Error(output.error));
       else resolve(output.result);
     };
     worker.ref();
-    worker.once("message", onMessage);
+    worker.on("message", onMessage);
     worker.once("error", onError);
     worker.once("exit", onExit);
     signal.addEventListener("abort", onAbort, { once: true });
@@ -823,7 +828,10 @@ const gpsJobs = new LatestJobQueue<{sender: Electron.WebContents; id: string; re
     const end=source.durationSeconds===null
       ? request.points.reduce((latest,point)=>Number.isFinite(point.timeSeconds)?Math.max(latest,point.timeSeconds):latest,start)
       : start+source.durationSeconds;
-    const result = await runTrajectoryWorker({sourcePath: request.sourcePath, revision, exiftool: exiftool ?? exiftoolName, points: request.points, start, end}, signal);
+    const result = await runTrajectoryWorker({sourcePath: request.sourcePath, revision, exiftool: exiftool ?? exiftoolName,
+      points: request.points, start, end}, signal, progress => {
+      if (isCurrent() && !sender.isDestroyed()) sender.send(GPS_PROGRESS_CHANNEL, { id, ...progress });
+    });
     if (!isCurrent() || sender.isDestroyed()) return;
     if(result.pointCount<2)throw new Error("GPS 与视频时间不重叠，请先完成时间对齐。");
     publish({id,result});

@@ -243,10 +243,12 @@ int fit_trajectory_stream() {
     std::vector<Window> windows;
     int constraints = 0;
     const auto tail = duration+context_seconds;
+    const auto total_windows = 1 + static_cast<int>(std::ceil(std::max(0.,tail - (300-context_seconds))/240));
     for (double left = -context_seconds; left < tail; left += 240) {
         const double right = std::min(left+300,tail);
         windows.push_back(fit_window(left,right,anchors,seeds,attitude));
         constraints += windows.back().constraints;
+        std::clog << "progress " << windows.size() << ' ' << total_windows << std::endl;
         if (right == tail) break;
     }
     const auto steps = static_cast<int>(std::ceil(duration*rate));

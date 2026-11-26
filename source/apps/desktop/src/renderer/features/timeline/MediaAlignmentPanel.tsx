@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { PointDataset } from "../../../../../../packages/data/src";
 import type { MediaSource } from "../../../../../../packages/media/src";
-import type { MediaAlignmentResult, MotionGpsResult } from "../../../shared/mediaAlignment";
+import type { MediaAlignmentResult, MotionGpsProgress, MotionGpsResult } from "../../../shared/mediaAlignment";
 import { alignedMediaStart, normalizeAlignmentSeconds, validAlignmentOffset } from "../../../shared/mediaAlignment";
 import { formatMediaTime } from "../../shared/mediaTimeDisplay";
 import { motionInputPoints } from "./processedTrajectory";
@@ -23,6 +23,7 @@ export function MediaAlignmentPanel({source, dataset, active, onPreviewOffsetCha
   const [fineOffset, setFineOffset] = useState(0);
   const [saving, setSaving] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [gpsProgress, setGpsProgress] = useState<MotionGpsProgress | null>(null);
   const [refresh, setRefresh] = useState(0);
   const [gpsError, setGpsError] = useState("");
   const [error, setError] = useState("");
@@ -58,6 +59,7 @@ export function MediaAlignmentPanel({source, dataset, active, onPreviewOffsetCha
 
   useEffect(() => {
     setGpsError("");
+    setGpsProgress(null);
     if (!active || saving || !bridge || !dataset || start === undefined || previewStart === undefined || !valid) {
       setProcessing(false);
       return;
@@ -66,6 +68,9 @@ export function MediaAlignmentPanel({source, dataset, active, onPreviewOffsetCha
     const onCompleted = onProcessedRef.current;
     let posted = false;
     setProcessing(true);
+    const unsubscribeProgress = bridge.onMediaGpsProgress?.(update => {
+      if (update.id === id && requestedOffset.current === value) setGpsProgress(update);
+    });
     const unsubscribe = bridge.onMediaGpsResult(update => {
       if (update.id !== id || requestedOffset.current !== value) return;
       setProcessing(false);
@@ -89,6 +94,7 @@ export function MediaAlignmentPanel({source, dataset, active, onPreviewOffsetCha
     return () => {
       window.clearTimeout(timer);
       unsubscribe();
+      unsubscribeProgress?.();
       if (posted) bridge.postMediaGps(id, null);
     };
   }, [active, saving, bridge, dataset, start, previewStart, valid, value, source.durationSeconds, source.sourcePath, refresh]);
@@ -121,6 +127,7 @@ export function MediaAlignmentPanel({source, dataset, active, onPreviewOffsetCha
     {start !== undefined && <p className="alignment-hint">正数推后，负数提前。点击「微调」保存对齐。</p>}
     {offset.trim() !== "" && !valid && <p className="alignment-hint">请输入一天以内的偏移，最多三位小数。</p>}
     <button type="button" disabled={!canEdit || !dataset || !valid || processing} onClick={() => setRefresh(version => version + 1)}>{processing ? "正在更新 GPS 预览…" : "优化 GPS 与插值"}</button>
+    {processing && gpsProgress && <progress aria-label="轨迹拟合窗口进度" value={gpsProgress.completed} max={gpsProgress.total} />}
     {!processing && !gpsError && gpsResult && gpsResult.videoStartSeconds === previewStart && <p role="status">
       {gpsResult.fittedWindows
         ? `轨迹拟合 ${gpsResult.fittedWindows} 窗 · 姿态约束 ${gpsResult.attitudeConstraints ?? 0} 个`

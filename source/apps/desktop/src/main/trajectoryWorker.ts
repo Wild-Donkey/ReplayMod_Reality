@@ -5,6 +5,7 @@ import { fitMotionTrajectory } from "../../../../packages/media/src/trajectory-f
 import type { MotionGpsRequest } from "../shared/mediaAlignment";
 import { packMotionGpsResult, type PackedMotionGpsResult } from "../shared/motionGpsWire";
 import { fitNativeTrajectory } from "./nativeTrajectoryFit";
+import type { NativeJobProgress } from "./nativeBinaryJob";
 
 export interface TrajectoryWorkerInput {
   sourcePath: string;
@@ -14,7 +15,7 @@ export interface TrajectoryWorkerInput {
   start: number;
   end: number;
 }
-export type TrajectoryWorkerOutput = {result: PackedMotionGpsResult} | {error: string};
+export type TrajectoryWorkerOutput = {result: PackedMotionGpsResult} | {error: string} | {progress: NativeJobProgress};
 
 const port = parentPort;
 let orientation: {revision: string; samples: Awaited<ReturnType<typeof extractDjiOrientation>>} | undefined;
@@ -45,7 +46,8 @@ port?.on("message", async (input: TrajectoryWorkerInput | {shutdown: true} | {ca
     controller.signal.throwIfAborted();
     const rate = 10;
     const packed = typeof workerData === "string"
-      ? await fitNativeTrajectory(workerData, samples ?? [], input.points, input.start, input.end, rate, controller.signal).catch(error => {
+      ? await fitNativeTrajectory(workerData, samples ?? [], input.points, input.start, input.end, rate, controller.signal,
+        progress => port.postMessage({progress} satisfies TrajectoryWorkerOutput)).catch(error => {
         if (controller.signal.aborted) throw error;
         console.warn("Native trajectory fit failed", error);
         return packMotionGpsResult(fitMotionTrajectory(samples ?? [], input.points, input.start, input.end));

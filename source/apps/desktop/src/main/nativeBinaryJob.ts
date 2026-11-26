@@ -1,17 +1,23 @@
 import { spawn } from "node:child_process";
 import { assertCanStartChild, trackChild } from "../../../../packages/media/src/childProcesses";
 
+export interface NativeJobProgress {
+  readonly completed: number;
+  readonly total: number;
+}
+
 export function runNativeBinaryJob(executable: string, command: string, input: Buffer | string, options: {
   maxBytes: number;
   exactBytes?: number;
   unsupportedCode?: number;
   signal?: AbortSignal;
+  onProgress?: (progress: NativeJobProgress) => void;
 }): Promise<Buffer | null> {
   assertCanStartChild();
   options.signal?.throwIfAborted();
   const output = options.exactBytes === undefined ? undefined : Buffer.allocUnsafe(options.exactBytes);
   const child = trackChild(spawn(executable, [command], {
-    stdio: ["pipe", "pipe", "ignore"], windowsHide: true, timeout: 60_000, killSignal: "SIGKILL",
+    stdio: ["pipe", "pipe", "pipe"], windowsHide: true, timeout: 60_000, killSignal: "SIGKILL",
     signal: options.signal,
   }));
   return new Promise((resolve, reject) => {
@@ -24,6 +30,32 @@ export function runNativeBinaryJob(executable: string, command: string, input: B
     };
     child.on("error", fail);
     child.stdout.on("error", fail);
+    child.stderr.on("error", fail);
+    if (options.onProgress) {
+      const report = options.onProgress;
+      let pending = "", completed = 0, total = 0;
+      child.stderr.setEncoding("utf8");
+      child.stderr.on("data", (chunk: string) => {
+        if (failure || options.signal?.aborted) return;
+        const lines = (pending + chunk).split("\n");
+        pending = lines.pop() ?? "";
+        if (pending.length > 128) return fail(new Error(`Native job ${command} exceeded the progress frame limit`));
+        for (const line of lines) {
+          if (options.signal?.aborted) break;
+          const match = /^progress (\d{1,5}) (\d{1,5})\r?$/.exec(line);
+          if (!match) continue;
+          const next = Number(match[1]), expected = Number(match[2]);
+          if (next <= completed || next > expected || (total && total !== expected)) continue;
+          completed = next;
+          total = expected;
+          try { report({ completed, total }); }
+          catch (error) {
+            fail(error instanceof Error ? error : new Error(String(error)));
+            break;
+          }
+        }
+      });
+    } else child.stderr.resume();
     // A process can report an unsupported request and exit before reading the
     // rest of stdin. The exit status below still determines that outcome.
     child.stdin.on("error", (error: NodeJS.ErrnoException) => {

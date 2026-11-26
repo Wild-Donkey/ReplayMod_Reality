@@ -186,14 +186,19 @@ async function check(mode) {
             '[0, 1, 2].map(offset => ({ timeSeconds: creationTimeSeconds + offset, latitude: 30, longitude: 120 + offset * .0001 }))'};
           const started = performance.now();
           return await new Promise((resolve, reject) => {
+            const progress = [];
+            const unsubscribeProgress = bridge.onMediaGpsProgress(update => {
+              if (update.id === 'native-fit-fixture') progress.push({ completed: update.completed, total: update.total });
+            });
             const unsubscribe = bridge.onMediaGpsResult(update => {
               if (update.id !== 'native-fit-fixture') return;
               unsubscribe();
+              unsubscribeProgress();
               if (update.error) { reject(new Error(update.error)); return; }
               resolve({ points: update.result.points.length, windows: update.result.fittedWindows,
                 start: update.result.points[0].timeSeconds, end: update.result.points.at(-1).timeSeconds,
                 constraints: update.result.attitudeConstraints, expected: Math.ceil((creationTimeSeconds + durationSeconds - creationTimeSeconds) * 10) + 1,
-                ms: performance.now() - started });
+                progress, ms: performance.now() - started });
             });
             bridge.postMediaGps('native-fit-fixture', { sourcePath: media.sourcePath,
               creationTimeSeconds, offsetSeconds: 0, precision: 'export', sampleRateHz: 10, points });
@@ -202,6 +207,9 @@ async function check(mode) {
         const result = await evaluate(url, `
           ${electron}.BrowserWindow.getAllWindows()[0].webContents.executeJavaScript(${JSON.stringify(trajectoryCheck)})
         `, djiVideo ? 30_000 : 5000);
+        assert.deepEqual(result.progress, Array.from({length: result.windows}, (_, index) => ({
+          completed: index + 1, total: result.windows,
+        })));
         if (djiVideo) {
           assert.equal(result.points, result.expected);
           assert(result.points > 1 && result.constraints > 0, 'Expected a track fitted with DJI orientation');
