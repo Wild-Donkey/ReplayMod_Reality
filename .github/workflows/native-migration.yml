@@ -1,0 +1,41 @@
+name: Native migration checks
+
+on:
+  push:
+    branches: [cpp-migration]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+      - uses: msys2/setup-msys2@v2
+        if: runner.os == 'Windows'
+        id: msys2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc
+      - name: Add MinGW to Windows PATH
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
+        run: Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $env:MSYS2_LOCATION 'mingw64\bin')
+      - run: npm --prefix source ci
+      - run: npm --prefix source run typecheck
+      - run: npm --prefix source run check:native-core
+      - run: npm --prefix source run check:native-package

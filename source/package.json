@@ -13,6 +13,7 @@
     "check:shutdown": "node tests/start/check-child-processes.cjs && node --experimental-websocket tests/start/check-shutdown.cjs",
     "check:native-core": "node tests/start/check-native-core.cjs",
     "check:native-package": "node tests/start/check-native-package.cjs",
+    "bench:native": "node tests/start/benchmark-native-core.cjs",
     "check:cache": "node tests/cache/check-cache.cjs && node tests/cache/check-dataset-restore.cjs && node tests/cache/check-map-resources.cjs",
     "check:annotations": "node tests/annotations/check-annotations.cjs",
     "check:annotation-labels": "node tests/annotations/check-annotation-labels.cjs",

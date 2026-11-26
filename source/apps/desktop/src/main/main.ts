@@ -798,7 +798,7 @@ const gpsJobs = new LatestJobQueue<{sender: Electron.WebContents; id: string; re
     const legacyKey=request.offsetSeconds===0
       ? createHash("sha256").update(JSON.stringify(["motion-gps-v8",revision,start,request.points])).digest("hex") : null;
     const useNativeTrajectory = process.env.REPLAYMOD_NATIVE_TRAJECTORY === "1";
-    const packedVersion = useNativeTrajectory ? "motion-gps-native-v1:" : "motion-gps-packed-v1:";
+    const packedVersion = useNativeTrajectory ? "motion-gps-native-v2:" : "motion-gps-packed-v1:";
     const key = legacyKey && createHash("sha256").update(packedVersion).update(legacyKey).digest("hex");
     if (key && legacyKey) {
       const cached = await resources.read<PackedMotionGpsResult>("snapshots", key);

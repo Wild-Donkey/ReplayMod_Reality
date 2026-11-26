@@ -109,14 +109,24 @@ async function checkTrajectory(executable) {
     altitude: i % 3 === 0 ? undefined : i * 2,
   })), seconds: 800, rate: 10 });
   fixtures.push({ samples: [], points: [], seconds: 20, rate: 10 });
+  fixtures.push({ samples: [], points: [
+    { timeSeconds: start - 30, longitude: 100, latitude: 30 },
+    { timeSeconds: start - 1, longitude: 100, latitude: 30, altitude: 48 },
+    { timeSeconds: start + 1, longitude: 100.04, latitude: 30.04, altitude: 49 },
+    { timeSeconds: start + 2, longitude: 100.0002, latitude: 30, altitude: 50 },
+    { timeSeconds: start + 2, longitude: 100.01, latitude: 30.01, altitude: 80 },
+    { timeSeconds: start + 20, longitude: 100.001, latitude: 30, altitude: 80 },
+    { timeSeconds: start + 40, longitude: 100.01, latitude: 30, altitude: 60 },
+  ], seconds: 27.03, rate: 10, corrected: 1 });
 
-  for (const { samples, points, seconds, rate, attitude } of fixtures) {
+  for (const { samples, points, seconds, rate, attitude, corrected } of fixtures) {
     const legacy = fitMotionTrajectory(samples, points, start, start + seconds);
     const native = unpackMotionGpsResult(await fitNativeTrajectory(executable, samples, points, start, start + seconds, rate));
     const { points: expected, contextPoints: context, ...summary } = legacy;
     const { points: actual, contextPoints: nativeContext, ...nativeSummary } = native;
     assert.deepEqual(nativeSummary, summary);
     if (attitude) assert(legacy.attitudeConstraints > 0);
+    if (corrected) assert.equal(legacy.correctedPoints, corrected);
     for (const [expectedRows, actualRows] of [[expected, actual], [context, nativeContext]]) {
       assert.equal(actualRows.length, expectedRows.length);
       for (let i = 0; i < expectedRows.length; i++) {

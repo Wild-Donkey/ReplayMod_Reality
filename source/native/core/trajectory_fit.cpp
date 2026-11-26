@@ -1,10 +1,12 @@
 #include "trajectory_fit.h"
+#include "trajectory_seed.h"
 #include "trajectory_solver.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <optional>
 #include <vector>
@@ -183,13 +185,14 @@ bool valid_count(double count, double limit) {
     return count >= 1 && count <= limit && count == std::floor(count);
 }
 
-bool read_fixes(std::vector<Fix>& fixes, std::size_t count) {
+bool read_fixes(std::vector<GpsFix>& fixes, std::size_t count) {
     fixes.reserve(count);
     for (std::size_t i = 0; i < count; ++i) {
         std::array<double,5> row;
         if (!read_numbers(row) || !std::isfinite(row[0]) || !std::isfinite(row[1]) || !std::isfinite(row[2]) ||
-            (i && row[0] < fixes.back().time)) return false;
-        fixes.push_back({row[0],{row[1],row[2]},row[3],row[4]});
+            std::abs(row[1]) > 180 || std::abs(row[2]) > 90 ||
+            (i && row[0] <= fixes.back().time)) return false;
+        fixes.push_back({row[0],row[1],row[2],row[3],row[4]});
     }
     return true;
 }
@@ -203,16 +206,14 @@ int fit_trajectory_stream() {
     if (_setmode(_fileno(stdin),_O_BINARY) == -1 || _setmode(_fileno(stdout),_O_BINARY) == -1) return 1;
 #endif
     std::ios::sync_with_stdio(false);
-    std::array<double, 8> header;
+    std::array<double, 5> header;
     if (!read_numbers(header)) return 2;
-    const auto [version,first_time,duration,rate,origin_lon,origin_lat,anchor_count,seed_count] = header;
-    const double start = first_time, longitude = origin_lon, latitude = origin_lat;
-    if (version != 1 || !std::isfinite(start) || !(duration > 0 && duration <= 49992) ||
-        !valid_count(rate,60) || !std::isfinite(longitude) || !std::isfinite(latitude) ||
-        !valid_count(anchor_count,100000) || !valid_count(seed_count,600000)) return 2;
-    std::vector<Fix> anchors, seeds;
-    if (!read_fixes(anchors,static_cast<std::size_t>(anchor_count)) ||
-        !read_fixes(seeds,static_cast<std::size_t>(seed_count))) return 2;
+    const auto [version,first_time,end,rate,anchor_count] = header;
+    const double start = first_time, duration = end-start;
+    if (version != 2 || !std::isfinite(start) || !(duration > 0 && duration <= 49992) ||
+        !valid_count(rate,60) || !valid_count(anchor_count,100000)) return 2;
+    std::vector<GpsFix> fixes;
+    if (!read_fixes(fixes,static_cast<std::size_t>(anchor_count))) return 2;
     std::vector<Attitude> attitude;
     std::array<double,2> row;
     while (read_numbers(row)) {
@@ -222,6 +223,23 @@ int fit_trajectory_stream() {
     }
     if (!std::cin.eof() || std::cin.gcount() != 0) return 2;
 
+    GpsSeeds baseline;
+    if (!build_gps_seeds(fixes,start,end,baseline)) return 3;
+    const double longitude = fixes.front().lon, latitude = fixes.front().lat;
+    const double longitude_scale = metres*std::max(.001,std::cos(latitude*radians));
+    const auto project = [&](const GpsFix& fix) -> Fix {
+        return {fix.time-start,{wrap((fix.lon-longitude)*radians)/radians*longitude_scale,
+                               (fix.lat-latitude)*metres},fix.altitude,fix.has_altitude};
+    };
+    std::vector<Fix> anchors, seeds;
+    anchors.reserve(fixes.size());
+    std::transform(fixes.begin(),fixes.end(),std::back_inserter(anchors),project);
+    seeds.reserve(anchors.size()+baseline.points.size());
+    std::vector<Fix> projected;
+    projected.reserve(baseline.points.size());
+    std::transform(baseline.points.begin(),baseline.points.end(),std::back_inserter(projected),project);
+    std::merge(anchors.begin(),anchors.end(),projected.begin(),projected.end(),std::back_inserter(seeds),
+               [](const Fix& a, const Fix& b) { return a.time < b.time; });
     std::vector<Window> windows;
     int constraints = 0;
     const auto tail = duration+context_seconds;
@@ -233,9 +251,9 @@ int fit_trajectory_stream() {
     }
     const auto steps = static_cast<int>(std::ceil(duration*rate));
     const auto context_steps = static_cast<int>(context_seconds*rate);
-    write_numbers(std::array<double,5>{1,static_cast<double>(steps+1),static_cast<double>(2*context_steps),
-                  static_cast<double>(windows.size()),static_cast<double>(constraints)});
-    const double longitude_scale = metres*std::max(.001,std::cos(latitude*radians));
+    write_numbers(std::array<double,8>{2,static_cast<double>(steps+1),static_cast<double>(2*context_steps),
+                  static_cast<double>(windows.size()),static_cast<double>(constraints),
+                  static_cast<double>(baseline.corrected),static_cast<double>(baseline.smoothed),static_cast<double>(baseline.bridged)});
     std::size_t window = 0;
     const auto write_point = [&](double time) {
         while (window+1 < windows.size() && time >= windows[window].end) ++window;

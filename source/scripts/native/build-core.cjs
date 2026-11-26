@@ -8,8 +8,8 @@ const resource = `native/build/replaymod-core${windows ? '.exe' : ''}`;
 function buildCore() {
   const root = path.resolve(__dirname, '../..');
   const core = path.join(root, 'native/core');
-  const sources = ['main.cpp', 'location_csv.cpp', 'trajectory_fit.cpp', 'trajectory_solver.cpp'].map(file => path.join(core, file));
-  const inputs = [...sources, ...['location_csv.h', 'trajectory_fit.h', 'trajectory_solver.h'].map(file => path.join(core, file)), __filename];
+  const sources = ['main.cpp', 'location_csv.cpp', 'trajectory_fit.cpp', 'trajectory_seed.cpp', 'trajectory_solver.cpp'].map(file => path.join(core, file));
+  const inputs = [...sources, ...['location_csv.h', 'trajectory_fit.h', 'trajectory_seed.h', 'trajectory_solver.h'].map(file => path.join(core, file)), __filename];
   const output = path.join(root, resource);
   const existing = statSync(output, { throwIfNoEntry: false });
   if (existing && existing.mtimeMs >= Math.max(...inputs.map(file => statSync(file).mtimeMs))) return output;
