@@ -111,7 +111,44 @@ app.whenReady().then(async () => {
    renderOnce();
    const finalViewRepaint=repaints;
    layer.destroy();
+   // Isolate geometry upload and first completed draw from CSV, IPC and map tiles.
+   const pointCount = 500000;
+   const plain = [];
+   for (let i = 0; i < pointCount; i++) {
+     plain.push(((i % 1000) - 500) / 625, (Math.floor(i / 1000) - 250) / 312.5);
+   }
+   const typed = Float64Array.from(plain);
+   const firstFrame = coordinates => {
+     const started = performance.now();
+     const pass = new FootprintDensityPass(coordinates, [], (x,y) => ({x,y}), () => {});
+     try {
+       pass.attach(gl);
+       pass.lastFrame = 0;
+       pass.accumulate({matrix,zoom:14,centerLongitude:0,cssWidth});
+       gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,32,32);
+       gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
+       pass.compositeToViewport();
+       const pixels = [[0,0], [16,16], [24,16]].map(([x,y]) => readPixel(x,y));
+       return {pixels, ms: performance.now() - started};
+     } finally { pass.destroy(); }
+   };
+   const upload = {plain: [], typed: []};
+   let pixels;
+   for (let iteration = 0; iteration < 4; iteration++) {
+     const order = iteration % 2 ? [typed, plain] : [plain, typed];
+     const frames = order.map(firstFrame);
+     const plainFrame = frames[iteration % 2], typedFrame = frames[1 - (iteration % 2)];
+     if (iteration) {
+       upload.plain.push(plainFrame.ms);
+       upload.typed.push(typedFrame.ms);
+     }
+     if (JSON.stringify(plainFrame.pixels) !== JSON.stringify(typedFrame.pixels)) {
+       throw new Error('Typed and ordinary coordinate columns rendered different first-frame pixels');
+     }
+     pixels = typedFrame.pixels;
+   }
    return {
+     binaryFirstFrame: {pointCount, upload, pixels},
      sparseBefore,sparseAfter,exposureBefore,exposureAfter,settledExposure,finalViewRepaint,
      measured,expected,radii:[1,8,14].map(footprintRadius),
      lineMeasured,lineExpected,scaledLine,dprWidths,hiddenLine,revealedLine,outsideStroke,noPaths,restoredPoints,bent,bentOutside,
@@ -120,6 +157,13 @@ app.whenReady().then(async () => {
    };
   })()`);
   const channels=['r','g','b','a'];
+  assert.equal(result.binaryFirstFrame.pointCount, 500000);
+  assert.equal(result.binaryFirstFrame.pixels[0][3], 0, 'off-track pixel must remain clear');
+  assert(result.binaryFirstFrame.pixels[1][3] > 0, 'first frame must contain rendered track coverage');
+  const median = values => [...values].sort((a, b) => a - b)[1].toFixed(2);
+  console.log('Footprint 500k first-frame readback:', {
+    arrayMs: median(result.binaryFirstFrame.upload.plain), typedMs: median(result.binaryFirstFrame.upload.typed),
+  });
   const comparePixel=(actual,expected,tolerance,label)=>{
     channels.forEach((_,i)=>assert(Math.abs(actual[i]-expected[i])<tolerance,
       label+' channel '+channels[i]+' '+JSON.stringify({actual,expected})));

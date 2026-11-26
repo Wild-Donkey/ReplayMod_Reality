@@ -10,11 +10,22 @@ import type { PointDataset } from "../../packages/data/src";
   const parent = document.createElement("div");
   Object.assign(parent.style, {position: "absolute", left: "31px", top: "47px", width: "320px", height: "360px"});
   document.body.append(parent);
-  const coordinates = [0, 0, 179.9, 0], timestamps = [1000, 2000], altitudes = [0, 10];
-  for (let i = 2; i < 180000; i++) { coordinates.push(10 + (i % 1000) / 1000, 10 + Math.floor(i / 1000) / 1000); timestamps.push(2000 + i); altitudes.push(10); }
+  const coordinates = new Float64Array(180000 * 2), timestamps = new Float64Array(180000), altitudes = new Float64Array(180000);
+  coordinates.set([0, 0, 179.9, 0]);
+  timestamps.set([1000, 2000]);
+  altitudes.fill(10, 1);
+  for (let i = 2; i < timestamps.length; i++) {
+    coordinates[i * 2] = 10 + (i % 1000) / 1000;
+    coordinates[i * 2 + 1] = 10 + Math.floor(i / 1000) / 1000;
+    timestamps[i] = 2000 + i;
+  }
   const dataset: PointDataset = {sourceName: "gpu-check", footprintCoordinates: coordinates, footprintTimestamps: timestamps, photoCoordinates: [], photoTimestamps: [], timelineCoordinates: coordinates, timelineTimestamps: timestamps, timelineAltitudes: altitudes, pointCount: timestamps.length, footprintPointCount: timestamps.length, photoPointCount: 0, skippedRowCount: 0, bounds: [0, 0, 180, 11], timeBounds: [1000, timestamps.at(-1)!]};
   const scene = new ReplayScene();
-  scene.setTrajectory(TrajectoryBuffer.fromPointDataset(dataset));
+  const trajectory = TrajectoryBuffer.fromPointDataset(dataset);
+  if (trajectory.positions.buffer !== coordinates.buffer || trajectory.timestamps.buffer !== timestamps.buffer) {
+    throw new Error("The render engine copied the imported coordinate or timestamp columns");
+  }
+  scene.setTrajectory(trajectory);
   scene.setMapViewState({longitude: 0, latitude: 0, zoom: 8, bearing: 0, pitch: 0});
   const backend = new DeckRenderBackend(parent, scene.current), registry = createDeckLayerRegistry();
   const draw = () => backend.render(scene.current, registry.build(scene.current, scene.clock.current));
