@@ -34,12 +34,12 @@ async function until(label, callback, timeout = 30000) {
   throw new Error(`Timed out waiting for ${label}`);
 }
 
-async function evaluate(url, expression) {
+async function evaluate(url, expression, timeoutMs = 5000) {
   const socket = new WebSocket(url);
   let timeout;
   try {
     return await new Promise((resolve, reject) => {
-      timeout = setTimeout(() => reject(new Error('Electron inspector request timed out')), 5000);
+      timeout = setTimeout(() => reject(new Error('Electron inspector request timed out')), timeoutMs);
       socket.addEventListener('error', () => reject(new Error('Could not connect to Electron inspector')), { once: true });
       socket.addEventListener('open', () => {
         socket.send(JSON.stringify({ id: 1, method: 'Runtime.evaluate', params: { expression, returnByValue: true, awaitPromise: true } }));
@@ -64,13 +64,16 @@ function signalGroup(pid, signal) {
 }
 
 async function check(mode) {
+  const djiVideo = mode === 'window' && process.env.REPLAYMOD_CHECK_DJI_VIDEO;
+  const djiFootprint = mode === 'window' && process.env.REPLAYMOD_CHECK_DJI_FOOTPRINT;
+  assert.equal(Boolean(djiVideo), Boolean(djiFootprint), 'Provide both DJI video and footprint paths');
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'replay-shutdown-test-'));
   const config = path.join(profile, '.config');
   const logRoot = process.platform === 'darwin' ? path.join(profile, 'Library', 'Application Support') : config;
   const log = path.join(logRoot, 'ReplayMod Reality', 'desktop-start.log');
-  const checkNativeTrajectory = mode === 'window' && process.env.REPLAYMOD_CHECK_NATIVE_TRAJECTORY === '1';
-  const video = path.join(profile, 'fixture.mp4');
-  if (checkNativeTrajectory) {
+  const checkNativeTrajectory = mode === 'window' && (Boolean(djiVideo) || process.env.REPLAYMOD_CHECK_NATIVE_TRAJECTORY === '1');
+  const video = djiVideo ? path.resolve(root, djiVideo) : path.join(profile, 'fixture.mp4');
+  if (checkNativeTrajectory && !djiVideo) {
     try {
       execFileSync('ffmpeg', ['-v', 'error', '-nostdin', '-f', 'lavfi', '-i', 'color=size=32x32:rate=10',
         '-t', '2', '-c:v', 'mpeg4', '-metadata', 'creation_time=2020-01-01T00:00:00Z', video], { stdio: 'inherit' });
@@ -92,7 +95,8 @@ async function check(mode) {
       settings: { maptilerApiKey: '' },
       workspace: {},
       services: {},
-      lastDatasetSource: { mainFilePath: footprint, photoFilePath: photo },
+      lastDatasetSource: djiFootprint ? { mainFilePath: path.resolve(root, djiFootprint), photoFilePath: null }
+        : { mainFilePath: footprint, photoFilePath: photo },
       ...(checkNativeTrajectory ? { lastMedia: { sourcePath: video } } : {}),
     }));
   }
@@ -141,11 +145,16 @@ async function check(mode) {
       const imported = await evaluate(url, `
         ${electron}.BrowserWindow.getAllWindows()[0].webContents.executeJavaScript(
           '(async () => { const data = await window.replaymod.loadDefaultLocationCsv(); ' +
-          'return {name: data.sourceName, time: Array.from(data.timelineTimestamps), points: Array.from(data.timelineCoordinates), ' +
+          'return {name: data.sourceName, time: Array.from(data.timelineTimestamps.slice(0, 3)), points: Array.from(data.timelineCoordinates.slice(0, 6)), ' +
           'binary: data.timelineTimestamps instanceof Float64Array && data.timelineCoordinates instanceof Float64Array}; })()')
       `);
-      assert.deepEqual(imported, { name: 'fixture.csv + photo.csv', time: [1000, 1000, 2000],
-        points: [121, 31, 122, 32, 120, 30], binary: true });
+      if (djiFootprint) {
+        assert.equal(imported.name, path.basename(djiFootprint));
+        assert.equal(imported.binary, true);
+      } else {
+        assert.deepEqual(imported, { name: 'fixture.csv + photo.csv', time: [1000, 1000, 2000],
+          points: [121, 31, 122, 32, 120, 30], binary: true });
+      }
       assert.doesNotMatch(readLog(), /Native CSV import failed/);
       const workerCheck = `(async () => {
         const { default: WorkerEntry } = await import('/features/timeline/speedCurveWorker.ts?worker');
@@ -171,24 +180,36 @@ async function check(mode) {
           const bridge = window.replaymod;
           const media = await bridge.loadCachedMedia();
           if (!Number.isFinite(media?.creationTimeSeconds)) throw new Error('Fixture has no creation time');
+          const {durationSeconds, creationTimeSeconds} = media;
+          const points = ${djiVideo ? `(await import('/features/timeline/processedTrajectory.ts')).motionInputPoints(
+            await bridge.loadDefaultLocationCsv(), creationTimeSeconds, durationSeconds)` :
+            '[0, 1, 2].map(offset => ({ timeSeconds: creationTimeSeconds + offset, latitude: 30, longitude: 120 + offset * .0001 }))'};
+          const started = performance.now();
           return await new Promise((resolve, reject) => {
             const unsubscribe = bridge.onMediaGpsResult(update => {
               if (update.id !== 'native-fit-fixture') return;
               unsubscribe();
               if (update.error) { reject(new Error(update.error)); return; }
               resolve({ points: update.result.points.length, windows: update.result.fittedWindows,
-                start: update.result.points[0].timeSeconds, end: update.result.points.at(-1).timeSeconds });
+                start: update.result.points[0].timeSeconds, end: update.result.points.at(-1).timeSeconds,
+                constraints: update.result.attitudeConstraints, expected: Math.ceil((creationTimeSeconds + durationSeconds - creationTimeSeconds) * 10) + 1,
+                ms: performance.now() - started });
             });
             bridge.postMediaGps('native-fit-fixture', { sourcePath: media.sourcePath,
-              creationTimeSeconds: media.creationTimeSeconds, offsetSeconds: 0, precision: 'export', sampleRateHz: 10,
-              points: [0, 1, 2].map(offset => ({ timeSeconds: media.creationTimeSeconds + offset,
-                latitude: 30, longitude: 120 + offset * .0001 })) });
+              creationTimeSeconds, offsetSeconds: 0, precision: 'export', sampleRateHz: 10, points });
           });
         })()`;
         const result = await evaluate(url, `
           ${electron}.BrowserWindow.getAllWindows()[0].webContents.executeJavaScript(${JSON.stringify(trajectoryCheck)})
-        `);
-        assert.deepEqual(result, { points: 21, windows: 1, start: 1577836800, end: 1577836802 });
+        `, djiVideo ? 30_000 : 5000);
+        if (djiVideo) {
+          assert.equal(result.points, result.expected);
+          assert(result.points > 1 && result.constraints > 0, 'Expected a track fitted with DJI orientation');
+          console.log(`DJI IPC: ${result.points} points, ${result.constraints} attitude constraints, ${result.ms.toFixed(1)} ms from request to renderer result.`);
+        } else {
+          const { points, windows, start, end } = result;
+          assert.deepEqual({ points, windows, start, end }, { points: 21, windows: 1, start: 1577836800, end: 1577836802 });
+        }
         assert.doesNotMatch(readLog(), /Native trajectory fit failed/);
       }
       await evaluate(url, `{

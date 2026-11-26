@@ -146,6 +146,10 @@ macOS 实机使用带创建时间的合成 MP4，验证了媒体缓存恢复、r
 
 可用 `npm --prefix source run bench:native -- dji <视频路径> <足迹 CSV 路径>` 复核真实素材。命令读取媒体创建时间、校验 GPS 覆盖和姿态约束，并只输出统计数据。可用 `REPLAYMOD_FFPROBE` 和 `REPLAYMOD_EXIFTOOL` 指定工具路径。
 
+同一段素材也通过了 macOS 完整 Electron 链路验收。一次实测从 renderer 发起请求到收到结果用时 893.7 ms，返回 691 个点并应用 68 条姿态约束。原生拟合没有回退，关窗后整个测试进程树均已退出。此用时不含初次读取足迹或媒体探测，不以它和独立 ExifTool 提取用时相减。
+
+从 `source/` 执行 `node tests/start/check-shutdown.cjs window` 时，同时设置 `REPLAYMOD_CHECK_DJI_VIDEO` 和 `REPLAYMOD_CHECK_DJI_FOOTPRINT` 即可复验。路径可以是绝对路径，或相对于 `source/` 的路径。验证使用隔离应用配置并读取本地素材。
+
 第 1 版同批合成输入取六次中位数。测量涵盖拟合及输出打包，C++ 侧另含子进程启动和输入输出传输。姿态输入已经提取，数据从 worker 内开始计时。
 
 | 片段和输出采样率 | TypeScript | C++ 试点 |
