@@ -159,7 +159,7 @@ async function checkTrajectoryWorkerRouting(executable) {
       }));
       worker.postMessage({
         exiftool: executable + '.missing', sourcePath: 'fixture.mp4', revision: 'test',
-        start, end: start + duration, points, precision: 'export', sampleRateHz: 10,
+        start, end: start + duration, points, sampleRateHz: 10,
       });
       const progress = [];
       for await (const [message] of messages) {
@@ -210,9 +210,10 @@ async function checkTrajectory(executable) {
     { timeSeconds: start + 20, longitude: 100.001, latitude: 30, altitude: 80 },
     { timeSeconds: start + 40, longitude: 100.01, latitude: 30, altitude: 60 },
   ], seconds: 27.03, rate: 10, corrected: 1 });
+  for (const rate of [2, 24, 120]) fixtures.push({ ...fixtures[0], samples: [], seconds: 60, rate, attitude: false });
 
   for (const { samples, points, seconds, rate, attitude, corrected } of fixtures) {
-    const legacy = fitMotionTrajectory(samples, points, start, start + seconds);
+    const legacy = fitMotionTrajectory(samples, points, start, start + seconds, rate);
     const progress = [];
     const native = unpackMotionGpsResult(await fitNativeTrajectory(executable, samples, points, start, start + seconds, rate,
       undefined, update => progress.push(update)));
@@ -222,6 +223,7 @@ async function checkTrajectory(executable) {
     const { points: expected, contextPoints: context, ...summary } = legacy;
     const { points: actual, contextPoints: nativeContext, ...nativeSummary } = native;
     assert.deepEqual(nativeSummary, summary);
+    if (points.length) assert.equal(actual.length, Math.ceil((start + seconds - start) * Math.min(rate, 60)) + 1);
     if (attitude) assert(legacy.attitudeConstraints > 0);
     if (corrected) assert.equal(legacy.correctedPoints, corrected);
     for (const [expectedRows, actualRows] of [[expected, actual], [context, nativeContext]]) {

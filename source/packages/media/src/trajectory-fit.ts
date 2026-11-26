@@ -9,6 +9,10 @@ const CONTEXT_SECONDS = 4;
 const BANDWIDTH = 7; // Four neighboring spline coefficients with interleaved x and y.
 const wrap = (angle: number) => Math.atan2(Math.sin(angle), Math.cos(angle));
 
+export function normalizeTrajectorySampleRate(rate = 10) {
+  return Number.isFinite(rate) ? Math.max(1, Math.min(60, Math.round(rate))) : 10;
+}
+
 interface Row {
   start: number;
   values: number[];
@@ -191,7 +195,7 @@ function fitWindow(start: number, end: number, anchors: readonly {time: number; 
   }};
 }
 
-export function fitMotionTrajectory(samples: readonly OrientationSample[], input: readonly MotionPoint[], start: number, end: number): MotionGpsResult {
+export function fitMotionTrajectory(samples: readonly OrientationSample[], input: readonly MotionPoint[], start: number, end: number, sampleRateHz = 10): MotionGpsResult {
   const baseline = processMotionGps([],input,start,end);
   const fixes = [...input].filter(point => Number.isFinite(point.timeSeconds) && Number.isFinite(point.latitude) && Number.isFinite(point.longitude) &&
     Math.abs(point.latitude)<=90 && Math.abs(point.longitude)<=180).sort((a,b) => a.timeSeconds-b.timeSeconds)
@@ -235,10 +239,11 @@ export function fitMotionTrajectory(samples: readonly OrientationSample[], input
     return {timeSeconds: start+time, longitude: wrap((origin.longitude+east/longitudeScale)*RADIANS)/RADIANS,
       latitude: Math.max(-90,Math.min(90,origin.latitude+north/METRES)), ...(altitude === undefined ? {} : {altitude})};
   };
-  const duration = end-start, steps = Math.ceil(duration*10);
-  const contextPoints = Array.from({length: CONTEXT_SECONDS*10},(_,step) => sample(-CONTEXT_SECONDS+step/10));
+  const rate = normalizeTrajectorySampleRate(sampleRateHz);
+  const duration = end-start, steps = Math.ceil(duration*rate);
+  const contextPoints = Array.from({length: CONTEXT_SECONDS*rate},(_,step) => sample(-CONTEXT_SECONDS+step/rate));
   const points = Array.from({length: steps+1},(_,step) => sample(duration*step/steps));
-  for (let step = 1; step <= CONTEXT_SECONDS*10; step++) contextPoints.push(sample(duration+step/10));
+  for (let step = 1; step <= CONTEXT_SECONDS*rate; step++) contextPoints.push(sample(duration+step/rate));
   const attitudeConstraints = windows.reduce((count,window) => count+window.attitudeConstraints,0);
   return {...baseline, points, contextPoints, fittedWindows: windows.length, attitudeConstraints,
     reason: attitudeConstraints ? "使用 DJI 姿态约束轨迹方向。" : "使用 GPS 和运动平滑约束拟合轨迹。"};

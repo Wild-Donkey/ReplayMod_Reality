@@ -253,8 +253,8 @@ async function check(mode) {
           const points = ${djiVideo ? `(await import('/features/timeline/processedTrajectory.ts')).motionInputPoints(
             await bridge.loadDefaultLocationCsv(), creationTimeSeconds, durationSeconds)` :
             '[0, 1, 2].map(offset => ({ timeSeconds: creationTimeSeconds + offset, latitude: 30, longitude: 120 + offset * .0001 }))'};
-          const started = performance.now();
-          return await new Promise((resolve, reject) => {
+          const fit = (precision, sampleRateHz) => new Promise((resolve, reject) => {
+            const started = performance.now();
             const progress = [];
             const unsubscribeProgress = bridge.onMediaGpsProgress(update => {
               if (update.id === 'native-fit-fixture') progress.push({ completed: update.completed, total: update.total });
@@ -266,16 +266,21 @@ async function check(mode) {
               if (update.error) { reject(new Error(update.error)); return; }
               resolve({ points: update.result.points.length, windows: update.result.fittedWindows,
                 start: update.result.points[0].timeSeconds, end: update.result.points.at(-1).timeSeconds,
-                constraints: update.result.attitudeConstraints, expected: Math.ceil((creationTimeSeconds + durationSeconds - creationTimeSeconds) * 10) + 1,
+                constraints: update.result.attitudeConstraints, expected: Math.ceil((creationTimeSeconds + durationSeconds - creationTimeSeconds) * (precision === 'preview' ? 2 : Math.min(60, sampleRateHz))) + 1,
                 progress, ms: performance.now() - started });
             });
             bridge.postMediaGps('native-fit-fixture', { sourcePath: media.sourcePath,
-              creationTimeSeconds, offsetSeconds: 0, precision: 'export', sampleRateHz: 10, points });
+              creationTimeSeconds, offsetSeconds: 0, precision, sampleRateHz, points });
           });
+          const result = await fit('export', 10);
+          if (${Boolean(djiVideo)}) return result;
+          const preview = await fit('preview');
+          const highRate = await fit('export', 120);
+          return { ...result, previewPoints: preview.points, highRatePoints: highRate.points };
         })()`;
         const result = await evaluate(url, `
           ${electron}.BrowserWindow.getAllWindows()[0].webContents.executeJavaScript(${JSON.stringify(trajectoryCheck)})
-        `, djiVideo ? 30_000 : 5000);
+        `, djiVideo ? 30_000 : 15_000);
         assert.deepEqual(result.progress, Array.from({length: result.windows}, (_, index) => ({
           completed: index + 1, total: result.windows,
         })));
@@ -284,8 +289,9 @@ async function check(mode) {
           assert(result.points > 1 && result.constraints > 0, 'Expected a track fitted with DJI orientation');
           console.log(`DJI IPC: ${result.points} points, ${result.constraints} attitude constraints, ${result.ms.toFixed(1)} ms from request to renderer result.`);
         } else {
-          const { points, windows, start, end } = result;
-          assert.deepEqual({ points, windows, start, end }, { points: 21, windows: 1, start: 1577836800, end: 1577836802 });
+          const { points, windows, start, end, previewPoints, highRatePoints } = result;
+          assert.deepEqual({ points, windows, start, end, previewPoints, highRatePoints },
+            { points: 21, windows: 1, start: 1577836800, end: 1577836802, previewPoints: 5, highRatePoints: 121 });
         }
         assert.doesNotMatch(readLog(), /Native trajectory fit failed/);
       }

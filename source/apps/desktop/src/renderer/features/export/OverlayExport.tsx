@@ -175,7 +175,7 @@ const drawOverlay = (
   if (settings.showMap && navigationCanvas) drawCircularMinimap(context, navigationCanvas, annotationCanvas, value.bearing);
 };
 
-export function OverlayExport({ dataset, range, apiKey, scene, source = null, mediaOffsetMs = 0, active = true, previewContainer = null, previewTime = null }: { dataset: PointDataset; range: TimeBounds; apiKey: string; scene: ReplayScene; source?: MediaSource|null; mediaOffsetMs?: number; active?: boolean; previewContainer?: HTMLDivElement|null; previewTime?: number|null }) {
+export function OverlayExport({ dataset, range, apiKey, scene, source = null, mediaOffsetMs = 0, active = true, previewContainer = null, previewTime = null, prepareExportDataset }: { dataset: PointDataset; range: TimeBounds; apiKey: string; scene: ReplayScene; source?: MediaSource|null; mediaOffsetMs?: number; active?: boolean; previewContainer?: HTMLDivElement|null; previewTime?: number|null; prepareExportDataset?: (sampleRateHz: number, signal: AbortSignal) => Promise<PointDataset|undefined> }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const navigationContainerRef = useRef<HTMLDivElement>(null);
   const publicMapRef = useRef<ReturnType<typeof createPublicBasemap> | null>(null);
@@ -440,8 +440,11 @@ export function OverlayExport({ dataset, range, apiKey, scene, source = null, me
     void requestPreviewRef.current();
   }, [dataset, range, settings, active, progress, previewTime, previewContainer, isMapReady]);
 
-  const exportOffline = async (estimate: boolean) => {
+  const exportOffline = async (estimate: boolean, controller: AbortController) => {
     const bridge = window.replaymod!;
+    const exportDataset = prepareExportDataset ? await prepareExportDataset(settings.fps, controller.signal) : dataset;
+    controller.signal.throwIfAborted();
+    if (!exportDataset) throw new Error("导出前无法准备高精度轨迹。");
     const fullPlan = new OfflineFramePlan({
       width: settings.width, height: settings.height, fps: settings.fps,
       ...(useConstantQuality ? {bitrate: 0, crf} : {bitrate: targetBitrate}),
@@ -460,14 +463,8 @@ export function OverlayExport({ dataset, range, apiKey, scene, source = null, me
         preferHardware, hardwareQuality: useConstantQuality ? quality.hardware : undefined,
       };
     }
-    const controller = new AbortController();
-    frameWaitRef.current = controller;
-    let session;
-    try {
-      session = await (estimate ? bridge.beginExportEstimate(plan.options, request) : bridge.beginOfflineExport(plan.options, request));
-    }
-    catch (error) { if (frameWaitRef.current === controller) frameWaitRef.current = null; throw error; }
-    if (!session) { if (frameWaitRef.current === controller) frameWaitRef.current = null; setProgress(null); return; }
+    const session = await (estimate ? bridge.beginExportEstimate(plan.options, request) : bridge.beginOfflineExport(plan.options, request));
+    if (!session) { setProgress(null); return; }
     offlineSessionRef.current = session.id;
     const hardwareNames = {videotoolbox: "VideoToolbox", nvenc: "NVENC", qsv: "Quick Sync", amf: "AMF"};
     const selectedEncoder = request ? (session.hardware ? `${hardwareNames[session.hardware]} 硬件编码` : "软件编码") : null;
@@ -506,12 +503,12 @@ export function OverlayExport({ dataset, range, apiKey, scene, source = null, me
         render: async work => {
           frameIndex = work.frame;
           const started = performance.now();
-          const value = sample(dataset, work.timestamp);
+          const value = sample(exportDataset, work.timestamp);
           let navigation = null, annotations = null;
-          if (settings.showMap && hasProcessedCoverage(dataset, work.timestamp)) {
+          if (settings.showMap && hasProcessedCoverage(exportDataset, work.timestamp)) {
             const map = navigationMapRef.current;
             if (!map) throw new Error("地图尚未就绪。");
-            updateNavigationMap(dataset, work.timestamp, value);
+            updateNavigationMap(exportDataset, work.timestamp, value);
             const center = map.getCenter();
             exportScene.setMapViewState({longitude: center.lng, latitude: center.lat, zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch()});
             [annotations] = await Promise.all([
@@ -521,7 +518,7 @@ export function OverlayExport({ dataset, range, apiKey, scene, source = null, me
             if (annotationCapture && !annotations) throw new FrameRenderError("annotations", "标注 GPU 帧未完成，导出已停止。");
             navigation = navigationCanvas(exportScene.current.visibility.trajectory);
           }
-          drawOverlay(context, dataset, range, work.timestamp, settings, navigation, value, annotations);
+          drawOverlay(context, exportDataset, range, work.timestamp, settings, navigation, value, annotations);
           const readbackStarted = performance.now();
           renderMs += readbackStarted - started;
           const pixels = context.getImageData(0, overlayTop, settings.width, settings.height - overlayTop).data;
@@ -567,7 +564,6 @@ export function OverlayExport({ dataset, range, apiKey, scene, source = null, me
         bindNavigationScene(scene);
       }
       if (offlineSessionRef.current === session.id) offlineSessionRef.current = null;
-      if (frameWaitRef.current === controller) frameWaitRef.current = null;
       setProgress(null);
     }
   };
@@ -580,15 +576,18 @@ export function OverlayExport({ dataset, range, apiKey, scene, source = null, me
     setActiveEncoder(null);
     previewFrameRef.current?.abort();
     cancelExportRef.current = false;
+    const controller = new AbortController();
+    frameWaitRef.current = controller;
     setExportError(""); setProgress(0);
     try {
       if (!canStart || !window.replaymod) throw new Error("无法开始导出，请检查视频、导出区间和地图状态。");
-      await exportOffline(estimate);
+      await exportOffline(estimate, controller);
     } catch (error) {
       if (!cancelExportRef.current) setExportError(error instanceof Error ? error.message : "导出失败。");
       cancelActiveExport();
       setProgress(null);
     } finally {
+      if (frameWaitRef.current === controller) frameWaitRef.current = null;
       startingExportRef.current = false;
       setEstimating(false);
     }

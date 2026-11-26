@@ -1,4 +1,5 @@
 import { processMotionGps, type MotionPoint } from "../../../../packages/media/src/gps-motion";
+import { normalizeTrajectorySampleRate } from "../../../../packages/media/src/trajectory-fit";
 import type { OrientationSample } from "../../../../packages/media/src/types";
 import { packMotionGpsResult, type PackedMotionGpsResult } from "../shared/motionGpsWire";
 import { runNativeBinaryJob, type NativeJobProgress } from "./nativeBinaryJob";
@@ -20,7 +21,7 @@ export async function fitNativeTrajectory(executable: string, samples: readonly 
   }
   const duration = end - start;
   if ((duration + 2 * CONTEXT_SECONDS) * 10 > 500_000) throw new Error("轨迹处理范围过大，请缩短视频片段。");
-  const rate = Math.max(1, Math.min(60, Math.round(sampleRateHz)));
+  const rate = normalizeTrajectorySampleRate(sampleRateHz);
   const attitude = samples.flatMap(sample => {
     const [w, x, y, z] = sample.quaternion;
     const length = Math.hypot(w, x, y, z);

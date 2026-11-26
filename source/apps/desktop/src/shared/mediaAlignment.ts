@@ -29,6 +29,8 @@ export const GPS_PROGRESS_CHANNEL = "media:gps-progress";
 export type MotionGpsProgress = {readonly id: string; readonly completed: number; readonly total: number};
 export interface MotionGpsRequest extends MediaAlignmentRequest {
   points: readonly import("../../../../packages/media/src/gps-motion").MotionPoint[];
+  precision?: "preview" | "export";
+  sampleRateHz?: number;
 }
 export type {MotionGpsResult} from "../../../../packages/media/src/gps-motion";
 export type MotionGpsUpdate = {id: string} & (

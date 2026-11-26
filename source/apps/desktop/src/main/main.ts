@@ -1,6 +1,7 @@
 import "./guardStdio";
 import { prepareWindows } from "./windowsSetup";
 import {GPS_PROGRESS_CHANNEL,GPS_RESULT_CHANNEL,POST_GPS_CHANNEL,type MotionGpsProgress,type MotionGpsRequest,type MotionGpsResult} from "../shared/mediaAlignment";
+import { normalizeTrajectorySampleRate } from "../../../../packages/media/src/trajectory-fit";
 import {packMotionGpsResult,type MotionGpsWireUpdate,type PackedMotionGpsResult} from "../shared/motionGpsWire";
 import { LatestJobQueue } from "./latestJobQueue";
 import type { TrajectoryWorkerInput, TrajectoryWorkerOutput } from "./trajectoryWorker";
@@ -797,9 +798,12 @@ function runTrajectoryWorker(input: TrajectoryWorkerInput, signal: AbortSignal,
     catch (error) { onError(error); }
   });
 }
-const gpsJobs = new LatestJobQueue<{sender: Electron.WebContents; id: string; request: MotionGpsRequest}>(async (
-  {sender, id, request}, isCurrent, signal,
+type GpsJob = {sender: Electron.WebContents; id: string; request: MotionGpsRequest};
+let currentGpsJob: GpsJob | undefined;
+const gpsJobs = new LatestJobQueue<GpsJob>(async (
+  job, isCurrent, signal,
 ) => {
+  const {sender, id, request} = job;
   const publish = (update: MotionGpsWireUpdate) => {
     if (isCurrent() && !sender.isDestroyed()) sender.send(GPS_RESULT_CHANNEL, update);
   };
@@ -812,19 +816,22 @@ const gpsJobs = new LatestJobQueue<{sender: Electron.WebContents; id: string; re
     if(source.creationTimeSeconds===undefined)throw new Error("请先对齐视频拍摄时间。");
     if(source.creationTimeSeconds!==request.creationTimeSeconds)throw new Error("视频拍摄时间已变化，请重新载入视频。");
     const start=alignedMediaStart(source.creationTimeSeconds,request.offsetSeconds);
+    const rate = request.precision === "preview" ? 2
+      : normalizeTrajectorySampleRate(request.precision === "export" ? request.sampleRateHz : undefined);
     const end=source.durationSeconds===null
       ? request.points.reduce((latest,point)=>Number.isFinite(point.timeSeconds)?Math.max(latest,point.timeSeconds):latest,start)
       : start+source.durationSeconds;
-    const rate = 10;
     const cacheBackend = trajectoryMode === "automatic" && !shouldFitNatively("automatic", end - start, rate, 0)
       ? "typescript" : trajectoryMode;
     const legacyKey=request.offsetSeconds===0
-      ? createHash("sha256").update(JSON.stringify(["motion-gps-v8",revision,start,request.points])).digest("hex") : null;
+      ? createHash("sha256").update(JSON.stringify(rate === 10
+        ? ["motion-gps-v8", revision, start, request.points]
+        : ["motion-gps-v10", rate, revision, start, request.points])).digest("hex") : null;
     const key = legacyKey && createHash("sha256").update(trajectoryCacheNamespace[cacheBackend]).update(legacyKey).digest("hex");
     if (key && legacyKey) {
       const cached = await resources.read<PackedMotionGpsResult>("snapshots", key);
       if (cached) { publish({id,result:cached}); return; }
-      const legacy = cacheBackend === "typescript" && await resources.read<MotionGpsResult>("snapshots", legacyKey);
+      const legacy = rate === 10 && cacheBackend === "typescript" && await resources.read<MotionGpsResult>("snapshots", legacyKey);
       if (legacy) { publish({id,result:packMotionGpsResult(legacy)}); return; }
     }
     const roots = [path.resolve(process.cwd(),".."),process.cwd(),app.getAppPath(),path.dirname(app.getPath("exe"))];
@@ -832,7 +839,7 @@ const gpsJobs = new LatestJobQueue<{sender: Electron.WebContents; id: string; re
     const exiftool = await firstExistingPath(roots.map(root => path.join(root, ".tools", "exiftool", exiftoolName)));
     if (!isCurrent() || sender.isDestroyed()) return;
     const result = await runTrajectoryWorker({sourcePath: request.sourcePath, revision, exiftool: exiftool ?? exiftoolName,
-      points: request.points, start, end}, signal, progress => {
+      points: request.points, start, end, sampleRateHz: rate}, signal, progress => {
       if (isCurrent() && !sender.isDestroyed()) sender.send(GPS_PROGRESS_CHANNEL, { id, ...progress });
     });
     if (!isCurrent() || sender.isDestroyed()) return;
@@ -841,14 +848,30 @@ const gpsJobs = new LatestJobQueue<{sender: Electron.WebContents; id: string; re
     if (key) void resources.write("snapshots",key,result).catch(console.warn);
   } catch (error) {
     publish({id,error:error instanceof Error?error.message:String(error)});
+  } finally {
+    if (currentGpsJob === job) currentGpsJob = undefined;
   }
 });
 
 ipcMain.on(POST_GPS_CHANNEL, (event, id: string, request: MotionGpsRequest | null) => {
   if (shutdown.isQuitting()) return;
   if (typeof id !== "string" || id.length > 100) return;
-  if (request) gpsJobs.post({sender:event.sender,id,request});
-  else gpsJobs.cancel(job => job.sender === event.sender && job.id === id);
+  const matches = (job: GpsJob) => job.sender === event.sender && job.id === id;
+  if (!request) {
+    if (currentGpsJob && matches(currentGpsJob)) currentGpsJob = undefined;
+    gpsJobs.cancel(matches);
+    return;
+  }
+  if (currentGpsJob?.request.precision === "export") {
+    event.sender.send(GPS_RESULT_CHANNEL, {id, error: "正在准备导出轨迹，请稍后重试。"} satisfies MotionGpsWireUpdate);
+    return;
+  }
+  const job = {sender: event.sender, id, request};
+  if (request.precision === "export" && currentGpsJob && !currentGpsJob.sender.isDestroyed()) {
+    currentGpsJob.sender.send(GPS_RESULT_CHANNEL, {id: currentGpsJob.id, error: "预览拟合已停止，正在准备导出轨迹。"} satisfies MotionGpsWireUpdate);
+  }
+  currentGpsJob = job;
+  gpsJobs.post(job);
 });
 
 const aligningMedia = new Set<string>();

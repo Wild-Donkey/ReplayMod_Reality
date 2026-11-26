@@ -16,7 +16,7 @@ function errorText(error: unknown) {
 export function MediaAlignmentPanel({source, dataset, active, onPreviewOffsetChange, onAligned, onProcessed}: {
   source: MediaSource; dataset: PointDataset | null; active: boolean;
   onPreviewOffsetChange: (offsetSeconds: number) => void;
-  onAligned: (source: MediaSource) => void; onProcessed: (result: MotionGpsResult) => void;
+  onAligned: (source: MediaSource) => void; onProcessed: (result: MotionGpsResult | null) => void;
 }) {
   const [offset, setOffset] = useState("0");
   const [sliderBase, setSliderBase] = useState(0);
@@ -30,6 +30,7 @@ export function MediaAlignmentPanel({source, dataset, active, onPreviewOffsetCha
   const [result, setResult] = useState<MediaAlignmentResult | null>(null);
   const [gpsResult, setGpsResult] = useState<MotionGpsResult | null>(null);
   const requestedOffset = useRef<number | null>(0);
+  const optimizationOffset = useRef<number | null>(null);
   const mounted = useRef(true);
   const onProcessedRef = useRef(onProcessed);
   onProcessedRef.current = onProcessed;
@@ -44,23 +45,28 @@ export function MediaAlignmentPanel({source, dataset, active, onPreviewOffsetCha
   const canApply = canEdit && valid && value !== 0;
 
   const editOffset = (input: string) => {
+    optimizationOffset.current = null;
     setOffset(input); setFineOffset(0);
     const number = Number(input);
     requestedOffset.current = input.trim() && validAlignmentOffset(number) ? number : null;
     onPreviewOffsetChange(requestedOffset.current ?? 0);
+    setGpsResult(null); setGpsError(""); onProcessedRef.current(null);
     setSliderBase(Number.isFinite(number) ? normalizeAlignmentSeconds(Math.max(-86400, Math.min(86400, number))) : 0);
   };
   const moveSlider = (delta: number) => {
     const next = normalizeAlignmentSeconds(Math.max(-86400, Math.min(86400, sliderBase + delta)));
+    if (next === requestedOffset.current) return;
+    optimizationOffset.current = null;
     requestedOffset.current = next;
     setOffset(String(next)); setFineOffset(normalizeAlignmentSeconds(next - sliderBase));
     onPreviewOffsetChange(next);
+    setGpsResult(null); setGpsError(""); onProcessedRef.current(null);
   };
 
   useEffect(() => {
     setGpsError("");
     setGpsProgress(null);
-    if (!active || saving || !bridge || !dataset || start === undefined || previewStart === undefined || !valid) {
+    if (refresh === 0 || optimizationOffset.current !== value || !active || saving || !bridge || !dataset || start === undefined || previewStart === undefined || !valid) {
       setProcessing(false);
       return;
     }
@@ -84,7 +90,7 @@ export function MediaAlignmentPanel({source, dataset, active, onPreviewOffsetCha
       if (requestedOffset.current !== value) return;
       try {
         const points = motionInputPoints(dataset, previewStart, source.durationSeconds ?? 0);
-        bridge.postMediaGps(id, {sourcePath: source.sourcePath, creationTimeSeconds: start, offsetSeconds: value, points});
+        bridge.postMediaGps(id, {sourcePath: source.sourcePath, creationTimeSeconds: start, offsetSeconds: value, points, precision: "preview"});
         posted = true;
       } catch (error) {
         setGpsError(errorText(error));
@@ -126,7 +132,7 @@ export function MediaAlignmentPanel({source, dataset, active, onPreviewOffsetCha
     <div className="alignment-slider-ticks" aria-hidden="true"><span>−30</span><span>0</span><span>+30</span></div>
     {start !== undefined && <p className="alignment-hint">正数推后，负数提前。点击「微调」保存对齐。</p>}
     {offset.trim() !== "" && !valid && <p className="alignment-hint">请输入一天以内的偏移，最多三位小数。</p>}
-    <button type="button" disabled={!canEdit || !dataset || !valid || processing} onClick={() => setRefresh(version => version + 1)}>{processing ? "正在更新 GPS 预览…" : "优化 GPS 与插值"}</button>
+    <button type="button" disabled={!canEdit || !dataset || !valid || processing} onClick={() => { optimizationOffset.current = value; setRefresh(version => version + 1); }}>{processing ? "正在优化 GPS 与插值…" : "优化 GPS 与插值"}</button>
     {processing && gpsProgress && <progress aria-label="轨迹拟合窗口进度" value={gpsProgress.completed} max={gpsProgress.total} />}
     {!processing && !gpsError && gpsResult && gpsResult.videoStartSeconds === previewStart && <p role="status">
       {gpsResult.fittedWindows

@@ -1,4 +1,4 @@
-import {withProcessedTrajectory} from "../features/timeline/processedTrajectory";
+import {motionInputPoints, withProcessedTrajectory} from "../features/timeline/processedTrajectory";
 import type {MotionGpsResult} from "../../../../../packages/media/src/gps-motion";
 import {LocalSpeechModels} from "../features/audio/LocalSpeechModels";
 import { AudioTextEditor } from "../features/audio/AudioTextEditor";
@@ -19,6 +19,7 @@ import { MapTokenSetup, MapViewport } from "../features/map/MapViewport";
 import { OverlayExport } from "../features/export/OverlayExport";
 import { SubtitleEditor } from "../features/subtitles/SubtitleEditor";
 import { MediaAlignmentPanel } from "../features/timeline/MediaAlignmentPanel";
+import { alignedMediaStart } from "../../shared/mediaAlignment";
 import { AstronomyPanel, AstronomyTimeline } from "../features/astronomy/AstronomyPanel";
 import {
   observationDay, observationNow, observationStart, skyDirections, sunVector,
@@ -191,6 +192,44 @@ export function App() {
   }, [pointDataset, flightRouteSegments, replayScene]);
   const [currentTime, displayCurrentTime] = useState<number | null>(() => readCached("currentTime", null));
   const mediaOffsetMs = mediaRange ? Math.round(alignmentPreviewOffset * 1000) : 0;
+  const prepareExportDataset = useCallback(async (sampleRateHz: number, signal: AbortSignal) => {
+    signal.throwIfAborted();
+    const bridge = window.replaymod;
+    const creationTimeSeconds = mediaSource?.creationTimeSeconds;
+    if (!rawPointDataset || !mediaSource || creationTimeSeconds === undefined || !bridge) return pointDataset ?? undefined;
+    const offsetSeconds = mediaOffsetMs / 1000;
+    const start = alignedMediaStart(creationTimeSeconds, offsetSeconds);
+    const duration = mediaSource.durationSeconds;
+    if (!duration || rawPointDataset.timeBounds[1] < start * 1000 || rawPointDataset.timeBounds[0] > (start + duration) * 1000) {
+      return pointDataset ?? undefined;
+    }
+    const points = motionInputPoints(rawPointDataset, start, duration);
+    if (!points.length) return pointDataset ?? undefined;
+    const id = crypto.randomUUID();
+    return new Promise<PointDataset>((resolve, reject) => {
+      const cleanup = () => {
+        unsubscribe();
+        signal.removeEventListener("abort", abort);
+      };
+      const abort = () => {
+        cleanup();
+        bridge.postMediaGps(id, null);
+        reject(signal.reason);
+      };
+      const unsubscribe = bridge.onMediaGpsResult(update => {
+        if (update.id !== id) return;
+        cleanup();
+        try {
+          if ("error" in update) throw new Error(update.error);
+          resolve(withProcessedTrajectory(rawPointDataset, update.result));
+        } catch (error) { reject(error); }
+      });
+      signal.addEventListener("abort", abort, {once: true});
+      try {
+        bridge.postMediaGps(id, {sourcePath: mediaSource.sourcePath, creationTimeSeconds, offsetSeconds, points, precision: "export", sampleRateHz});
+      } catch (error) { cleanup(); reject(error); }
+    });
+  }, [mediaOffsetMs, mediaSource, pointDataset, rawPointDataset]);
   const overlayPreviewTime = currentTime === null ? null : currentTime + mediaOffsetMs;
   const hasTrajectoryAtPreviewTime = pointDataset !== null && overlayPreviewTime !== null
     && overlayPreviewTime >= pointDataset.timeBounds[0] && overlayPreviewTime <= pointDataset.timeBounds[1];
@@ -682,6 +721,7 @@ export function App() {
           {mediaSource&&<MediaAlignmentPanel key={`${mediaSource.sourcePath}:${mediaOpenVersion}`} source={mediaSource} dataset={rawPointDataset} active={mediaActive}
               onPreviewOffsetChange={setAlignmentPreviewOffset}
               onProcessed={result=>{
+                if (!result) { setMotionGps(null); return; }
                 if(rawPointDataset&&gpsInputRef.current.raw===rawPointDataset&&gpsInputRef.current.path===mediaSource.sourcePath) {
                   startTransition(()=>setMotionGps({raw:rawPointDataset,path:mediaSource.sourcePath,result}));
                 }
@@ -711,7 +751,7 @@ export function App() {
             {exportRange && <code>{new Date(exportRange[0]).toLocaleString("zh-CN")}<br />— {new Date(exportRange[1]).toLocaleString("zh-CN")}</code>}
           </div>
           {pointDataset && exportRange ? (
-            <OverlayExport dataset={pointDataset} range={exportRange} apiKey={maptilerKey} scene={replayScene} source={mediaSource} mediaOffsetMs={mediaOffsetMs} active={mediaActive} previewContainer={previewHost} previewTime={overlayPreviewTime} />
+            <OverlayExport dataset={pointDataset} range={exportRange} apiKey={maptilerKey} scene={replayScene} source={mediaSource} mediaOffsetMs={mediaOffsetMs} active={mediaActive} previewContainer={previewHost} previewTime={overlayPreviewTime} prepareExportDataset={prepareExportDataset} />
           ) : (
             <div className="inspector-empty"><div className="inspector-icon">i</div><p>载入轨迹后可导出视频。</p></div>
           )}
