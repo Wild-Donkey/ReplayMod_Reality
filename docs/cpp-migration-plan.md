@@ -245,3 +245,5 @@ macOS 使用独立应用配置，以 C++ 导入合成轨迹，再从真实 Elect
 手动优化时按 2 Hz 拟合预览轨迹。导出会为匹配的视频和轨迹准备独立数据，按导出帧率请求采样，C++ 和 TypeScript 共用 1–60 Hz 的整数采样率范围。跟随 120 fps 源视频时，编码帧率仍可为 120 fps，帧间用轨迹插值。旧的 10 Hz 快照继续使用，其他采样率单独缓存。导出准备可随导出取消，预览请求不会替换正在准备的导出轨迹。
 
 macOS 通过了项目检查、媒体对齐、原生核心和编码器检查。C++ 与 TypeScript 的对照覆盖 2 Hz、24 Hz 和超过上限的请求。Electron 的两秒合成媒体经 IPC 返回 5 个预览点，120 Hz 请求返回 121 个点。同一轮验证还从应用界面导出了未绑定拟合轨迹的 720p 透明 WebM，解码确认 24 帧和首帧透明度。
+
+Windows x64 和 Linux x64 对代码提交 `9339b93` 的类型检查、原生核心对照和 Forge 打包握手均已通过。[Native migration checks](https://github.com/Wild-Donkey/ReplayMod_Reality/actions/runs/45813994665)
