@@ -214,6 +214,12 @@ macOS arm64 打包版另用同一份 50 万点合成足迹对照 TypeScript 与 
 
 `npm --prefix source run check:picking:gpu` 另以 18 万定宽轨迹点验证了 DPR 1、2、3 下的地图与时间轴拾取。渲染轨迹的坐标和时间戳直接使用输入数组的底层缓冲。
 
+### 导出链路验收
+
+macOS 使用独立应用配置，以 C++ 导入合成轨迹，再从真实 Electron 界面导出仅含仪表的透明 WebM。FFprobe 确认 1280 × 720、24 fps、24 帧和 Alpha 标记。用 libvpx-vp9 解码首帧后，同时验证了非透明的仪表内容和透明背景。该次导出的应用内部计时为 634 ms，绘制 12 ms、像素读取 27 ms、写帧调用 507 ms、编码收尾 117 ms。分项存在重叠，以整段计时为准。另已通过 `check:export:encoder` 的帧序、透明度、取消和合成检查。
+
+带 FFmpeg/FFprobe 的 macOS 或 Linux 图形环境可从 `source/` 设置 `REPLAYMOD_CHECK_TYPED_EXPORT=1`，运行 `node tests/start/check-shutdown.cjs window`。测试使用 1 秒合成轨迹和临时输出文件，关闭在线小地图以隔离瓦片与网络耗时。
+
 ### 时间轴指标基线
 
 用 50 万点的 1 Hz 合成轨迹模拟换视窗，每次更换范围，预热后取六次中位数。曲线采样 3,841 个位置，直方图宽 1,920 像素。测量范围只包含指标计算。

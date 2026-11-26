@@ -63,10 +63,79 @@ function signalGroup(pid, signal) {
   catch (error) { if (error.code !== 'ESRCH') throw error; }
 }
 
+async function checkTypedCsvExport(url, electron, profile, readLog) {
+  const destination = path.join(profile, 'fixture.webm');
+  await evaluate(url, `${electron}.dialog.showSaveDialog = async () => ({
+    canceled: false, filePath: ${JSON.stringify(destination)},
+  }); true`);
+  const renderer = `(async () => {
+    const button = (root, label) => [...root.querySelectorAll('button')].find(item => item.textContent.trim() === label);
+    const deadline = performance.now() + 5000;
+    const until = async (name, find) => {
+      let value;
+      while (!(value = find())) {
+        if (performance.now() >= deadline) throw new Error('Missing export control: ' + name);
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      return value;
+    };
+    const tab = [...document.querySelectorAll('button')].find(item =>
+      item.getAttribute('aria-label') === '视频与导出' || item.textContent.trim() === '视频与导出');
+    tab?.click();
+    const opener = await until('export button', () => document.querySelector('.overlay-export button'));
+    opener.click();
+    const dialog = await until('settings dialog', () => document.querySelector('[aria-label="导出设置"]'));
+    const select = (label, value) => {
+      const control = [...dialog.querySelectorAll('label')].find(item => item.textContent.startsWith(label))?.querySelector('select');
+      if (!control) throw new Error('Missing setting: ' + label);
+      control.value = value;
+      control.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    const map = [...dialog.querySelectorAll('label')].find(item => item.textContent.includes('轨迹小地图'))?.querySelector('input');
+    if (map?.checked) map.click();
+    select('导出格式', 'transparent');
+    select('分辨率', '1280x720');
+    select('帧率', '24');
+    const start = await until('start export', () => {
+      const control = button(dialog, '导出');
+      return control && !control.disabled ? control : null;
+    });
+    start.click();
+    return true;
+  })()`;
+  await evaluate(url, `${electron}.BrowserWindow.getAllWindows()[0].webContents.executeJavaScript(${JSON.stringify(renderer)})`);
+  const timing = await until('finished transparent export', () =>
+    readLog().match(/\[offline-export\] complete frames=(\d+) elapsed_ms=(\d+) render_ms=(\d+) readback_ms=(\d+) write_ms=(\d+) finalize_ms=(\d+)/),
+  60_000);
+  const { streams: [stream] } = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-count_frames',
+    '-show_entries', 'stream=width,height,avg_frame_rate,nb_read_frames:stream_tags=alpha_mode', '-of', 'json', destination],
+  { encoding: 'utf8', timeout: 15_000 }));
+  assert.equal(stream.width, 1280);
+  assert.equal(stream.height, 720);
+  assert.equal(stream.nb_read_frames, '24');
+  assert.equal(stream.avg_frame_rate, '24/1');
+  assert.equal(stream.tags.alpha_mode, '1');
+  const decoder = [...new Set((process.env.PATH ?? '').split(path.delimiter))]
+    .filter(Boolean).map(directory => path.join(directory, 'ffmpeg'))
+    .find(file => fs.existsSync(file) &&
+      /\blibvpx-vp9\b/.test(execFileSync(file, ['-hide_banner', '-decoders'], { encoding: 'utf8', timeout: 5000 })));
+  assert(decoder, 'Select an FFmpeg with a libvpx-vp9 decoder to check encoded alpha');
+  const pixels = execFileSync(decoder, ['-v', 'error', '-c:v', 'libvpx-vp9', '-i', destination,
+    '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgba', 'pipe:1'],
+  { timeout: 15_000, maxBuffer: 8 * 1024 * 1024 });
+  assert.equal(pixels.length, 1280 * 720 * 4);
+  let visible = 0;
+  for (let i = 3; i < pixels.length; i += 4) if (pixels[i] > 16) visible++;
+  assert(visible > 100 && visible < 1280 * 720, 'First encoded frame should contain the visible stats and transparent background');
+  console.log(timing[0] + ` first_frame_visible_pixels=${visible}`);
+}
+
 async function check(mode) {
   const djiVideo = mode === 'window' && process.env.REPLAYMOD_CHECK_DJI_VIDEO;
   const djiFootprint = mode === 'window' && process.env.REPLAYMOD_CHECK_DJI_FOOTPRINT;
   assert.equal(Boolean(djiVideo), Boolean(djiFootprint), 'Provide both DJI video and footprint paths');
+  const checkExport = mode === 'window' && process.env.REPLAYMOD_CHECK_TYPED_EXPORT === '1';
+  assert(!checkExport || !djiVideo, 'The export test uses the bundled synthetic CSV fixture');
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'replay-shutdown-test-'));
   const config = path.join(profile, '.config');
   const logRoot = process.platform === 'darwin' ? path.join(profile, 'Library', 'Application Support') : config;
@@ -220,6 +289,7 @@ async function check(mode) {
         }
         assert.doesNotMatch(readLog(), /Native trajectory fit failed/);
       }
+      if (checkExport) await checkTypedCsvExport(url, electron, profile, readLog);
       await evaluate(url, `{
         const window = ${electron}.BrowserWindow.getAllWindows()[0];
         window.on('closed', () => process.mainModule.require('node:fs').writeFileSync(${JSON.stringify(path.join(profile, 'closed'))}, ''));
