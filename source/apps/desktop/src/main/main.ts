@@ -107,8 +107,8 @@ async function prepareOfflineEncoder(options: OfflineExportOptions, composite?: 
     && hardwareQuality >= 1 && hardwareQuality <= 100);
   if (composite.preferHardware === true && canUseQuality) {
     const quality = options.crf === undefined ? undefined : hardwareQuality;
-    const encoder = await findHardwareCompositeEncoder(codec, options, quality);
-    if (encoder) return {encoder, composite: {sourcePath, offsetSeconds, codec, overlayTop: compositeOverlayTop(options.height), hardware: true, hardwareQuality: quality}};
+    const encoder = await findHardwareCompositeEncoder(codec, options, quality, plan.totalFrames);
+    if (encoder) return {encoder: encoder.executable, composite: {sourcePath, offsetSeconds, codec, overlayTop: compositeOverlayTop(options.height), hardware: encoder.backend, hardwareQuality: quality}};
   }
   const encoder = await findCompositeVideoEncoder(codec);
   if (!encoder) throw new Error(`未找到支持 ${codec === "h264" ? "H.264" : "H.265"} 与 AAC 的 FFmpeg。`);
@@ -203,22 +203,33 @@ const updateUserArchive = (change: (current: UserArchive) => UserArchive) => {
   storage.archive.write(next);
   userArchive = next;
 };
-type OpenDialogKind = "location" | "media" | "audio";
+type OpenDialogKind = "location" | "media" | "audio" | "annotations" | "speech-models";
+const nativeShowOpenDialog = dialog.showOpenDialog.bind(dialog);
 const openFileDialog = async (kind: OpenDialogKind, options: OpenDialogOptions) => {
   const previousDirectory = userArchive.lastOpenDirectories?.[kind];
-  const result = await dialog.showOpenDialog({
+  const result = await nativeShowOpenDialog({
     ...options,
     ...(previousDirectory ? { defaultPath: previousDirectory } : {}),
   });
   const selectedPath = result.filePaths[0];
   if (!result.canceled && selectedPath) {
+    const directory = options.properties?.includes("openDirectory") ? selectedPath : path.dirname(selectedPath);
     updateUserArchive(current => ({
       ...current,
-      lastOpenDirectories: { ...current.lastOpenDirectories, [kind]: path.dirname(selectedPath) },
+      lastOpenDirectories: { ...current.lastOpenDirectories, [kind]: directory },
     }));
   }
   return result;
 };
+const inferOpenDialogKind = (options: OpenDialogOptions): OpenDialogKind => {
+  if (options.properties?.includes("openDirectory")) return "speech-models";
+  const extensions = options.filters?.flatMap(filter => filter.extensions.map(extension => extension.toLowerCase())) ?? [];
+  if (extensions.includes("kml")) return "annotations";
+  if (extensions.some(extension => ["m4a", "mp3", "wav", "flac", "ogg", "aac"].includes(extension))) return "audio";
+  if (extensions.includes("csv")) return "location";
+  return "media";
+};
+(dialog as any).showOpenDialog = (options: OpenDialogOptions) => openFileDialog(inferOpenDialogKind(options), options);
 app.on("second-instance", () => {
   const window = BrowserWindow.getAllWindows()[0];
   if (!window) {

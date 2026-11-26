@@ -8,10 +8,11 @@ import { timelineWheelRange } from "./gestures";
 import { pixelDensity, type TimelineMetricsSettings } from "./metrics";
 import { MetricChart } from "./MetricChart";
 import { formatMediaTime } from "../../shared/mediaTimeDisplay";
-import { useCachedState } from "../../shared/cache";
 import {
+  type Dispatch,
   type PointerEvent,
   type RefObject,
+  type SetStateAction,
   useEffect,
   useMemo,
   useRef,
@@ -481,6 +482,8 @@ interface TimelineProps {
   onTogglePlayback: () => void;
   onStepFrame: (direction: -1 | 1) => void;
   dataset: PointDataset | null;
+  trajectoryView: TimeBounds | null;
+  setTrajectoryView: Dispatch<SetStateAction<TimeBounds | null>>;
   mediaRange?: TimeBounds | null;
   mediaOffsetMs?: number;
   currentTime: number | null;
@@ -502,6 +505,8 @@ export function Timeline({
   onTogglePlayback,
   onStepFrame,
   dataset,
+  trajectoryView,
+  setTrajectoryView,
   mediaRange = null,
   mediaOffsetMs = 0,
   currentTime,
@@ -519,7 +524,6 @@ export function Timeline({
   const panVelocityRef = useRef(0);
   const panFrameRef = useRef<number | null>(null);
   const lastPanFrameTimeRef = useRef<number | null>(null);
-  const [trajectoryView, setTrajectoryView] = useCachedState<TimeBounds | null>("timeline-view", null);
   const [mediaView, setMediaView] = useState<TimeBounds | null>(mediaRange);
   const unshiftedView = mediaRange ? mediaView ?? mediaRange : trajectoryView;
   // Pan and zoom in the clip's stored time domain, then display the draft time.
@@ -533,7 +537,7 @@ export function Timeline({
     if (!dataset) return;
     setTrajectoryView(previous => previous && previous[0] >= dataset.timeBounds[0] && previous[1] <= dataset.timeBounds[1]
       ? previous : dataset.timeBounds);
-  }, [dataset]);
+  }, [dataset, setTrajectoryView]);
 
   useEffect(() => {
     if (!dataset || !focusRequest) {
@@ -551,7 +555,7 @@ export function Timeline({
         dataset.timeBounds,
       );
     });
-  }, [dataset, focusRequest]);
+  }, [dataset, focusRequest, setTrajectoryView]);
 
   useEffect(() => {
     const stopPanAnimation = () => {

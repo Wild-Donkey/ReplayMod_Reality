@@ -336,7 +336,7 @@ export function MapViewport({
     }
     return {coordinates, timestamps};
   }, [pointDataset, flightRouteSegments]);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">(
+  const [status, setStatus] = useState<"loading" | "ready" | "error" | "graphics-error">(
     "loading",
   );
   const [errorMessage, setErrorMessage] = useState("");
@@ -362,32 +362,32 @@ export function MapViewport({
   },[annotations,annotationSelectedId,apiKey,onAnnotationElevationProfile]);
 
   useEffect(() => {
-    if (!containerRef.current) {
-      return;
-    }
+    const container = containerRef.current;
+    if (!container) return;
 
     setStatus("loading");
     setErrorMessage("");
     let baseStyleReady = false;
     let roadOverlay: RoadOverlay | null = null;
     let buildingOverlay: BuildingHeightOverlay | null = null;
-    const channels = new RenderChannelRegistry(scene);
-    refreshMapChannels.current = () => channels.refresh();
-
     const camera = readCached<{center: [number, number]; zoom: number; bearing: number; pitch: number} | null>("map-camera", null);
     setElevationUnavailable(false);
+    let map: maplibregl.Map;
+    try {
+      map = new maplibregl.Map({
+        container, style: publicBasemapStyle(apiKey), center: [104.2, 35.8], zoom: 2.4, ...camera,
+        transformRequest: cachedMapRequest, attributionControl: false,
+        localIdeographFontFamily: '"Microsoft YaHei UI", "Microsoft YaHei", sans-serif',
+      });
+    } catch (error) {
+      container.replaceChildren();
+      console.error("Map renderer initialization failed", error);
+      setStatus("graphics-error");
+      return;
+    }
+    const channels = new RenderChannelRegistry(scene);
+    refreshMapChannels.current = () => channels.refresh();
     const elevationController = new AbortController();
-    const map = new maplibregl.Map({
-      container: containerRef.current,
-      style: publicBasemapStyle(apiKey),
-      center: [104.2, 35.8],
-      zoom: 2.4,
-      ...camera,
-      transformRequest: cachedMapRequest,
-      attributionControl: false,
-      localIdeographFontFamily:
-        '"Microsoft YaHei UI", "Microsoft YaHei", sans-serif',
-    });
     mapRef.current = map;
     const publishCamera = () => {
       const center = map.getCenter();
@@ -1459,6 +1459,13 @@ export function MapViewport({
         <div className="map-message">
           <strong>正在连接 MapTiler</strong>
           <span>加载全球矢量底图</span>
+        </div>
+      )}
+
+      {status === "graphics-error" && (
+        <div className="map-message map-error" role="status">
+          <strong>地图渲染初始化失败</strong>
+          <span>请重新启动 ReplayMod Reality 以恢复地图。</span>
         </div>
       )}
 

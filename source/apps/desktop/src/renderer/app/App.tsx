@@ -230,6 +230,7 @@ export function App() {
     }
   }, [mediaRange, replayScene, setCurrentTime]);
   const [exportRange, setExportRange] = useCachedState<TimeBounds | null>("exportRange", null);
+  const [trajectoryView, setTrajectoryView] = useCachedState<TimeBounds | null>("timeline-view", null);
   const [timelineFocusRequest, setTimelineFocusRequest] =
     useState<TimelineFocusRequest | null>(null);
   const timelineFocusSequenceRef = useRef(0);
@@ -413,6 +414,7 @@ export function App() {
       if (dataset) {
         setPointDataset(dataset);
         if (!mediaRange) setCurrentTime(dataset.timeBounds[0]);
+        setTrajectoryView(dataset.timeBounds);
         setExportRange(dataset.timeBounds);
         setTimelineFocusRequest(null);
       }
@@ -805,6 +807,8 @@ export function App() {
               /> : selectedRoute && !mediaActive ? <ElevationProfile scene={replayScene} coordinates={annotationElevationProfile} routeName={selectedRoute.name} onHover={syncElevationHover}/> : <Timeline
                 scene={replayScene}
                 dataset={pointDataset}
+                trajectoryView={trajectoryView}
+                setTrajectoryView={setTrajectoryView}
                 mediaRange={mediaRange}
                 mediaOffsetMs={mediaOffsetMs}
                 currentTime={overlayPreviewTime}

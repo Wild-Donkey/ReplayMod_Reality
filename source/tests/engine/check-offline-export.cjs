@@ -86,7 +86,7 @@ function load(file) {
         const compositeEncoder = codec === 'h264' ? h264 : await findCompositeVideoEncoder(codec);
         if (!compositeEncoder) continue;
         const output = path.join(directory, `composite-${codec}.mp4`);
-        const composite = manager.begin(1, {...options, bitrate: 0, crf: 18}, output, compositeEncoder, false,
+        const composite = manager.begin(1, {...options, end: 1100, bitrate: 0, crf: 18}, output, compositeEncoder, false,
           {sourcePath: source, offsetSeconds: .25, codec, overlayTop: 8});
         for (let index = 0; index < frames.length; index++) {
           await manager.write(1, composite.id, 0, index, frames[index].subarray(16 * 8 * 4));
@@ -107,26 +107,28 @@ function load(file) {
         assert(center(2)[2] > 200 && center(2)[0] < 20, 'Transparent overlay reveals the source');
         assert(decodedComposite.stdout[2] > 200 && decodedComposite.stdout[0] < 20, 'Source pixels above the cropped overlay remain visible');
         console.log(`Composite export passed: ${codec}, source seek, AAC trimming, and alpha blending.`);
-        if (process.env.REPLAY_CHECK_VIDEOTOOLBOX === '1') {
-          const hardwareOptions = {...options, width: 128, height: 128, bitrate: 0, crf: 26};
+        if (process.env.REPLAY_CHECK_VIDEOTOOLBOX === '1' || process.env.REPLAY_CHECK_HARDWARE === '1') {
+          const hardwareOptions = {...options, width: 1920, height: 1080, fps: 25, end: 1320, bitrate: 0, crf: 26};
+          const hardwareFrames = new OfflineFramePlan(hardwareOptions).totalFrames;
+          const overlayTop = 1022;
           const hardwareQuality = 70;
-          const hardwareEncoder = await findHardwareCompositeEncoder(codec, hardwareOptions, hardwareQuality);
+          const hardwareEncoder = await findHardwareCompositeEncoder(codec, hardwareOptions, hardwareQuality, hardwareFrames);
           assert(hardwareEncoder, `Expected available hardware encoding for ${codec}`);
           const hardwareOutput = path.join(directory, `hardware-${codec}.mp4`);
-          const hardware = manager.begin(1, hardwareOptions, hardwareOutput, hardwareEncoder, false,
-            {sourcePath: source, offsetSeconds: .25, codec, hardware: true, hardwareQuality, overlayTop: 70});
-          assert.equal(hardware.videoToolbox, true);
-          const overlay = new Uint8Array(128 * (128 - 70) * 4);
+          const hardware = manager.begin(1, hardwareOptions, hardwareOutput, hardwareEncoder.executable, false,
+            {sourcePath: source, offsetSeconds: .25, codec, hardware: hardwareEncoder.backend, hardwareQuality, overlayTop});
+          assert.equal(hardware.hardware, hardwareEncoder.backend);
+          const overlay = new Uint8Array(hardwareOptions.width * (hardwareOptions.height - overlayTop) * 4);
           for (let index = 0; index < overlay.length; index += 4) overlay.set([0, 255, 0, 128], index);
-          for (let index = 0; index < 3; index++) await manager.write(1, hardware.id, 0, index, overlay);
+          for (let index = 0; index < hardwareFrames; index++) await manager.write(1, hardware.id, 0, index, overlay);
           await manager.finishSegment(1, hardware.id, 0);
           manager.complete(1, hardware.id);
           const report = await exec(probe, ['-v', 'error', '-show_entries', 'stream=codec_name,nb_frames', '-of', 'json', hardwareOutput]);
           const [hardwareVideo, hardwareAudio] = JSON.parse(report.stdout).streams;
           assert.equal(hardwareVideo.codec_name, codec);
-          assert.equal(hardwareVideo.nb_frames, '3');
+          assert.equal(hardwareVideo.nb_frames, String(hardwareFrames));
           assert.equal(hardwareAudio.codec_name, 'aac');
-          console.log(`VideoToolbox composite export passed: ${codec}.`);
+          console.log(`${hardwareEncoder.backend} composite export passed: ${codec}.`);
         }
       }
     }

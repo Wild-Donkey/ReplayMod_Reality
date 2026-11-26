@@ -1,4 +1,4 @@
-import type { CompositeCodec } from "../../../../packages/media/src/raw-video";
+import type { CompositeCodec, CompositeHardwareBackend } from "../../../../packages/media/src/raw-video";
 import type { MediaSource } from "../../../../packages/media/src/types";
 
 export interface CompositeExportRequest {
@@ -23,7 +23,7 @@ export interface OfflineExportOptions {
 export interface OfflineExportSession {
   readonly id: string;
   readonly segmentCount: number;
-  readonly videoToolbox?: boolean;
+  readonly hardware?: CompositeHardwareBackend;
 }
 export interface OfflineExportSegment {readonly path: string; readonly frames: number; readonly sampleBytes?: number}
 

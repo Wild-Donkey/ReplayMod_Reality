@@ -35,7 +35,7 @@ export class OfflineExportManager {
     if (estimate && (plan.segmentCount !== 1 || plan.totalFrames > 120 || options.crf === undefined)) throw new Error("Invalid export estimate sample");
     if (composite && plan.segmentCount !== 1) throw new Error("Composite export requires a single file");
     this.sessions.set(id, {owner, plan, destination, encoderPath, paths: [], estimate, composite, segment: 0, frames: 0, busy: false, cancelled: false, encoder: null, temporary: null});
-    return {id, segmentCount: plan.segmentCount, videoToolbox: composite?.hardware ?? false};
+    return {id, segmentCount: plan.segmentCount, hardware: composite?.hardware};
   }
   write(owner: number, id: string, segment: number, index: number, rgba: Uint8Array) {
     return this.track(this.writeFrame(owner, id, segment, index, rgba));
@@ -51,8 +51,7 @@ export class OfflineExportManager {
       if (!session.encoder) {
         const extension = session.composite ? "mp4" : "webm";
         session.temporary = path.join(path.dirname(session.destination), `.${path.basename(session.destination)}.${id}.${segment}.part.${extension}`);
-        const {start, end} = session.plan.options;
-        const composite = session.composite && {...session.composite, durationSeconds: (end - start) / 1000};
+        const composite = session.composite && {...session.composite, durationSeconds: session.plan.totalFrames / session.plan.options.fps};
         session.encoder = new RawVideoEncoder({...session.plan.options, encoder: session.encoderPath, output: session.temporary, composite});
       }
       await session.encoder.write(rgba);

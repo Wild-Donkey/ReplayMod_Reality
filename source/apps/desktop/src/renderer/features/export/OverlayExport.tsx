@@ -207,7 +207,8 @@ export function OverlayExport({ dataset, range, apiKey, scene, source = null, me
   previewRef.current = {dataset, range, settings, progress, active, previewTime};
   const format = settings.format ?? "h264";
   const composite = format !== "transparent";
-  const hardwareAvailable = composite && window.replaymod?.platform === "darwin";
+  const platform = window.replaymod?.platform;
+  const hardwareAvailable = composite && (platform === "darwin" || platform === "win32");
   const preferHardware = hardwareAvailable && settings.encoder !== "software";
   const sourceBounds = videoTimeBounds(source);
   const sourceDuration = source ? compositeSourceDuration(source) : null;
@@ -366,13 +367,20 @@ export function OverlayExport({ dataset, range, apiKey, scene, source = null, me
     if (!container || !apiKey) return;
     const controller = new AbortController();
     mapFailureRef.current=null;
-    const map = new maplibregl.Map({
-      transformRequest: cachedMapRequest,
-      container, interactive: false, attributionControl: false,
-      canvasContextAttributes: { preserveDrawingBuffer: true },
-      center: [0, 0], zoom: 15, fadeDuration: 0, bearingSnap: 0, pixelRatio: previewRef.current.settings.width / 1920,
-      style: publicBasemapStyle(apiKey),
-    });
+    let map: maplibregl.Map;
+    try {
+      map = new maplibregl.Map({
+        transformRequest: cachedMapRequest, container, interactive: false, attributionControl: false,
+        canvasContextAttributes: { preserveDrawingBuffer: true },
+        center: [0, 0], zoom: 15, fadeDuration: 0, bearingSnap: 0, pixelRatio: previewRef.current.settings.width / 1920,
+        style: publicBasemapStyle(apiKey),
+      });
+    } catch (error) {
+      container.replaceChildren();
+      console.error("Minimap renderer initialization failed", error);
+      mapFailureRef.current = "无法初始化小地图。可关闭「轨迹小地图」后导出。";
+      return;
+    }
     navigationMapRef.current = map;
     map.on("error",event=>{mapFailureRef.current=event.error?.message ?? "地图资源加载失败";});
     map.once("load", () => {
@@ -461,7 +469,8 @@ export function OverlayExport({ dataset, range, apiKey, scene, source = null, me
     catch (error) { if (frameWaitRef.current === controller) frameWaitRef.current = null; throw error; }
     if (!session) { if (frameWaitRef.current === controller) frameWaitRef.current = null; setProgress(null); return; }
     offlineSessionRef.current = session.id;
-    const selectedEncoder = request ? (session.videoToolbox ? "VideoToolbox 硬件编码" : "软件编码") : null;
+    const hardwareNames = {videotoolbox: "VideoToolbox", nvenc: "NVENC", qsv: "Quick Sync", amf: "AMF"};
+    const selectedEncoder = request ? (session.hardware ? `${hardwareNames[session.hardware]} 硬件编码` : "软件编码") : null;
     setActiveEncoder(selectedEncoder);
     if (cancelExportRef.current) controller.abort();
     // A dedicated canvas creates its context with the readback hint on the
@@ -608,7 +617,7 @@ export function OverlayExport({ dataset, range, apiKey, scene, source = null, me
         </select></label>
         {hardwareAvailable && <label>编码器<select value={preferHardware ? "auto" : "software"} onChange={event => {
           updateSettings({encoder: event.target.value === "software" ? "software" : "auto"});
-        }}><option value="auto">自动 · 优先 Mac 硬件</option><option value="software">软件编码</option></select></label>}
+        }}><option value="auto">自动 · 优先硬件编码</option><option value="software">软件编码</option></select></label>}
         {composite && (sourceStart === null || duration === 0 || exportStart !== range[0] || exportEnd !== range[1]) &&
           <p role="status">{sourceStart === null ? "合成需要载入带时间对齐的原视频。" : duration === 0 ? "导出区间与原视频没有重叠。" : `将合成导出区间与原视频重叠的 ${duration.toFixed(1)} 秒。`}</p>}
         <label>{preferHardware ? "软件回退预设" : "压制预设"}<select value={encodingPreset} onChange={(event) => {
@@ -639,7 +648,7 @@ export function OverlayExport({ dataset, range, apiKey, scene, source = null, me
         </div>
         <label className="check-row"><input type="checkbox" checked={settings.showStats} onChange={(event) => updateSettings({ showStats: event.target.checked })} />时间 / 速度 / 海拔 / 坡度</label>
         <label className="check-row"><input type="checkbox" checked={settings.showMap} onChange={(event) => updateSettings({ showMap: event.target.checked })} />轨迹小地图</label>
-        {settings.showMap && !isMapReady && <p role="status">正在加载道路地图…</p>}
+        {settings.showMap && !isMapReady && <p role="status">{mapFailureRef.current ?? "正在加载道路地图…"}</p>}
         <div className="dialog-actions">
           <button type="button" onClick={() => setIsSettingsOpen(false)}>关闭</button>
           <button type="button" disabled={progress !== null || !canStart} onClick={() => void exportVideo()}>导出</button>

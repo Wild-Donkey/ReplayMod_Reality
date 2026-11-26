@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { access } from "node:fs/promises";
 import { constants } from "node:fs";
+import { availableParallelism } from "node:os";
 import path from "node:path";
 import { assertCanStartChild, runChild, stopChild, trackChild } from "./childProcesses";
 
@@ -27,7 +28,10 @@ export function findTransparentVideoEncoder(searchPath = process.env.PATH ?? "")
 
 export type CompositeCodec = "h264" | "hevc";
 const compositeEncoders = {h264: "libx264", hevc: "libx265"} as const;
-const hardwareEncoders = {h264: "h264_videotoolbox", hevc: "hevc_videotoolbox"} as const;
+export type CompositeHardwareBackend = "videotoolbox" | "nvenc" | "qsv" | "amf";
+const windowsHardwareBackends = ["nvenc", "qsv", "amf"] as const;
+const encoderThreads = process.platform === "win32" ? Math.min(16, availableParallelism()) : 4;
+const filterThreads = process.platform === "win32" ? Math.min(4, encoderThreads) : 2;
 
 export function findCompositeVideoEncoder(codec: CompositeCodec, searchPath = process.env.PATH ?? "") {
   return findFFmpeg([compositeEncoders[codec], "aac"], searchPath);
@@ -37,26 +41,38 @@ export async function findHardwareCompositeEncoder(
   codec: CompositeCodec,
   {width, height, fps, bitrate}: Pick<RawVideoOptions, "width" | "height" | "fps" | "bitrate">,
   quality?: number,
+  totalFrames = 1,
 ) {
-  if (process.platform !== "darwin" || (quality !== undefined && process.arch !== "arm64")) return null;
-  const name = hardwareEncoders[codec];
-  const executable = await findFFmpeg([name, "aac"], process.env.PATH ?? "");
-  if (!executable) return null;
-  try {
-    await runChild(executable, [
-      "-hide_banner", "-loglevel", "error", "-nostdin",
-      "-f", "lavfi", "-i", `color=size=${width}x${height}:rate=${fps}`,
-      "-frames:v", "1", "-c:v", name, "-pix_fmt", "nv12", "-allow_sw", "0",
-      ...videoToolboxRateArguments(bitrate, quality), "-f", "null", "-",
-    ], {timeout: 5000, maxBuffer: 256 * 1024});
-    return executable;
-  } catch {
-    return null;
+  const backends: readonly CompositeHardwareBackend[] = process.platform === "win32" ? windowsHardwareBackends
+    : process.platform === "darwin" && (quality === undefined || process.arch === "arm64") ? ["videotoolbox"] : [];
+  for (const backend of backends) {
+    const executable = await findFFmpeg([`${codec}_${backend}`, "aac"], process.env.PATH ?? "");
+    if (!executable) continue;
+    // A one-frame probe can miss delayed-frame flush failures on Windows drivers.
+    const probeFrames = backend === "videotoolbox" ? 1 : Math.min(8, totalFrames);
+    try {
+      await runChild(executable, [
+        "-hide_banner", "-loglevel", "error", "-nostdin",
+        "-f", "lavfi", "-i", `color=size=${width}x${height}:rate=${fps}`,
+        "-frames:v", String(probeFrames), ...hardwareArguments(codec, backend, bitrate, quality), "-f", "null", "-",
+      ], {timeout: 5000, maxBuffer: 256 * 1024});
+      return {executable, backend};
+    } catch { /* The binary can advertise encoders without usable hardware. */ }
   }
+  return null;
 }
 
-function videoToolboxRateArguments(bitrate: number, quality?: number) {
-  return quality === undefined ? ["-b:v", String(bitrate)] : ["-q:v", String(quality)];
+function hardwareArguments(codec: CompositeCodec, backend: CompositeHardwareBackend, bitrate: number, quality?: number) {
+  const args = ["-c:v", `${codec}_${backend}`, "-pix_fmt", "nv12"];
+  if (backend === "videotoolbox") {
+    args.push("-allow_sw", "0");
+    if (quality !== undefined) return [...args, "-q:v", String(quality)];
+  }
+  if (quality === undefined) return [...args, "-b:v", String(bitrate)];
+  const quantizer = String(Math.round(51 - quality * 0.4));
+  if (backend === "nvenc") return [...args, "-rc", "vbr", "-cq", quantizer, "-b:v", "0"];
+  if (backend === "qsv") return [...args, "-global_quality", quantizer];
+  return [...args, "-rc", "cqp", "-qp_i", quantizer, "-qp_p", quantizer];
 }
 
 export interface VideoCompositeInput {
@@ -64,7 +80,7 @@ export interface VideoCompositeInput {
   readonly offsetSeconds: number;
   readonly durationSeconds: number;
   readonly codec: CompositeCodec;
-  readonly hardware?: boolean;
+  readonly hardware?: CompositeHardwareBackend;
   readonly hardwareQuality?: number;
   readonly overlayTop?: number;
 }
@@ -86,14 +102,13 @@ function compositeArguments(options: RawVideoOptions, input: VideoCompositeInput
   const preset = cpuUsed === 5 ? "veryfast" : cpuUsed === 2 ? "slow" : "medium";
   const base = `[1:V:0]fps=${fps},scale=${width}:${height}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1[base]`;
   const encoding = input.hardware
-    ? ["-c:v", hardwareEncoders[input.codec], "-pix_fmt", "nv12", "-allow_sw", "0",
-      ...videoToolboxRateArguments(bitrate, input.hardwareQuality)]
-    : ["-c:v", compositeEncoders[input.codec], "-preset", preset, "-threads", "4", "-pix_fmt", "yuv420p",
+    ? hardwareArguments(input.codec, input.hardware, bitrate, input.hardwareQuality)
+    : ["-c:v", compositeEncoders[input.codec], "-preset", preset, "-threads", String(encoderThreads), "-pix_fmt", "yuv420p",
       ...(crf === undefined ? ["-b:v", String(bitrate)] : ["-crf", String(crf)]),
-      ...(input.codec === "hevc" ? ["-x265-params", "pools=4:log-level=error"] : [])];
+      ...(input.codec === "hevc" ? ["-x265-params", `pools=${encoderThreads}:log-level=error`] : [])];
   return [
     "-ss", String(input.offsetSeconds), "-i", input.sourcePath,
-    "-filter_complex_threads", "2",
+    "-filter_complex_threads", String(filterThreads),
     "-filter_complex", `${base};[base][0:v:0]overlay=y=${input.overlayTop ?? 0}:shortest=1:format=yuv420[video]`,
     "-map", "[video]", "-map", "1:a?", "-t", String(input.durationSeconds),
     ...encoding, ...(input.codec === "hevc" ? ["-tag:v", "hvc1"] : []),
@@ -126,7 +141,7 @@ export class RawVideoEncoder {
     else args.push(
       "-an",
       "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-auto-alt-ref", "0",
-      "-row-mt", "1", "-threads", "4", "-deadline", "good", "-cpu-used", String(options.cpuUsed ?? 4),
+      "-row-mt", "1", "-threads", String(encoderThreads), "-deadline", "good", "-cpu-used", String(options.cpuUsed ?? 4),
       "-b:v", String(options.bitrate),
       ...(options.crf === undefined ? [] : ["-crf", String(options.crf)]),
       "-f", "webm",
