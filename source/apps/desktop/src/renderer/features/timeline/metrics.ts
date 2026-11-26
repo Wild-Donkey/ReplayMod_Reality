@@ -1,5 +1,11 @@
-import type { PointDataset } from "../../../../../../packages/data/src";
-import type { PositionSamples } from "../../../../../../packages/data/src/points";
+interface MetricPositionSamples {
+  readonly footprintTimestamps: ArrayLike<number>;
+  readonly footprintCoordinates: ArrayLike<number>;
+}
+
+export interface MetricDataset extends MetricPositionSamples {
+  readonly processedMotion?: MetricPositionSamples & { readonly timeBounds: readonly [number, number] };
+}
 
 export interface TimelineMetricsSettings {
   mode: "speed" | "density";
@@ -14,7 +20,7 @@ export const defaultTimelineMetrics: TimelineMetricsSettings = {
  * No time buckets: bandwidth stays in milliseconds regardless of zoom.
  * Returns points per minute. Sorted timestamps permit exact support lookup.
  */
-export function continuousDensity(timestamps: readonly number[], time: number, bandwidth: number): number {
+export function continuousDensity(timestamps: ArrayLike<number>, time: number, bandwidth: number): number {
   if (!Number.isFinite(bandwidth) || bandwidth <= 0) return 0;
   let low = 0;
   let high = timestamps.length;
@@ -37,21 +43,21 @@ interface PositionSegment {
   end: number;
   origin: Vector;
   delta: Vector;
+  speed?: number | null;
 }
 
 // Only segments touched by the visible window are constructed. Each segment
 // depends solely on its two endpoints, never on neighbouring segment speeds.
-const positionCache = new WeakMap<PositionSamples, Map<number, PositionSegment>>();
+const positionCache = new WeakMap<MetricPositionSamples, Map<number, PositionSegment>>();
 const EARTH_RADIUS = 6371000;
-function position(dataset: PositionSamples, index: number): Vector {
+function position(dataset: MetricPositionSamples, index: number): Vector {
   const lon = dataset.footprintCoordinates[index * 2] * Math.PI / 180;
   const lat = dataset.footprintCoordinates[index * 2 + 1] * Math.PI / 180;
   return [EARTH_RADIUS * Math.cos(lat) * Math.cos(lon), EARTH_RADIUS * Math.cos(lat) * Math.sin(lon), EARTH_RADIUS * Math.sin(lat)];
 }
 
-function segmentAt(dataset: PositionSamples, time: number, maxGapMs = Infinity): PositionSegment | null {
-  const times = dataset.footprintTimestamps;
-  if (times.length < 2 || time < times[0] || time > times[times.length - 1]) return null;
+function segmentIndex(times: ArrayLike<number>, time: number, maxGapMs: number) {
+  if (times.length < 2 || time < times[0] || time > times[times.length - 1]) return -1;
   // Upper bound selects the last fix when multiple fixes share a timestamp.
   let low = 0;
   let high = times.length;
@@ -65,7 +71,17 @@ function segmentAt(dataset: PositionSamples, time: number, maxGapMs = Infinity):
     while (index > 0 && times[index - 1] === times[index]) index--;
     index--;
   }
-  if (index < 0 || times[index + 1] <= times[index] || times[index + 1] - times[index] > maxGapMs) return null;
+  return index >= 0 && times[index + 1] > times[index] && times[index + 1] - times[index] <= maxGapMs ? index : -1;
+}
+
+function segmentAt(dataset: MetricPositionSamples, time: number, maxGapMs = Infinity): PositionSegment | null {
+  const index = segmentIndex(dataset.footprintTimestamps, time, maxGapMs);
+  if (index < 0) return null;
+  return segmentFromIndex(dataset, index);
+}
+
+function segmentFromIndex(dataset: MetricPositionSamples, index: number): PositionSegment {
+  const times = dataset.footprintTimestamps;
   let cache = positionCache.get(dataset);
   if (!cache) { cache = new Map(); positionCache.set(dataset, cache); }
   const hit = cache.get(index);
@@ -84,7 +100,7 @@ function segmentAt(dataset: PositionSamples, time: number, maxGapMs = Infinity):
  * interval. At a GPS knot the derivative can jump; we use the right-hand
  * derivative (and the left-hand derivative at the final point).
  */
-export function interpolatedMotion(dataset: PointDataset, time: number): { position: Vector; velocity: Vector } | null {
+export function interpolatedMotion(dataset: MetricDataset, time: number): { position: Vector; velocity: Vector } | null {
   const processed = processedSamplesAt(dataset, time);
   const segment = processed ? segmentAt(processed, time, 10_000) : segmentAt(dataset, time);
   if (!segment) return null;
@@ -95,31 +111,36 @@ export function interpolatedMotion(dataset: PointDataset, time: number): { posit
   return { position: p as unknown as Vector, velocity: v as unknown as Vector };
 }
 
-function processedSamplesAt(dataset: PointDataset, time: number) {
+function processedSamplesAt(dataset: MetricDataset, time: number) {
   const processed = dataset.processedMotion;
   return processed && time >= processed.timeBounds[0] && time <= processed.timeBounds[1] ? processed : undefined;
 }
 
-export function hasProcessedCoverage(dataset: PointDataset, time: number) {
+export function hasProcessedCoverage(dataset: MetricDataset, time: number) {
   const processed = processedSamplesAt(dataset, time);
   return !processed || segmentAt(processed, time, 10_000) !== null;
 }
 
-export function continuousSpeed(dataset: PointDataset, time: number): number | null {
+export function continuousSpeed(dataset: MetricDataset, time: number): number | null {
   const processed = processedSamplesAt(dataset, time);
   return speedAt(processed ?? dataset, time, Boolean(processed));
 }
 
-function speedAt(samples: PositionSamples, time: number, processed: boolean) {
-  const segment = segmentAt(samples, time, processed ? 10_000 : Infinity);
-  if (!segment || !segment.delta.every(Number.isFinite)) return null;
-  return Math.hypot(...segment.delta) * 3600 / (segment.end - segment.start);
+function speedAt(samples: MetricPositionSamples, time: number, processed: boolean) {
+  const index = segmentIndex(samples.footprintTimestamps, time, processed ? 10_000 : Infinity);
+  if (index < 0) return null;
+  const segment = positionCache.get(samples)?.get(index) ?? segmentFromIndex(samples, index);
+  if (segment.speed === undefined) {
+    segment.speed = segment.delta.every(Number.isFinite)
+      ? Math.hypot(...segment.delta) * 3600 / (segment.end - segment.start) : null;
+  }
+  return segment.speed;
 }
 
 // Dataset ownership permits automatic reclamation. Both caches are bounded LRU;
 // cached values are evaluations of continuous functions, not aggregated bins.
-const curveCache = new WeakMap<PointDataset, Map<string, Float64Array>>();
-const densityCache = new WeakMap<PointDataset, Map<string, Map<number, number>>>();
+const curveCache = new WeakMap<MetricDataset, Map<string, Float64Array>>();
+const densityCache = new WeakMap<MetricDataset, Map<string, Map<number, number>>>();
 function remember<K, V>(cache: Map<K, V>, key: K, value: V, limit: number): V {
   cache.delete(key);
   cache.set(key, value);
@@ -127,7 +148,7 @@ function remember<K, V>(cache: Map<K, V>, key: K, value: V, limit: number): V {
   return value;
 }
 
-export function metricCurve(dataset: PointDataset, mode: "speed" | "density", start: number, end: number, count: number, bandwidth: number): Float64Array {
+export function metricCurve(dataset: MetricDataset, mode: "speed" | "density", start: number, end: number, count: number, bandwidth: number): Float64Array {
   let curves = curveCache.get(dataset);
   if (!curves) { curves = new Map(); curveCache.set(dataset, curves); }
   const key = `${mode}:${start}:${end}:${count}:${mode === "density" ? bandwidth : ""}`;
@@ -154,10 +175,10 @@ export function metricCurve(dataset: PointDataset, mode: "speed" | "density", st
 }
 
 
-const stepCache = new WeakMap<PointDataset, Map<string, [number, number | null][]>>();
+const stepCache = new WeakMap<MetricDataset, Map<string, [number, number | null][]>>();
 /** Preserve exact GPS interval edges at detailed zoom. At overview scale use
  * bounded display samples; never load or derive the entire position track. */
-export function speedStepCurve(dataset: PointDataset, start: number, end: number, count: number): [number, number | null][] {
+export function speedStepCurve(dataset: MetricDataset, start: number, end: number, count: number): [number, number | null][] {
   let cache = stepCache.get(dataset);
   if (!cache) { cache = new Map(); stepCache.set(dataset, cache); }
   const key = `${start}:${end}:${count}`;
@@ -245,12 +266,12 @@ export function smoothDisplayValues(values: Float64Array, sigma: number): Float6
   });
   return result;
 }
-const smoothSpeedCache = new WeakMap<PointDataset, Map<string, [number, number | null][]>>();
-const speedDisplayCache = new WeakMap<PositionSamples, Map<number, number>>();
+const smoothSpeedCache = new WeakMap<MetricDataset, Map<string, [number, number | null][]>>();
+const speedDisplayCache = new WeakMap<MetricPositionSamples, Map<number, number>>();
 const SPEED_SAMPLE_MS = 250;
 const SPEED_WEIGHTS = Array.from({length: 13}, (_, index) => Math.exp(-0.5 * (index / 5) ** 2));
 
-export function smoothedSpeed(dataset: PointDataset, time: number): number | null {
+export function smoothedSpeed(dataset: MetricDataset, time: number): number | null {
   const processed = processedSamplesAt(dataset, time);
   const samples = processed ?? dataset;
   const sampleSpeed = (timeMs: number) => speedAt(samples, timeMs, Boolean(processed));
@@ -282,7 +303,7 @@ export function smoothedSpeed(dataset: PointDataset, time: number): number | nul
   return lower + (upper - lower) * (time - lowerTime) / SPEED_SAMPLE_MS;
 }
 
-export function smoothSpeedCurve(dataset: PointDataset, start: number, end: number, count: number): [number, number | null][] {
+export function smoothSpeedCurve(dataset: MetricDataset, start: number, end: number, count: number): [number, number | null][] {
   let cache = smoothSpeedCache.get(dataset);
   if (!cache) { cache = new Map(); smoothSpeedCache.set(dataset, cache); }
   const key = `${start}:${end}:${count}`;

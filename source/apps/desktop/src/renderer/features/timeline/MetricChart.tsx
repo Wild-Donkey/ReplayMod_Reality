@@ -7,6 +7,7 @@ import { MetricCanvasFallback } from "../../render-engine/MetricCanvasFallback";
 import { useReplayVisual } from "../../render-engine/useReplayVisual";
 import type { ReplayScene } from "../../render-engine/ReplayScene";
 import { smoothSpeedCurve, metricCurve, smoothedSpeed, continuousDensity, type TimelineMetricsSettings } from "./metrics";
+import { SpeedCurveClient } from "./speedCurveClient";
 
 export function MetricChart({ scene, dataset, viewRange: requestedRange, metrics, axisContainer }: {
   scene: ReplayScene; dataset: PointDataset | null; viewRange: TimeBounds | null; metrics: TimelineMetricsSettings; axisContainer: RefObject<HTMLDivElement | null>;
@@ -17,6 +18,25 @@ export function MetricChart({ scene, dataset, viewRange: requestedRange, metrics
   const viewRange = useDeferredValue(requestedRange);
   const engineVisual = useReplayVisual(scene, "timeline");
   const density = metrics.mode === "density";
+  const speedClient = useRef<SpeedCurveClient | null>(null);
+  const [speed, setSpeed] = useState<{ dataset: PointDataset; start: number; end: number; values: Float64Array } | null>(null);
+  const start = viewRange?.[0], end = viewRange?.[1];
+  const count = Math.max(2, Math.min(8192, Math.ceil(width * 2)));
+  useEffect(() => {
+    const client = new SpeedCurveClient();
+    speedClient.current = client;
+    return () => { client.close(); speedClient.current = null; };
+  }, []);
+  useEffect(() => {
+    if (!dataset || density || start === undefined || end === undefined || end <= start) return;
+    let current = true;
+    speedClient.current?.request({ dataset, start, end, count, complete: values => {
+      if (!current) return;
+      const curve = values ?? Float64Array.from(smoothSpeedCurve(dataset, start, end, count), ([, value]) => value ?? Number.NaN);
+      setSpeed({ dataset, start, end, values: curve });
+    } });
+    return () => { current = false; };
+  }, [dataset, density, start, end, count]);
   useEffect(() => {
     if (!element.current) return;
     const observer = new ResizeObserver(([entry]) => {
@@ -26,20 +46,19 @@ export function MetricChart({ scene, dataset, viewRange: requestedRange, metrics
     return () => observer.disconnect();
   }, []);
   const plot = useMemo(() => {
-    if (!dataset || !viewRange) return null;
-    const [start, end] = viewRange;
-    if (end <= start) return null;
-    // Four times the previous sampling density; smooth only the display values.
-    const count = Math.max(2, Math.min(8192, Math.ceil(width * 2)));
-    const data: [number, number | null][] = density ? [] : smoothSpeedCurve(dataset, start, end, count);
-    if (density) {
-      const values = metricCurve(dataset, "density", start, end, count, (metrics.densitySmoothingSeconds ?? 60) * 1000);
-      values.forEach((value, i) => data.push([start + i / count * (end - start), Number.isFinite(value) ? value : null]));
-    }
+    if (!dataset || start === undefined || end === undefined || end <= start) return null;
+    const speedResult = speed?.dataset === dataset ? speed : null;
+    if (!density && !speedResult) return null;
+    const plotStart = density ? start : speedResult?.start ?? start;
+    const plotEnd = density ? end : speedResult?.end ?? end;
+    const values = density
+      ? metricCurve(dataset, "density", plotStart, plotEnd, count, (metrics.densitySmoothingSeconds ?? 60) * 1000)
+      : speedResult?.values;
+    if (!values) return null;
     let minimum = Infinity;
     let maximum = -Infinity;
-    data.forEach(([, value]) => {
-      if (value !== null) { minimum = Math.min(minimum, value); maximum = Math.max(maximum, value); }
+    values.forEach(value => {
+      if (Number.isFinite(value)) { minimum = Math.min(minimum, value); maximum = Math.max(maximum, value); }
     });
     const range = minimum !== Infinity ? [density ? 0 : minimum, maximum] : null;
     const flat = range && range[0] === range[1];
@@ -47,11 +66,13 @@ export function MetricChart({ scene, dataset, viewRange: requestedRange, metrics
     const series: ReplayMetricSeries = {
       id: "timeline-metric", space: "timeline", sourceTrajectory: TrajectoryBuffer.fromPointDataset(dataset),
       color: density ? [201, 154, 255, 255] : [115, 200, 255, 255], lineWidth: 1.5, areaOpacity: 0.1,
-      x: Float64Array.from(data, point => point[0]), values: Float64Array.from(data, point => point[1] ?? Number.NaN),
-      xDomain: [start, end], yDomain,
+      x: Float64Array.from(values, (_, index) => density
+        ? plotStart + index / count * (plotEnd - plotStart)
+        : plotStart + index * ((plotEnd - plotStart) / (values.length - 1))),
+      values, xDomain: [plotStart, plotEnd], yDomain,
     };
     return {series, axisRange: range ? yDomain : null};
-  }, [dataset, viewRange, density, metrics.densitySmoothingSeconds, width]);
+  }, [dataset, start, end, count, density, metrics.densitySmoothingSeconds, speed]);
   useEffect(() => {
     setHover(null);
     if (plot) return scene.registerMetricSeries("timeline", plot.series);
@@ -66,11 +87,12 @@ export function MetricChart({ scene, dataset, viewRange: requestedRange, metrics
     </>, axisContainer.current)}
     <div ref={element} className="timeline-metric-plot"
       onPointerMove={event => {
-        if (!dataset || !viewRange) return;
+        if (!dataset || !plot) return;
         const rect = event.currentTarget.getBoundingClientRect();
         const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width)));
         const picked = scene.picking.pick({viewId: "timeline", target: "metric", x: event.clientX, y: event.clientY, radius: 5});
-        const time = picked?.timestamp ?? viewRange[0] + ratio * (viewRange[1] - viewRange[0]);
+        const [plotStart, plotEnd] = plot.series.xDomain;
+        const time = picked?.timestamp ?? plotStart + ratio * (plotEnd - plotStart);
         const value = density
           ? continuousDensity(dataset.footprintTimestamps, time, (metrics.densitySmoothingSeconds ?? 60) * 1000)
           : smoothedSpeed(dataset, time);

@@ -129,6 +129,25 @@ async function check(mode) {
       `);
       assert.deepEqual(imported, { name: 'fixture.csv', time: [1000, 2000], points: [121, 31, 120, 30] });
       assert.doesNotMatch(readLog(), /Native CSV import failed/);
+      const workerCheck = `(async () => {
+        const { default: WorkerEntry } = await import('/features/timeline/speedCurveWorker.ts?worker');
+        const worker = new WorkerEntry();
+        try {
+          return await new Promise((resolve, reject) => {
+            worker.onmessage = ({ data }) => resolve({ id: data.id, moving: data.values?.every(value => value > 0) });
+            worker.onerror = error => reject(new Error(error.message));
+            const footprintTimestamps = new Float64Array([1000, 2000]);
+            const footprintCoordinates = new Float64Array([121, 31, 120, 30]);
+            worker.postMessage({ id: 1, start: 1000, end: 2000, count: 8,
+              raw: { footprintTimestamps, footprintCoordinates } },
+              [footprintTimestamps.buffer, footprintCoordinates.buffer]);
+          });
+        } finally { worker.terminate(); }
+      })()`;
+      const worker = await evaluate(url, `
+        ${electron}.BrowserWindow.getAllWindows()[0].webContents.executeJavaScript(${JSON.stringify(workerCheck)})
+      `);
+      assert.deepEqual(worker, { id: 1, moving: true });
       await evaluate(url, `{
         const window = ${electron}.BrowserWindow.getAllWindows()[0];
         window.on('closed', () => process.mainModule.require('node:fs').writeFileSync(${JSON.stringify(path.join(profile, 'closed'))}, ''));

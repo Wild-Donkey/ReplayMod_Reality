@@ -178,3 +178,30 @@ assert(rawJump>30&&filteredJump<rawJump*.01,'A GPS speed step must become a cont
 assert.equal(smoothSpeedCurve(varying,0,12000,40)[20][1],smoothSpeedCurve(varying,3000,9000,200)[100][1]);
 assert.equal(smoothedSpeed(drift,500),0,'Keep a measured stop at zero speed');
 console.log('Display smoothing passed: symmetric edges, flat interior, no overshoot, no mutation, missing values and cache reuse.');
+
+let computeSpeed, reply;
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('apps/desktop/src/renderer/features/timeline/speedCurveWorker.ts', 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText, {
+  exports: {},
+  require: () => exportsObject,
+  self: {
+    addEventListener(_name, handler) { computeSpeed = handler; },
+    postMessage(message, options) { reply = structuredClone(message, options); },
+  },
+});
+const typedSamples = points => ({
+  footprintTimestamps: Float64Array.from(points.footprintTimestamps),
+  footprintCoordinates: Float64Array.from(points.footprintCoordinates),
+});
+const processed = { ...typedSamples(stationary), timeBounds: [0, 2000] };
+for (const [id, query, reference] of [
+  [1, { raw: typedSamples(varying) }, varying],
+  [2, { processed }, { ...varying, processedMotion: processed }],
+  [3, { processed: null }, varying],
+]) {
+  computeSpeed({ data: { id, start: 0, end: 4000, count: 32, ...query } });
+  assert.equal(reply.id, id);
+  assert.deepEqual(Array.from(reply.values), Array.from(smoothSpeedCurve(reference, 0, 4000, 32), ([, value]) => value ?? NaN));
+}
+console.log('Timeline worker passed: transferred output, retained raw coordinates, processed-motion updates and fallback coverage.');
