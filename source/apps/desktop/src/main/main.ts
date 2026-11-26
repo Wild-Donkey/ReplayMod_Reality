@@ -7,6 +7,8 @@ import { Worker } from "node:worker_threads";
 import { killChildren, stopChildren } from "../../../../packages/media/src/childProcesses";
 import { installShutdown } from "./shutdown";
 import { NativeCore } from "./nativeCore";
+import { readLocationCsv } from "./locationCsv";
+import { readNativeLocationCsv } from "./nativeLocationCsv";
 import {restoreDataset,resolveDatasetSource} from "./restoreDataset";
 import {LocalSpeech} from "./localSpeech";
 import { renderAudioEdit, saveRecordedAudio } from "../../../../packages/media/src/audio-edit";
@@ -22,7 +24,7 @@ import { AppStorage } from "./storage";
 import { storagePaths } from "./storage/paths";
 import { windowBackgroundOptions } from "./windowBackground";
 import { createHash, randomUUID } from "node:crypto";
-import { createReadStream, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { access, mkdir, readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { app, BrowserWindow, dialog, ipcMain, shell, net, Menu, type OpenDialogOptions, type WebContents } from "electron";
 import { installScrollInput } from "./scrollInput";
@@ -32,12 +34,7 @@ import { MapResources } from "./mapResources";
 import type { ConfirmedFlightRecord, ConfirmedFlightsFile, FlightScreeningCache } from "../shared/confirmedFlight";
 import { defaultUserArchive, type UserArchive } from "../shared/userArchive";
 import path from "node:path";
-import { parse } from "csv-parse";
-import type {
-  CoordinateBounds,
-  PointDataset,
-  TimeBounds,
-} from "../../../../packages/data/src";
+import type { PointDataset } from "../../../../packages/data/src";
 import {
   probeMediaFile,
   serializeSrt,
@@ -397,13 +394,6 @@ const firstExistingPath = async (candidates: readonly string[]) => {
 };
 
 
-interface TimedCoordinate {
-  readonly timestamp: number;
-  readonly longitude: number;
-  readonly latitude: number;
-  readonly altitude: number;
-}
-
 interface CsvPair {
   readonly mainFilePath: string;
   readonly photoFilePath: string | null;
@@ -419,158 +409,42 @@ const rememberDatasetSource = (mainFilePath: string, photoFilePath: string | nul
 const isPhotoDataFile = (filePath: string) =>
   path.basename(filePath).toLowerCase().includes("photo");
 
-const pointKey = (point: TimedCoordinate) =>
-  `${point.timestamp}|${point.longitude.toFixed(6)}|${point.latitude.toFixed(6)}`;
+const pendingDatasetSnapshots = new Map<string, Promise<PointDataset>>();
 
 const readLocationCsvSnapshot = async (
   mainFilePath: string,
   photoFilePath: string | null = null,
 ): Promise<{dataset:PointDataset;key:string}> => {
-  const signature = ["point-parser-v2-accuracy-100m", ...await Promise.all([mainFilePath, photoFilePath].map(async file => {
+  const tryNative = !photoFilePath && process.env.REPLAYMOD_NATIVE_CSV === "1";
+  const parserVersion = tryNative ? "point-parser-native-v1" : "point-parser-v2-accuracy-100m";
+  const signature = [parserVersion, ...await Promise.all([mainFilePath, photoFilePath].map(async file => {
     if (!file) return null;
     const info = await stat(file);
     return [file, info.size, info.mtimeMs];
   }))];
   const key = createHash("sha256").update(JSON.stringify(signature)).digest("hex");
-  const saved = await resources.read<PointDataset>("snapshots", key);
-  if (saved) {
-    return {dataset:saved,key};
+  const pending = pendingDatasetSnapshots.get(key);
+  if (pending) return {dataset: await pending, key};
+
+  const load = (async () => {
+    const saved = await resources.read<PointDataset>("snapshots", key);
+    if (saved) return saved;
+
+    const nativeDataset = tryNative ? await readNativeLocationCsv(nativeCoreExecutable, mainFilePath).catch(error => {
+      if (shutdown.isQuitting()) throw error;
+      console.warn("Native CSV import failed", error);
+      return null;
+    }) : null;
+    const dataset = nativeDataset ?? await readLocationCsv(mainFilePath, photoFilePath);
+    await resources.write("snapshots", key, dataset).catch(console.warn);
+    return dataset;
+  })();
+  pendingDatasetSnapshots.set(key, load);
+  try {
+    return {dataset: await load, key};
+  } finally {
+    pendingDatasetSnapshots.delete(key);
   }
-  const footprintPoints: TimedCoordinate[] = [];
-  const photoPointsByKey = new Map<string, TimedCoordinate>();
-  let skippedRowCount = 0;
-  let west = Number.POSITIVE_INFINITY;
-  let south = Number.POSITIVE_INFINITY;
-  let east = Number.NEGATIVE_INFINITY;
-  let north = Number.NEGATIVE_INFINITY;
-  let startTime = Number.POSITIVE_INFINITY;
-  let endTime = Number.NEGATIVE_INFINITY;
-
-  const readFile = async (filePath: string, forcePhoto: boolean) => {
-    const records = createReadStream(filePath).pipe(
-      parse({
-        bom: true,
-        columns: true,
-        skip_empty_lines: true,
-        trim: true,
-      }),
-    );
-
-    for await (const rawRecord of records) {
-      const record = rawRecord as Record<string, string>;
-      const longitude = Number(record.longitude);
-      const latitude = Number(record.latitude);
-      const stepType = Number(record.stepType);
-      const timestamp = Number(record.dataTime) * 1000;
-      const rawAccuracy = record.accuracy?.trim() ?? "";
-      const accuracy = Number(rawAccuracy);
-
-      if (
-        !Number.isFinite(longitude) ||
-        !Number.isFinite(latitude) ||
-        longitude < -180 ||
-        longitude > 180 ||
-        latitude < -90 ||
-        latitude > 90 ||
-        record.dataTime.trim() === "" ||
-        !Number.isFinite(timestamp)
-      ) {
-        skippedRowCount += 1;
-        continue;
-      }
-      // accuracy 是水平定位误差（米）；大于 100 m 的点不进入显示与识别时间线。
-      // 缺失、0 或负值是不同数据源的“未知”哨兵值，不因此删除。
-      if (rawAccuracy !== "" && Number.isFinite(accuracy) && accuracy > 100) {
-        skippedRowCount += 1;
-        continue;
-      }
-
-      const rawAltitude =
-        record.altitude ?? record.elevation ?? record.height ?? record.alt ?? "";
-      const parsedAltitude = Number(rawAltitude);
-      const point = {
-        timestamp,
-        longitude,
-        latitude,
-        altitude:
-          rawAltitude.trim() !== "" && Number.isFinite(parsedAltitude)
-            ? parsedAltitude
-            : Number.NaN,
-      };
-
-      if (forcePhoto || stepType === 1) {
-        photoPointsByKey.set(pointKey(point), point);
-      } else {
-        footprintPoints.push(point);
-      }
-
-      west = Math.min(west, longitude);
-      south = Math.min(south, latitude);
-      east = Math.max(east, longitude);
-      north = Math.max(north, latitude);
-      startTime = Math.min(startTime, timestamp);
-      endTime = Math.max(endTime, timestamp);
-    }
-  };
-
-  await readFile(mainFilePath, false);
-
-  if (photoFilePath) {
-    await readFile(photoFilePath, true);
-  }
-
-  const photoPoints = [...photoPointsByKey.values()];
-  const timelinePoints = [...footprintPoints, ...photoPoints];
-
-  const pointCount = footprintPoints.length + photoPoints.length;
-
-  if (pointCount === 0) {
-    throw new Error("CSV 中没有找到有效的 longitude / latitude 坐标。");
-  }
-
-  const bounds: CoordinateBounds = [west, south, east, north];
-  const timeBounds: TimeBounds = [startTime, endTime];
-  footprintPoints.sort((left, right) => left.timestamp - right.timestamp);
-  photoPoints.sort((left, right) => left.timestamp - right.timestamp);
-  timelinePoints.sort((left, right) => left.timestamp - right.timestamp);
-
-  const footprintCoordinates = footprintPoints.flatMap((point) => [
-    point.longitude,
-    point.latitude,
-  ]);
-  const photoCoordinates = photoPoints.flatMap((point) => [
-    point.longitude,
-    point.latitude,
-  ]);
-  const footprintTimestamps = footprintPoints.map((point) => point.timestamp);
-  const photoTimestamps = photoPoints.map((point) => point.timestamp);
-  const timelineCoordinates = timelinePoints.flatMap((point) => [
-    point.longitude,
-    point.latitude,
-  ]);
-  const timelineTimestamps = timelinePoints.map((point) => point.timestamp);
-  const timelineAltitudes = timelinePoints.map((point) => point.altitude);
-
-  const dataset: PointDataset = {
-    sourceName: photoFilePath
-      ? `${path.basename(mainFilePath)} + ${path.basename(photoFilePath)}`
-      : path.basename(mainFilePath),
-    footprintCoordinates,
-    photoCoordinates,
-    footprintTimestamps,
-    photoTimestamps,
-    timelineCoordinates,
-    timelineTimestamps,
-    timelineAltitudes,
-    pointCount,
-    footprintPointCount: footprintPoints.length,
-    photoPointCount: photoPoints.length,
-    skippedRowCount,
-    bounds,
-    timeBounds,
-  };
-  await resources.write("snapshots", key, dataset).catch(console.warn);
-  return {dataset,key};
 };
 
 // Only explicit activation updates the persistent application selection.
@@ -1242,10 +1116,11 @@ const createWindow = (): void => {
 };
 
 const nativeCoreFilename = process.platform === "win32" ? "replaymod-core.exe" : "replaymod-core";
-const nativeCore = new NativeCore(path.join(
+const nativeCoreExecutable = path.join(
   app.isPackaged ? process.resourcesPath : path.join(app.getAppPath(), "native", "build"),
   nativeCoreFilename,
-));
+);
+const nativeCore = new NativeCore(nativeCoreExecutable);
 
 const shutdown = installShutdown(async () => {
   gpsJobs.cancel(() => true);

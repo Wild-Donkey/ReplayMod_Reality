@@ -7,10 +7,11 @@ const resource = `native/build/replaymod-core${windows ? '.exe' : ''}`;
 
 function buildCore() {
   const root = path.resolve(__dirname, '../..');
-  const source = path.join(root, 'native/core/main.cpp');
+  const sources = ['main.cpp', 'location_csv.cpp'].map(file => path.join(root, 'native/core', file));
+  const inputs = [...sources, path.join(root, 'native/core/location_csv.h'), __filename];
   const output = path.join(root, resource);
   const existing = statSync(output, { throwIfNoEntry: false });
-  if (existing && existing.mtimeMs >= Math.max(statSync(source).mtimeMs, statSync(__filename).mtimeMs)) return output;
+  if (existing && existing.mtimeMs >= Math.max(...inputs.map(file => statSync(file).mtimeMs))) return output;
 
   const directory = path.dirname(output);
   mkdirSync(directory, { recursive: true });
@@ -19,7 +20,7 @@ function buildCore() {
   const compiler = process.env.CXX || (windows ? 'g++.exe' : 'c++');
   const flags = windows ? ['-static'] : process.platform === 'darwin' ? ['-mmacosx-version-min=11.0'] : [];
   try {
-    execFileSync(compiler, ['-std=c++17', '-O2', ...flags, source, '-o', binary], { stdio: 'inherit', windowsHide: true });
+    execFileSync(compiler, ['-std=c++17', '-O2', ...flags, ...sources, '-o', binary], { stdio: 'inherit', windowsHide: true });
     renameSync(binary, output);
   } finally {
     rmSync(staging, { recursive: true, force: true });
