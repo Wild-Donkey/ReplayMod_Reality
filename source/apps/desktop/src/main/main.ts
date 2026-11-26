@@ -816,7 +816,7 @@ const gpsJobs = new LatestJobQueue<GpsJob>(async (
     if(source.creationTimeSeconds===undefined)throw new Error("请先对齐视频拍摄时间。");
     if(source.creationTimeSeconds!==request.creationTimeSeconds)throw new Error("视频拍摄时间已变化，请重新载入视频。");
     const start=alignedMediaStart(source.creationTimeSeconds,request.offsetSeconds);
-    const rate = request.precision === "preview" ? 2
+    const rate = request.precision === "preview" ? 5
       : normalizeTrajectorySampleRate(request.precision === "export" ? request.sampleRateHz : undefined);
     const end=source.durationSeconds===null
       ? request.points.reduce((latest,point)=>Number.isFinite(point.timeSeconds)?Math.max(latest,point.timeSeconds):latest,start)

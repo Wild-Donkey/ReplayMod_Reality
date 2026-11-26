@@ -266,7 +266,7 @@ async function check(mode) {
               if (update.error) { reject(new Error(update.error)); return; }
               resolve({ points: update.result.points.length, windows: update.result.fittedWindows,
                 start: update.result.points[0].timeSeconds, end: update.result.points.at(-1).timeSeconds,
-                constraints: update.result.attitudeConstraints, expected: Math.ceil((creationTimeSeconds + durationSeconds - creationTimeSeconds) * (precision === 'preview' ? 2 : Math.min(60, sampleRateHz))) + 1,
+                constraints: update.result.attitudeConstraints, expected: Math.ceil((creationTimeSeconds + durationSeconds - creationTimeSeconds) * (precision === 'preview' ? 5 : Math.min(60, sampleRateHz))) + 1,
                 progress, ms: performance.now() - started });
             });
             bridge.postMediaGps('native-fit-fixture', { sourcePath: media.sourcePath,
@@ -291,7 +291,7 @@ async function check(mode) {
         } else {
           const { points, windows, start, end, previewPoints, highRatePoints } = result;
           assert.deepEqual({ points, windows, start, end, previewPoints, highRatePoints },
-            { points: 21, windows: 1, start: 1577836800, end: 1577836802, previewPoints: 5, highRatePoints: 121 });
+            { points: 21, windows: 1, start: 1577836800, end: 1577836802, previewPoints: 11, highRatePoints: 121 });
         }
         assert.doesNotMatch(readLog(), /Native trajectory fit failed/);
       }

@@ -210,7 +210,7 @@ async function checkTrajectory(executable) {
     { timeSeconds: start + 20, longitude: 100.001, latitude: 30, altitude: 80 },
     { timeSeconds: start + 40, longitude: 100.01, latitude: 30, altitude: 60 },
   ], seconds: 27.03, rate: 10, corrected: 1 });
-  for (const rate of [2, 24, 120]) fixtures.push({ ...fixtures[0], samples: [], seconds: 60, rate, attitude: false });
+  for (const rate of [5, 24, 120]) fixtures.push({ ...fixtures[0], samples: [], seconds: 60, rate, attitude: false });
 
   for (const { samples, points, seconds, rate, attitude, corrected } of fixtures) {
     const legacy = fitMotionTrajectory(samples, points, start, start + seconds, rate);
