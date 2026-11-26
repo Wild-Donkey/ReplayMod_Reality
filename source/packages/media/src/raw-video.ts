@@ -4,7 +4,7 @@ import { constants } from "node:fs";
 import path from "node:path";
 import { assertCanStartChild, runChild, stopChild, trackChild } from "./childProcesses";
 
-export async function findTransparentVideoEncoder(searchPath = process.env.PATH ?? ""): Promise<string | null> {
+async function findFFmpeg(requiredEncoders: readonly string[], searchPath: string): Promise<string | null> {
   const names = process.platform === "win32" ? ["ffmpeg.exe"] : ["ffmpeg"];
   const directories = searchPath.split(path.delimiter)
     .map(directory => process.platform === "win32" ? directory.replace(/^"|"$/g, "") : directory)
@@ -14,13 +14,92 @@ export async function findTransparentVideoEncoder(searchPath = process.env.PATH 
     try {
       await access(candidate, constants.X_OK);
       const {stdout} = await runChild(candidate, ["-hide_banner", "-encoders"], {maxBuffer: 4 * 1024 * 1024, timeout: 10000});
-      if (/\blibvpx-vp9\s/.test(stdout)) return candidate;
+      const encoders = new Set(stdout.split("\n").map(line => line.trim().split(/\s+/)[1]));
+      if (requiredEncoders.every(name => encoders.has(name))) return candidate;
     } catch { /* Try the next installed binary, including the bundled fallback. */ }
   }
   return null;
 }
 
-export interface RawVideoOptions {readonly encoder: string; readonly output: string; readonly width: number; readonly height: number; readonly fps: number; readonly bitrate: number}
+export function findTransparentVideoEncoder(searchPath = process.env.PATH ?? "") {
+  return findFFmpeg(["libvpx-vp9"], searchPath);
+}
+
+export type CompositeCodec = "h264" | "hevc";
+const compositeEncoders = {h264: "libx264", hevc: "libx265"} as const;
+const hardwareEncoders = {h264: "h264_videotoolbox", hevc: "hevc_videotoolbox"} as const;
+
+export function findCompositeVideoEncoder(codec: CompositeCodec, searchPath = process.env.PATH ?? "") {
+  return findFFmpeg([compositeEncoders[codec], "aac"], searchPath);
+}
+
+export async function findHardwareCompositeEncoder(
+  codec: CompositeCodec,
+  {width, height, fps, bitrate}: Pick<RawVideoOptions, "width" | "height" | "fps" | "bitrate">,
+  quality?: number,
+) {
+  if (process.platform !== "darwin" || (quality !== undefined && process.arch !== "arm64")) return null;
+  const name = hardwareEncoders[codec];
+  const executable = await findFFmpeg([name, "aac"], process.env.PATH ?? "");
+  if (!executable) return null;
+  try {
+    await runChild(executable, [
+      "-hide_banner", "-loglevel", "error", "-nostdin",
+      "-f", "lavfi", "-i", `color=size=${width}x${height}:rate=${fps}`,
+      "-frames:v", "1", "-c:v", name, "-pix_fmt", "nv12", "-allow_sw", "0",
+      ...videoToolboxRateArguments(bitrate, quality), "-f", "null", "-",
+    ], {timeout: 5000, maxBuffer: 256 * 1024});
+    return executable;
+  } catch {
+    return null;
+  }
+}
+
+function videoToolboxRateArguments(bitrate: number, quality?: number) {
+  return quality === undefined ? ["-b:v", String(bitrate)] : ["-q:v", String(quality)];
+}
+
+export interface VideoCompositeInput {
+  readonly sourcePath: string;
+  readonly offsetSeconds: number;
+  readonly durationSeconds: number;
+  readonly codec: CompositeCodec;
+  readonly hardware?: boolean;
+  readonly hardwareQuality?: number;
+  readonly overlayTop?: number;
+}
+
+export interface RawVideoOptions {
+  readonly encoder: string;
+  readonly output: string;
+  readonly width: number;
+  readonly height: number;
+  readonly fps: number;
+  readonly bitrate: number;
+  readonly crf?: number;
+  readonly cpuUsed?: number;
+  readonly composite?: VideoCompositeInput;
+}
+
+function compositeArguments(options: RawVideoOptions, input: VideoCompositeInput) {
+  const {width, height, fps, bitrate, crf, cpuUsed} = options;
+  const preset = cpuUsed === 5 ? "veryfast" : cpuUsed === 2 ? "slow" : "medium";
+  const base = `[1:V:0]fps=${fps},scale=${width}:${height}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1[base]`;
+  const encoding = input.hardware
+    ? ["-c:v", hardwareEncoders[input.codec], "-pix_fmt", "nv12", "-allow_sw", "0",
+      ...videoToolboxRateArguments(bitrate, input.hardwareQuality)]
+    : ["-c:v", compositeEncoders[input.codec], "-preset", preset, "-threads", "4", "-pix_fmt", "yuv420p",
+      ...(crf === undefined ? ["-b:v", String(bitrate)] : ["-crf", String(crf)]),
+      ...(input.codec === "hevc" ? ["-x265-params", "pools=4:log-level=error"] : [])];
+  return [
+    "-ss", String(input.offsetSeconds), "-i", input.sourcePath,
+    "-filter_complex_threads", "2",
+    "-filter_complex", `${base};[base][0:v:0]overlay=y=${input.overlayTop ?? 0}:shortest=1:format=yuv420[video]`,
+    "-map", "[video]", "-map", "1:a?", "-t", String(input.durationSeconds),
+    ...encoding, ...(input.codec === "hevc" ? ["-tag:v", "hvc1"] : []),
+    "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-f", "mp4",
+  ];
+}
 
 // One awaited RGBA write at a time bounds memory independently of duration.
 // CFR timestamps come from the input frame rate, never from rendering latency.
@@ -33,10 +112,27 @@ export class RawVideoEncoder {
   private ending = false;
   private cancelled = false;
   private failure: Error | null = null;
+  private readonly inputHeight: number;
   frames = 0;
   constructor(private readonly options: RawVideoOptions) {
     assertCanStartChild();
-    this.process = trackChild(spawn(options.encoder, ["-hide_banner", "-loglevel", "error", "-nostdin", "-n", "-f", "rawvideo", "-pixel_format", "rgba", "-video_size", `${options.width}x${options.height}`, "-framerate", String(options.fps), "-i", "pipe:0", "-an", "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-auto-alt-ref", "0", "-row-mt", "1", "-threads", "4", "-deadline", "good", "-cpu-used", "4", "-b:v", String(options.bitrate), "-f", "webm", options.output], {stdio: ["pipe", "pipe", "pipe"], windowsHide: true}));
+    this.inputHeight = options.height - (options.composite?.overlayTop ?? 0);
+    const args = [
+      "-hide_banner", "-loglevel", "error", "-nostdin", "-n",
+      "-f", "rawvideo", "-pixel_format", "rgba", "-video_size", `${options.width}x${this.inputHeight}`,
+      "-framerate", String(options.fps), "-i", "pipe:0",
+    ];
+    if (options.composite) args.push(...compositeArguments(options, options.composite));
+    else args.push(
+      "-an",
+      "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-auto-alt-ref", "0",
+      "-row-mt", "1", "-threads", "4", "-deadline", "good", "-cpu-used", String(options.cpuUsed ?? 4),
+      "-b:v", String(options.bitrate),
+      ...(options.crf === undefined ? [] : ["-crf", String(options.crf)]),
+      "-f", "webm",
+    );
+    args.push(options.output);
+    this.process = trackChild(spawn(options.encoder, args, {stdio: ["pipe", "pipe", "pipe"], windowsHide: true}));
     this.process.stdout.resume();
     this.process.stderr.on("data", chunk => { this.stderr = (this.stderr + String(chunk)).slice(-65536); });
     this.process.stdin.on("error", error => { this.failure = error; });
@@ -56,7 +152,7 @@ export class RawVideoEncoder {
   async write(rgba: Uint8Array) {
     if (this.ending || this.cancelled || this.failure) throw this.failure ?? new Error("Video encoder is closed");
     if (this.busy) throw new Error("Concurrent video frame writes are not allowed");
-    if (!ArrayBuffer.isView(rgba) || rgba.BYTES_PER_ELEMENT !== 1 || rgba.byteLength !== this.options.width * this.options.height * 4) throw new Error("Invalid RGBA frame size");
+    if (!ArrayBuffer.isView(rgba) || rgba.BYTES_PER_ELEMENT !== 1 || rgba.byteLength !== this.options.width * this.inputHeight * 4) throw new Error("Invalid RGBA frame size");
     this.busy = true;
     try {
       await this.ready;

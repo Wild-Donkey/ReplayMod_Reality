@@ -12,6 +12,9 @@ export interface MediaTrack {
   readonly codec: string;
   readonly codecTag: string | null;
   readonly bitrate?: number | null;
+  readonly width?: number | null;
+  readonly height?: number | null;
+  readonly frameRate?: number | null;
   readonly durationSeconds: number | null;
   readonly sampleCount: number | null;
   readonly language: string | null;

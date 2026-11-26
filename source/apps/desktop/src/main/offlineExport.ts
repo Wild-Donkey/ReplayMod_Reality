@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { copyFile, link, unlink } from "node:fs/promises";
+import { copyFile, link, stat, unlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
-import { RawVideoEncoder } from "../../../../packages/media/src/raw-video";
+import { RawVideoEncoder, type VideoCompositeInput } from "../../../../packages/media/src/raw-video";
 import { OfflineFramePlan, type OfflineExportOptions, type OfflineExportSegment } from "../shared/overlayExport";
 
 interface Session {
@@ -11,6 +12,8 @@ interface Session {
   readonly destination: string;
   readonly encoderPath: string;
   readonly paths: string[];
+  readonly estimate: boolean;
+  readonly composite?: Omit<VideoCompositeInput, "durationSeconds">;
   segment: number;
   frames: number;
   busy: boolean;
@@ -23,11 +26,16 @@ export class OfflineExportManager {
   private readonly cancellations = new Map<string, Promise<void>>();
   private readonly operations = new Set<Promise<unknown>>();
   get active() { return this.sessions.size > 0; }
-  begin(owner: number, options: OfflineExportOptions, destination: string, encoderPath: string) {
+  beginEstimate(owner: number, options: OfflineExportOptions, encoderPath: string, composite?: Session["composite"]) {
+    return this.begin(owner, options, path.join(tmpdir(), "replay-estimate"), encoderPath, true, composite);
+  }
+  begin(owner: number, options: OfflineExportOptions, destination: string, encoderPath: string, estimate = false, composite?: Session["composite"]) {
     if ([...this.sessions.values()].some(session => session.owner === owner)) throw new Error("An export is already running");
     const plan = new OfflineFramePlan(options), id = randomUUID();
-    this.sessions.set(id, {owner, plan, destination, encoderPath, paths: [], segment: 0, frames: 0, busy: false, cancelled: false, encoder: null, temporary: null});
-    return {id, segmentCount: plan.segmentCount};
+    if (estimate && (plan.segmentCount !== 1 || plan.totalFrames > 120 || options.crf === undefined)) throw new Error("Invalid export estimate sample");
+    if (composite && plan.segmentCount !== 1) throw new Error("Composite export requires a single file");
+    this.sessions.set(id, {owner, plan, destination, encoderPath, paths: [], estimate, composite, segment: 0, frames: 0, busy: false, cancelled: false, encoder: null, temporary: null});
+    return {id, segmentCount: plan.segmentCount, videoToolbox: composite?.hardware ?? false};
   }
   write(owner: number, id: string, segment: number, index: number, rgba: Uint8Array) {
     return this.track(this.writeFrame(owner, id, segment, index, rgba));
@@ -36,12 +44,16 @@ export class OfflineExportManager {
     const session = this.get(owner, id);
     if (session.busy || segment !== session.segment || index !== session.frames) throw new Error("Export frames must be submitted sequentially");
     session.plan.frame(segment, index);
-    if (!ArrayBuffer.isView(rgba) || rgba.BYTES_PER_ELEMENT !== 1 || rgba.byteLength !== session.plan.options.width * session.plan.options.height * 4) throw new Error("Invalid RGBA frame size");
+    const inputHeight = session.plan.options.height - (session.composite?.overlayTop ?? 0);
+    if (!ArrayBuffer.isView(rgba) || rgba.BYTES_PER_ELEMENT !== 1 || rgba.byteLength !== session.plan.options.width * inputHeight * 4) throw new Error("Invalid RGBA frame size");
     session.busy = true;
     try {
       if (!session.encoder) {
-        session.temporary = path.join(path.dirname(session.destination), `.${path.basename(session.destination)}.${id}.${segment}.part.webm`);
-        session.encoder = new RawVideoEncoder({...session.plan.options, encoder: session.encoderPath, output: session.temporary});
+        const extension = session.composite ? "mp4" : "webm";
+        session.temporary = path.join(path.dirname(session.destination), `.${path.basename(session.destination)}.${id}.${segment}.part.${extension}`);
+        const {start, end} = session.plan.options;
+        const composite = session.composite && {...session.composite, durationSeconds: (end - start) / 1000};
+        session.encoder = new RawVideoEncoder({...session.plan.options, encoder: session.encoderPath, output: session.temporary, composite});
       }
       await session.encoder.write(rgba);
       if (session.cancelled) throw new Error("Export was cancelled");
@@ -59,9 +71,18 @@ export class OfflineExportManager {
     try {
       await session.encoder.finish();
       if (session.cancelled) throw new Error("Export was cancelled");
+      if (session.estimate) {
+        const {size: sampleBytes} = await stat(session.temporary);
+        await unlink(session.temporary);
+        if (session.cancelled) throw new Error("Export was cancelled");
+        const frames = session.frames;
+        session.segment++; session.frames = 0; session.encoder = null; session.temporary = null;
+        return {path: "", frames, sampleBytes};
+      }
       const extension = path.extname(session.destination), base = session.destination.slice(0, session.destination.length - extension.length);
+      const outputExtension = session.composite ? "mp4" : "webm";
       const suffix = session.plan.segmentCount > 1 ? `-${String(segment + 1).padStart(3, "0")}-of-${session.plan.segmentCount}` : "";
-      let destination = `${base}${suffix}.webm`;
+      let destination = `${base}${suffix}.${outputExtension}`;
       for (let collision = 0; ; collision++) {
         try {
           try { await link(session.temporary, destination); }
@@ -73,7 +94,7 @@ export class OfflineExportManager {
         }
         catch (error) {
           if ((error as NodeJS.ErrnoException).code !== "EEXIST" || collision >= 9999) throw error;
-          destination = `${base}${suffix} (${collision + 1}).webm`;
+          destination = `${base}${suffix} (${collision + 1}).${outputExtension}`;
         }
       }
       if (session.cancelled) { await unlink(destination).catch(() => {}); throw new Error("Export was cancelled"); }

@@ -19,6 +19,9 @@ interface ProbeStream {
   readonly bit_rate?: string;
   readonly duration?: string;
   readonly nb_frames?: string;
+  readonly width?: number;
+  readonly height?: number;
+  readonly avg_frame_rate?: string;
   readonly tags?: Record<string, string>;
 }
 
@@ -34,6 +37,12 @@ interface ProbeDocument {
 const numericOrNull = (value: string | undefined): number | null => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+};
+
+const frameRateOrNull = (value: string | undefined): number | null => {
+  if (!value || !value.includes("/")) return numericOrNull(value);
+  const [numerator, denominator] = value.split("/").map(Number);
+  return Number.isFinite(numerator) && Number.isFinite(denominator) && denominator > 0 ? numerator / denominator : null;
 };
 
 const trackIdOrNull = (value: string | undefined): number | null => {
@@ -133,6 +142,9 @@ export const probeMediaFile = async (sourcePath: string): Promise<MediaSource> =
     codec: stream.codec_name ?? "unknown",
     codecTag: stream.codec_tag_string ?? null,
     bitrate: numericOrNull(stream.bit_rate),
+    width: Number.isInteger(stream.width) ? stream.width : null,
+    height: Number.isInteger(stream.height) ? stream.height : null,
+    frameRate: frameRateOrNull(stream.avg_frame_rate),
     durationSeconds: numericOrNull(stream.duration),
     sampleCount: numericOrNull(stream.nb_frames),
     language: stream.tags?.language ?? null,

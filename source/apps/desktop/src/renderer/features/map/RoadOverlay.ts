@@ -39,7 +39,8 @@ export class RoadOverlay {
       center: [center.lng, center.lat], zoom: base.getZoom(), bearing: base.getBearing(), pitch: base.getPitch(),
       interactive: false, attributionControl: false,
       transformRequest: cachedMapRequest,
-      pixelRatio: base.getPixelRatio(),
+      // The composited road mask should be ready as soon as its tiles are.
+      pixelRatio: base.getPixelRatio(), fadeDuration: 0,
       canvasContextAttributes: {alpha: true, preserveDrawingBuffer: true},
     });
     this.overlay.on("error",()=>{this.resourceFailed=true;});
@@ -76,11 +77,11 @@ export class RoadOverlay {
   }
 
   getCanvas() { return this.overlay.getCanvas(); }
-  async waitForFrame(signal: AbortSignal) {
+  async waitForFrame(signal: AbortSignal, immediate = false) {
     if (this.resourceFailed) return false;
     this.synchronize();
     if (this.overlay.getPixelRatio() !== this.base.getPixelRatio()) this.overlay.setPixelRatio(this.base.getPixelRatio());
-    return await waitForMapFrame(this.overlay,signal) && !this.resourceFailed;
+    return await waitForMapFrame(this.overlay, signal, undefined, immediate) && !this.resourceFailed;
   }
 
   dispose() {

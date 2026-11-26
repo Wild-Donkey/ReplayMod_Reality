@@ -1043,8 +1043,12 @@ button:focus-visible {
 .export-dialog select { width: 190px; }
 .export-dialog .check-row { justify-content: flex-start; gap: 9px; }
 .export-dialog .check-row input { accent-color: #fff; }
+.export-estimate { margin: 10px 0 4px; padding: 10px 12px; border: 1px solid #3b3b3b; background: #202020; color: #bbb; }
+.export-estimate strong { color: #fff; }
+.export-estimate small { display: block; margin-top: 5px; color: #777; line-height: 1.35; }
 .dialog-actions { display: flex; justify-content: flex-end; margin-top: 16px; }
 .dialog-actions button { min-width: 88px; }
+.export-dialog .dialog-actions { gap: 8px; }
 
 .inspector-section h2 {
   margin: 0 0 8px;

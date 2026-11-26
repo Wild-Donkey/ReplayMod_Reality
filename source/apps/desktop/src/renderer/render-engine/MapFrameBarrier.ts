@@ -5,10 +5,11 @@ export interface MapFrameTarget {
   isStyleLoaded(): boolean | void;
   areTilesLoaded(): boolean;
   triggerRepaint(): void;
+  redraw?(): unknown;
 }
 
 /** A render event can contain placeholders. Only an idle, fully loaded frame is capturable. */
-export function waitForMapFrame(map: MapFrameTarget, signal: AbortSignal, timeout = 60_000): Promise<boolean> {
+export function waitForMapFrame(map: MapFrameTarget, signal: AbortSignal, timeout = 60_000, immediate = false): Promise<boolean> {
   return new Promise(resolve => {
     if (signal.aborted) { resolve(false); return; }
     let finished = false;
@@ -28,6 +29,10 @@ export function waitForMapFrame(map: MapFrameTarget, signal: AbortSignal, timeou
     map.on("idle", onIdle);
     map.on("error", onError);
     signal.addEventListener("abort", onAbort, {once: true});
-    map.triggerRepaint();
+    if (immediate && map.redraw) {
+      try { map.redraw(); }
+      catch { finish(false); }
+    }
+    if (!finished) map.triggerRepaint();
   });
 }

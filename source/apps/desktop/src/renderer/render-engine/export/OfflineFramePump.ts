@@ -8,24 +8,31 @@ export interface OfflineFrameWork {
   readonly timestamp: number;
   readonly progress: number;
 }
-export async function renderOfflineFrames(plan: OfflineFramePlan, clock: ReplayClock, signal: AbortSignal, tasks: {
-  render(frame: OfflineFrameWork): Promise<void>;
-  encode(frame: OfflineFrameWork): Promise<void>;
+export async function renderOfflineFrames<Pixels>(plan: OfflineFramePlan, clock: ReplayClock, signal: AbortSignal, tasks: {
+  render(frame: OfflineFrameWork): Promise<Pixels>;
+  encode(frame: OfflineFrameWork, pixels: Pixels): Promise<void>;
   finishSegment(segment: number): Promise<void>;
   progress?(progress: number): void;
 }) {
   const active = () => { if (signal.aborted) throw signal.reason ?? new Error("Export was cancelled"); };
   for (let segment = 0; segment < plan.segmentCount; segment++) {
+    let pending: Promise<void> | undefined;
     for (let index = 0; index < plan.segmentFrames(segment); index++) {
       active();
       const work = {segment, index, ...plan.frame(segment, index)};
       clock.step(work.timestamp, work.frame);
-      await tasks.render(work);
+      const pixels = await tasks.render(work);
       active();
-      await tasks.encode(work);
+      if (pending) await pending;
       active();
-      tasks.progress?.(work.progress);
+      // Keep one encoder write in flight while producing the next frame.
+      pending = tasks.encode(work, pixels).then(() => {
+        active();
+        tasks.progress?.(work.progress);
+      });
+      void pending.catch(() => {});
     }
+    if (pending) await pending;
     active();
     await tasks.finishSegment(segment);
   }

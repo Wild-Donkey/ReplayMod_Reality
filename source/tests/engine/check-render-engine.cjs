@@ -1123,13 +1123,24 @@ async function checkFrameBarrier() {
   const cancelled=waitForMapFrame(map,controller.signal);controller.abort();
   assert.equal(await cancelled,false);assert.equal(count(),0);
   assert.equal(await waitForMapFrame(map,controller.signal),false);
+  let redraws=0, repaints=0;
+  const immediateMap={...map,redraw:()=>{redraws++;emit('idle');},triggerRepaint:()=>{repaints++;}};
+  const readySignal=new AbortController().signal;
+  assert.equal(await waitForMapFrame(immediateMap,readySignal,1000,true),true);
+  assert.equal(redraws,1);assert.equal(repaints,0);assert.equal(count(),0);
+  loaded=false;
+  const waiting=waitForMapFrame(immediateMap,readySignal,1000,true);
+  assert.equal(repaints,1,'A synchronous render with pending tiles still waits for a loaded frame');
+  loaded=true;emit('idle');assert.equal(await waiting,true);assert.equal(count(),0);
 }
 async function checkOfflinePump() {
-  const {OfflineFramePlan}=loadModule(path.join('apps','desktop','src','shared','overlayExport.ts'));
+  const {OfflineFramePlan, compositeSourceDuration}=loadModule(path.join('apps','desktop','src','shared','overlayExport.ts'));
   const {renderOfflineFrames}=load('export/OfflineFramePump');
   const options={width:16,height:16,fps:3,bitrate:1000000,start:1000,end:3500,segmentMilliseconds:1000};
   const plan=new OfflineFramePlan(options);
   assert.equal(plan.totalFrames,8);assert.equal(plan.segmentCount,3);
+  assert.equal(compositeSourceDuration({durationSeconds:57.024,tracks:[{kind:'video',durationSeconds:57},{kind:'audio',durationSeconds:57.024}]}),57);
+  assert.equal(compositeSourceDuration({durationSeconds:57.024,tracks:[{kind:'video',durationSeconds:null}]}),57.024);
   assert.deepEqual([0,1,2].map(segment=>plan.segmentFrames(segment)),[3,3,2]);
   assert.equal(plan.frame(0,0).timestamp,1000);assert.equal(plan.frame(1,0).timestamp,2000);
   assert(plan.frame(2,1).timestamp<3500);assert.equal(plan.frame(2,1).progress,1);
@@ -1150,6 +1161,29 @@ async function checkOfflinePump() {
   assert.deepEqual(events,['r0','e0','r1','e1','r2','e2','s0','r3','e3','r4','e4','r5','e5','s1','r6','e6','r7','e7','s2']);
   assert.equal(progress.at(-1),1);assert.equal(clock.current.frame,7);assert.equal(clock.current.mode,'export');
   assert.equal(interactive.current.time,null,'Export stepping does not change the interactive clock');
+  let finishFirstWrite, secondRendered;
+  const firstWrite = new Promise(resolve => {finishFirstWrite = resolve;});
+  const nextRender = new Promise(resolve => {secondRendered = resolve;});
+  const renderedFrames = [], encodedFrames = [];
+  const concurrent = renderOfflineFrames(plan, new ReplayClock(), new AbortController().signal, {
+    render: async work => {
+      renderedFrames.push(work.frame);
+      if (work.frame === 1) secondRendered();
+      return work.frame;
+    },
+    encode: async (work, pixels) => {
+      assert.equal(pixels, work.frame);
+      encodedFrames.push(work.frame);
+      if (work.frame === 0) await firstWrite;
+    },
+    finishSegment: async () => {},
+  });
+  await nextRender;
+  assert.deepEqual(renderedFrames, [0, 1], 'Only one frame is rendered ahead while the encoder is busy');
+  assert.deepEqual(encodedFrames, [0], 'Encoding remains serial while the next frame renders');
+  finishFirstWrite();
+  await concurrent;
+  assert.deepEqual(encodedFrames, [0, 1, 2, 3, 4, 5, 6, 7]);
   const cancelled=new AbortController();let encoded=0,finished=0;
   await assert.rejects(renderOfflineFrames(plan,new ReplayClock(),cancelled.signal,{
     render:async()=>cancelled.abort(new Error('cancelled in render')),encode:async()=>{encoded++;},finishSegment:async()=>{finished++;},

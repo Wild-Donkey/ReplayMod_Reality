@@ -61,6 +61,7 @@ export class BuildingHeightOverlay {
   private readonly providerSource: string | undefined;
   private readonly cacheSource: string | undefined;
   private restoring = false;
+  private initialized = false;
   private resourceFailed = false;
   private restoration: Promise<void> = Promise.resolve();
   private visible = true;
@@ -88,7 +89,8 @@ export class BuildingHeightOverlay {
         layers: template ? [{...template, layout: {...template.layout, visibility: "none"}}] : [],
       },
       center: [center.lng, center.lat], zoom: base.getZoom(), bearing: base.getBearing(), pitch: base.getPitch(),
-      pixelRatio: base.getPixelRatio(),
+      // This canvas supplies a height mask, so tile fades only defer readiness.
+      pixelRatio: base.getPixelRatio(), fadeDuration: 0,
       interactive: false, attributionControl: false, transformRequest: cachedMapRequest,
       canvasContextAttributes: {alpha: true, preserveDrawingBuffer: true, antialias: false},
     });
@@ -152,19 +154,22 @@ export class BuildingHeightOverlay {
         }
         this.capture();
       });
+      this.initialized = true;
     });
     base.on("movestart", this.capture);
     base.on("move", this.synchronize);
     base.on("resize", this.synchronize);
   }
 
-  async waitForFrame(signal: AbortSignal) {
+  async waitForFrame(signal: AbortSignal, immediate = false) {
     if (this.resourceFailed) return false;
     if (this.map.getPixelRatio() !== this.base.getPixelRatio()) this.map.setPixelRatio(this.base.getPixelRatio());
     this.synchronize();
-    if (!await waitForMapFrame(this.map,signal)) return false;
+    // The startup load event initializes restoration. Once ready, one idle
+    // barrier after restoration is enough for the current camera and mask.
+    if (!this.initialized && !await waitForMapFrame(this.map, signal, undefined, immediate)) return false;
     await this.restoration;
-    return !signal.aborted && !this.resourceFailed && await waitForMapFrame(this.map,signal);
+    return !signal.aborted && !this.resourceFailed && await waitForMapFrame(this.map, signal, undefined, immediate);
   }
 
   setVisible(visible: boolean) {

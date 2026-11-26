@@ -14,8 +14,8 @@ import {registerMediaPreviewScheme,installMediaPreviewProtocol} from "./mediaPre
 import { OfflineExportManager } from "./offlineExport";
 import { ALIGN_MEDIA_CHANNEL, alignedMediaStart, splitAlignmentOffset, validAlignmentOffset, type MediaAlignmentRequest, type MediaAlignmentResult } from "../shared/mediaAlignment";
 import { shiftVideoTimestamps } from "../../../../packages/media/src/video-timestamps";
-import { OfflineFramePlan, type OfflineExportOptions } from "../shared/overlayExport";
-import { findTransparentVideoEncoder } from "../../../../packages/media/src/raw-video";
+import { compositeOverlayTop, compositeSourceDuration, OfflineFramePlan, type CompositeExportRequest, type OfflineExportOptions } from "../shared/overlayExport";
+import { findCompositeVideoEncoder, findHardwareCompositeEncoder, findTransparentVideoEncoder, type VideoCompositeInput } from "../../../../packages/media/src/raw-video";
 import { installDisplayHDR } from "./displayHDR";
 import { AppStorage } from "./storage";
 import { storagePaths } from "./storage/paths";
@@ -23,7 +23,7 @@ import { windowBackgroundOptions } from "./windowBackground";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, mkdirSync } from "node:fs";
 import { access, mkdir, readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
-import { app, BrowserWindow, dialog, ipcMain, shell, net, Menu, type OpenDialogOptions } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell, net, Menu, type OpenDialogOptions, type WebContents } from "electron";
 import { installScrollInput } from "./scrollInput";
 import { MENU_ACTION_CHANNEL, MENU_STATE_CHANNEL, type MenuAction, type MenuState } from "../shared/menu";
 import { buildAirportNameZhQueryUrl, pickChineseNameFromCsv } from "../shared/airportNameZh";
@@ -62,25 +62,99 @@ const TRANSCRIBE_MEDIA_CHANNEL = "media:transcribe";
 const SAVE_SUBTITLES_CHANNEL = "media:save-subtitles";
 
 const offlineExports = new OfflineExportManager();
+const exportScheduling = new Map<number, {id: string; restore: () => void}>();
+
+function keepExportRendererActive<T extends {id: string}>(contents: WebContents, session: T): T {
+  const wasThrottled = contents.getBackgroundThrottling();
+  const restore = exportScheduling.get(contents.id)?.restore ?? (() => {
+    if (!contents.isDestroyed()) contents.setBackgroundThrottling(wasThrottled);
+  });
+  contents.setBackgroundThrottling(false);
+  exportScheduling.set(contents.id, {id: session.id, restore});
+  return session;
+}
+
+function restoreExportScheduling(owner: number, id?: string) {
+  const entry = exportScheduling.get(owner);
+  if (!entry || (id !== undefined && entry.id !== id)) return;
+  exportScheduling.delete(owner);
+  entry.restore();
+}
+
 let offlineEncoder: Promise<string | null> | null = null;
 const getOfflineEncoder = () => offlineEncoder ??= findTransparentVideoEncoder();
-ipcMain.handle("export:offline-available", async () => Boolean(await getOfflineEncoder()));
-ipcMain.handle("export:offline-begin", async (event, options: OfflineExportOptions) => {
-  new OfflineFramePlan(options);
-  const encoder = await getOfflineEncoder();
-  if (!encoder) throw new Error("未找到支持透明 VP9 的 FFmpeg。");
-  const result = await dialog.showSaveDialog({title: "导出透明 WebM", defaultPath: "轨迹叠加.webm", filters: [{name: "WebM", extensions: ["webm"]}]});
+async function prepareOfflineEncoder(options: OfflineExportOptions, composite?: CompositeExportRequest): Promise<{
+  encoder: string; composite?: Omit<VideoCompositeInput, "durationSeconds">;
+}> {
+  const plan = new OfflineFramePlan(options);
+  if (!composite) {
+    const encoder = await getOfflineEncoder();
+    if (!encoder) throw new Error("未找到支持透明 VP9 的 FFmpeg。");
+    return {encoder};
+  }
+  const {sourcePath, offsetSeconds, codec} = composite;
+  if (codec !== "h264" && codec !== "hevc") throw new Error("不支持此 MP4 编码格式。");
+  if (!openedMediaPaths.has(sourcePath)) throw new Error("请先载入要合成的原视频。");
+  if (!Number.isFinite(offsetSeconds) || offsetSeconds < 0 || plan.segmentCount !== 1
+    || (options.crf !== undefined && options.crf > 51)) throw new Error("合成导出参数无效。");
+  const {source} = await probeAlignedMedia(sourcePath);
+  const sourceDuration = compositeSourceDuration(source);
+  if (sourceDuration === null || offsetSeconds + (options.end - options.start) / 1000 > sourceDuration + .001) {
+    throw new Error("导出区间超出原视频范围。");
+  }
+  const hardwareQuality = composite.hardwareQuality;
+  const canUseQuality = options.crf === undefined || (hardwareQuality !== undefined && Number.isInteger(hardwareQuality)
+    && hardwareQuality >= 1 && hardwareQuality <= 100);
+  if (composite.preferHardware === true && canUseQuality) {
+    const quality = options.crf === undefined ? undefined : hardwareQuality;
+    const encoder = await findHardwareCompositeEncoder(codec, options, quality);
+    if (encoder) return {encoder, composite: {sourcePath, offsetSeconds, codec, overlayTop: compositeOverlayTop(options.height), hardware: true, hardwareQuality: quality}};
+  }
+  const encoder = await findCompositeVideoEncoder(codec);
+  if (!encoder) throw new Error(`未找到支持 ${codec === "h264" ? "H.264" : "H.265"} 与 AAC 的 FFmpeg。`);
+  return {encoder, composite: {sourcePath, offsetSeconds, codec, overlayTop: compositeOverlayTop(options.height)}};
+}
+ipcMain.handle("export:offline-begin", async (event, options: OfflineExportOptions, composite?: CompositeExportRequest) => {
+  const prepared = await prepareOfflineEncoder(options, composite);
+  if (event.sender.isDestroyed()) return null;
+  const result = await dialog.showSaveDialog(composite
+    ? {title: "导出合成 MP4", defaultPath: `${path.parse(composite.sourcePath).name}-成片.mp4`, filters: [{name: "MP4", extensions: ["mp4"]}]}
+    : {title: "导出透明 WebM", defaultPath: "轨迹叠加.webm", filters: [{name: "WebM", extensions: ["webm"]}]});
   if (result.canceled || !result.filePath || event.sender.isDestroyed()) return null;
-  return offlineExports.begin(event.sender.id, options, result.filePath, encoder);
+  const session = offlineExports.begin(event.sender.id, options, result.filePath, prepared.encoder, false, prepared.composite);
+  return keepExportRendererActive(event.sender, session);
 });
 ipcMain.handle("export:offline-frame", (event, id: string, segment: number, frame: number, rgba: Uint8Array) => offlineExports.write(event.sender.id, id, segment, frame, rgba));
+ipcMain.handle("export:estimate-begin", async (event, options: OfflineExportOptions, composite?: CompositeExportRequest) => {
+  const prepared = await prepareOfflineEncoder(options, composite);
+  if (event.sender.isDestroyed()) return null;
+  const session = offlineExports.beginEstimate(event.sender.id, options, prepared.encoder, prepared.composite);
+  return keepExportRendererActive(event.sender, session);
+});
 ipcMain.handle("export:offline-segment", (event, id: string, segment: number) => offlineExports.finishSegment(event.sender.id, id, segment));
-ipcMain.handle("export:offline-complete", (event, id: string) => offlineExports.complete(event.sender.id, id));
-ipcMain.handle("export:offline-cancel", (event, id: string) => offlineExports.cancel(event.sender.id, id));
+ipcMain.handle("export:offline-complete", (event, id: string) => {
+  const paths = offlineExports.complete(event.sender.id, id);
+  restoreExportScheduling(event.sender.id, id);
+  return paths;
+});
+ipcMain.handle("export:offline-cancel", async (event, id: string) => {
+  const owner = event.sender.id;
+  try { await offlineExports.cancel(owner, id); }
+  finally { restoreExportScheduling(owner, id); }
+});
 app.on("web-contents-created", (_event, contents) => {
   const owner = contents.id;
-  const cancel = () => { void offlineExports.cancelOwner(owner); };
+  const cancel = () => {
+    void offlineExports.cancelOwner(owner);
+    restoreExportScheduling(owner);
+  };
   contents.once("destroyed", cancel);
+  contents.on("console-message", ({message}) => {
+    if (/^\[offline-export\] failed stage=(map-init|map-resource|roads|buildings|basemap|terrain|annotations|other) frame=-?\d+ seconds=\d+\.\d{3}$/.test(message)) {
+      console.error(message);
+    }
+    if (/^\[offline-export\] complete frames=\d+ elapsed_ms=\d+ render_ms=\d+ readback_ms=\d+ write_ms=\d+ finalize_ms=\d+$/.test(message)) console.info(message);
+  });
   contents.on("render-process-gone", (_event, details) => {
     if (details.reason !== "clean-exit") console.error("Renderer exited", details.reason, details.exitCode);
     cancel();

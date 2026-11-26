@@ -512,7 +512,7 @@ export function App() {
 
   return (
     <main className={`app-shell ${mediaActive ? "media-workspace" : ""}`}>
-      <div className="map-background" style={{visibility:mediaActive?"hidden":"visible"}} aria-hidden={mediaActive}>
+      {!mediaActive && <div className="map-background">
         {maptilerKey ? (
           <MapViewport
             scene={replayScene}
@@ -546,7 +546,7 @@ export function App() {
         ) : (
           <MapTokenSetup onSave={saveMaptilerKey} />
         )}
-      </div>
+      </div>}
       <ReplayRenderSurface scene={replayScene}/>
 
       <header className="titlebar">
@@ -695,7 +695,7 @@ export function App() {
               }} />}
           {dataError && <div className="data-error">{dataError}</div>}
           <section className="library-section">
-          <h2 className="section-label">透明叠加导出</h2>
+          <h2 className="section-label">视频导出</h2>
           <div className="range-editor">
             <p>移动红色播放头，再设置导出区间。</p>
             <div>
@@ -709,9 +709,9 @@ export function App() {
             {exportRange && <code>{new Date(exportRange[0]).toLocaleString("zh-CN")}<br />— {new Date(exportRange[1]).toLocaleString("zh-CN")}</code>}
           </div>
           {pointDataset && exportRange ? (
-            <OverlayExport dataset={pointDataset} range={exportRange} apiKey={maptilerKey} scene={replayScene} active={mediaActive} previewContainer={previewHost} previewTime={overlayPreviewTime} />
+            <OverlayExport dataset={pointDataset} range={exportRange} apiKey={maptilerKey} scene={replayScene} source={mediaSource} mediaOffsetMs={mediaOffsetMs} active={mediaActive} previewContainer={previewHost} previewTime={overlayPreviewTime} />
           ) : (
-            <div className="inspector-empty"><div className="inspector-icon">i</div><p>载入轨迹后可输出透明视频。</p></div>
+            <div className="inspector-empty"><div className="inspector-icon">i</div><p>载入轨迹后可导出视频。</p></div>
           )}
           </section>
 

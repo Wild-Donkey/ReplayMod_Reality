@@ -1,7 +1,7 @@
 import {GPS_RESULT_CHANNEL,POST_GPS_CHANNEL,type MotionGpsRequest,type MotionGpsUpdate} from "../shared/mediaAlignment";
 import type {LocalSpeechStatus,LocalSpeechUpdate} from "../shared/localSpeech";
 import type { AudioDocument, AudioBlock } from "../../../../packages/media/src/audio-document";
-import type { OfflineExportOptions, OfflineExportSession, OfflineExportSegment } from "../shared/overlayExport";
+import type { CompositeExportRequest, OfflineExportOptions, OfflineExportSession, OfflineExportSegment } from "../shared/overlayExport";
 import type { DisplayHDRInfo } from "../shared/display";
 import { contextBridge, ipcRenderer } from "electron";
 import { ALIGN_MEDIA_CHANNEL, type MediaAlignmentRequest, type MediaAlignmentResult } from "../shared/mediaAlignment";
@@ -36,8 +36,8 @@ export interface DesktopBridge {
   splitAudioEdit(sourcePath: string, block: AudioBlock): Promise<AudioBlock[]>;
   exportAudioEdit(sourcePath: string, blocks: AudioBlock[]): Promise<string | null>;
   alignMediaTime(request: MediaAlignmentRequest): Promise<MediaAlignmentResult>;
-  canExportOffline(): Promise<boolean>;
-  beginOfflineExport(options: OfflineExportOptions): Promise<OfflineExportSession | null>;
+  beginOfflineExport(options: OfflineExportOptions, composite?: CompositeExportRequest): Promise<OfflineExportSession | null>;
+  beginExportEstimate(options: OfflineExportOptions, composite?: CompositeExportRequest): Promise<OfflineExportSession | null>;
   writeOfflineExportFrame(id: string, segment: number, frame: number, rgba: Uint8Array): Promise<void>;
   finishOfflineExportSegment(id: string, segment: number): Promise<OfflineExportSegment>;
   completeOfflineExport(id: string): Promise<string[]>;
@@ -105,8 +105,8 @@ const bridge: DesktopBridge = Object.freeze({
   splitAudioEdit: (sourcePath: string, block: AudioBlock) => ipcRenderer.invoke("audio-edit:split", sourcePath, block),
   exportAudioEdit: (sourcePath: string, blocks: AudioBlock[]) => ipcRenderer.invoke("audio-edit:export", sourcePath, blocks),
   alignMediaTime: (request: MediaAlignmentRequest) => ipcRenderer.invoke(ALIGN_MEDIA_CHANNEL, request),
-  canExportOffline: () => ipcRenderer.invoke("export:offline-available"),
-  beginOfflineExport: (options: OfflineExportOptions) => ipcRenderer.invoke("export:offline-begin", options),
+  beginOfflineExport: (options: OfflineExportOptions, composite?: CompositeExportRequest) => ipcRenderer.invoke("export:offline-begin", options, composite),
+  beginExportEstimate: (options: OfflineExportOptions, composite?: CompositeExportRequest) => ipcRenderer.invoke("export:estimate-begin", options, composite),
   writeOfflineExportFrame: (id: string, segment: number, frame: number, rgba: Uint8Array) => ipcRenderer.invoke("export:offline-frame", id, segment, frame, rgba),
   finishOfflineExportSegment: (id: string, segment: number) => ipcRenderer.invoke("export:offline-segment", id, segment),
   completeOfflineExport: (id: string) => ipcRenderer.invoke("export:offline-complete", id),
