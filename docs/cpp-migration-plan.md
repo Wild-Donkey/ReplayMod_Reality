@@ -187,7 +187,7 @@ C++ 每解完一个拟合窗口，在 stderr 写出完成数和总数。stdout �
 
 macOS arm64 已在临时目录完成 Forge 打包。直接运行包内 `Contents/Resources/replaymod-core` 已通过版本握手和探活。其它平台可在目标机器执行 `npm --prefix source run check:native-package`，该命令使用临时产物目录。Forge 核对主机与目标平台、架构一致，避免误打包本机 C++ 文件到其他目标。
 
-`cpp-migration` 分支加入了 Windows 与 Linux 的 GitHub Actions 检查，覆盖类型、C++ 对照和从 Forge 产物运行 C++ core。工作流在分支推送后运行，当前尚无远程结果。
+`cpp-migration` 分支的 GitHub Actions 已在 Windows x64 和 Linux x64 上通过类型检查、C++ 核心对照和 Forge 打包握手。检查对应代码提交 `618366a`。[Native migration checks](https://github.com/Wild-Donkey/ReplayMod_Reality/actions/runs/45811262217)
 
 用 `npm --prefix source run bench:native` 可重跑 CSV、10 Hz 拟合和时间轴抽样测试。追加 `-- csv`、`-- trajectory` 或 `-- timeline` 可单独测量。脚本使用仓库样本和临时合成输入，计时从一轮预热后开始。
 
@@ -237,5 +237,5 @@ macOS 使用独立应用配置，以 C++ 导入合成轨迹，再从真实 Elect
 ### 合并前验收状态
 
 - macOS arm64 已完成真实 Electron 轨迹请求、透明 WebM 导出、原生资源打包握手和打包版冷导入对照。性能结论以各节的测量范围为准。
-- Windows 和 Linux 仍需取得目标平台的构建和打包结果。已通过 `git ls-remote --heads origin refs/heads/cpp-migration` 确认远端尚无迁移分支。推送后核对原生迁移工作流两个矩阵任务的结果，再评估各平台的默认路由。
+- Windows x64 和 Linux x64 已通过构建和打包检查。两个平台默认使用 TypeScript，启用原生默认路由还需要各自的性能与 Electron 交互实测。
 - 独立 IPC 延迟和包含在线底图的完整首帧缺少对照数据。打包版冷导入计时止于 renderer 收到数据，WebGL 对照覆盖足迹层首次绘制。
