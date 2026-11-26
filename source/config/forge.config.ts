@@ -7,9 +7,14 @@ import { MakerZIP } from "@electron-forge/maker-zip";
 import { VitePlugin } from "@electron-forge/plugin-vite";
 
 const requireFromSource = createRequire(path.resolve("package.json"));
+const { buildCore, resource: coreResource } = requireFromSource("./scripts/native/build-core.cjs") as {
+  buildCore(): string;
+  resource: string;
+};
 
 const config: ForgeConfig = {
   hooks: {
+    preStart: async () => { buildCore(); },
     postStart: async (_config, child) => {
       if (process.platform !== "win32" || !process.env.REPLAYMOD_STOP_FILE) return;
       child.once("exit", code => {
@@ -22,11 +27,12 @@ const config: ForgeConfig = {
       });
     },
     generateAssets: async forge => {
+      buildCore();
       if(process.platform === "darwin" && process.arch === "arm64") execFileSync(process.execPath,[path.resolve("resources/speech/bundle-runtime.cjs")],{stdio:"inherit"});
       if (process.platform === "darwin") execFileSync(process.execPath, [path.resolve("scripts/native/build-hdr.cjs")], { stdio: "inherit" });
       try {
         execFileSync(process.execPath, [path.resolve("scripts/native/build-scroll-input.cjs")], { stdio: "inherit" });
-        if (process.platform === "win32") forge.packagerConfig.extraResource = ["native/build/scroll-input-win.node"];
+        if (process.platform === "win32") forge.packagerConfig.extraResource = [coreResource, "native/build/scroll-input-win.node"];
       } catch (error) {
         if (process.platform !== "win32") throw error;
         console.warn("Windows touchpad helper could not be built", error);
@@ -40,8 +46,8 @@ const config: ForgeConfig = {
     appBundleId: "com.replaymod.reality",
     asar: true,
     extraResource: process.platform === "darwin"
-      ? ["native/build/hdr-display", "native/build/scroll-input.node", "resources/speech", ...(process.arch === "arm64" ? ["../.tools/speech-runtime"] : [])]
-      : [],
+      ? [coreResource, "native/build/hdr-display", "native/build/scroll-input.node", "resources/speech", ...(process.arch === "arm64" ? ["../.tools/speech-runtime"] : [])]
+      : [coreResource],
     executableName: process.platform === "win32" ? "ReplayModReality" : "ReplayMod Reality",
   },
   makers: [

@@ -6,6 +6,7 @@ import type { TrajectoryWorkerInput, TrajectoryWorkerOutput } from "./trajectory
 import { Worker } from "node:worker_threads";
 import { killChildren, stopChildren } from "../../../../packages/media/src/childProcesses";
 import { installShutdown } from "./shutdown";
+import { NativeCore } from "./nativeCore";
 import {restoreDataset,resolveDatasetSource} from "./restoreDataset";
 import {LocalSpeech} from "./localSpeech";
 import { renderAudioEdit, saveRecordedAudio } from "../../../../packages/media/src/audio-edit";
@@ -1240,19 +1241,29 @@ const createWindow = (): void => {
   });
 };
 
+const nativeCoreFilename = process.platform === "win32" ? "replaymod-core.exe" : "replaymod-core";
+const nativeCore = new NativeCore(path.join(
+  app.isPackaged ? process.resourcesPath : path.join(app.getAppPath(), "native", "build"),
+  nativeCoreFilename,
+));
+
 const shutdown = installShutdown(async () => {
   gpsJobs.cancel(() => true);
   const results = await Promise.allSettled([
     offlineExports.cancelAll(),
     localSpeech.close(),
     closeTrajectoryWorker(),
+    nativeCore.close(),
     stopChildren(),
     Promise.allSettled([screeningMigration, confirmedFlightSaveQueue]).then(() => resources.drain()),
   ]);
   for (const result of results) {
     if (result.status === "rejected") console.error("Shutdown cleanup failed", result.reason);
   }
-}, killChildren);
+}, () => {
+  nativeCore.forceClose();
+  killChildren();
+});
 
 if (MAIN_WINDOW_VITE_DEV_SERVER_URL) shutdown.watchLauncher(process.ppid);
 
@@ -1268,6 +1279,9 @@ void app.whenReady().then(() => {
   installDisplayHDR();
   installMacMenu();
   createWindow();
+  void nativeCore.ping().catch(error => {
+    if (!shutdown.isQuitting()) console.warn("Native core probe failed", error);
+  });
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
