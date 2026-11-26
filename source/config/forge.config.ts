@@ -26,7 +26,10 @@ const config: ForgeConfig = {
         process.exit(1);
       });
     },
-    generateAssets: async forge => {
+    generateAssets: async (forge, platform, arch) => {
+      if (platform !== process.platform || arch !== process.arch) {
+        throw new Error(`Native resources must be packaged on the target platform and architecture (${platform}/${arch}).`);
+      }
       buildCore();
       if(process.platform === "darwin" && process.arch === "arm64") execFileSync(process.execPath,[path.resolve("resources/speech/bundle-runtime.cjs")],{stdio:"inherit"});
       if (process.platform === "darwin") execFileSync(process.execPath, [path.resolve("scripts/native/build-hdr.cjs")], { stdio: "inherit" });

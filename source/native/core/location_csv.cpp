@@ -3,13 +3,16 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #ifdef _WIN32
@@ -24,6 +27,59 @@ constexpr std::size_t absent = std::string_view::npos;
 constexpr double missing = std::numeric_limits<double>::quiet_NaN();
 
 struct Point { double time, lon, lat, altitude; };
+
+struct PhotoKey {
+    double time;
+    std::int32_t lon, lat;
+    bool operator==(const PhotoKey& other) const {
+        return time == other.time && lon == other.lon && lat == other.lat;
+    }
+};
+
+struct PhotoKeyHash {
+    std::size_t operator()(const PhotoKey& key) const {
+        auto hash = std::hash<double>{}(key.time);
+        for (const auto value : {key.lon, key.lat}) {
+            hash ^= std::hash<std::int32_t>{}(value) + 0x9e3779b9u + (hash << 6) + (hash >> 2);
+        }
+        return hash;
+    }
+};
+
+std::optional<std::int32_t> photo_coordinate(double value) {
+    const double scaled = std::abs(value) * 1'000'000;
+    const double base = std::floor(scaled);
+    // Near a rounding tie, delegate to the existing JS toFixed(6) key.
+    if (std::abs(scaled - base - .5) <= std::numeric_limits<double>::epsilon() * std::max(1., scaled)) return {};
+    const auto rounded = static_cast<std::int32_t>(std::round(scaled));
+    // toFixed preserves the sign of a negative coordinate rounded to zero.
+    return value < 0 ? (rounded ? -rounded : std::numeric_limits<std::int32_t>::min()) : rounded;
+}
+
+struct Dataset {
+    std::vector<Point> footprint, photos;
+    std::unordered_map<PhotoKey, std::size_t, PhotoKeyHash> photo_indices;
+    std::size_t skipped = 0;
+    double west = INFINITY, south = INFINITY, east = -INFINITY, north = -INFINITY;
+    double start = INFINITY, end = -INFINITY;
+
+    bool add(Point point, bool photo) {
+        if (footprint.size() + photos.size() >= max_points) return false;
+        if (photo) {
+            const auto lon = photo_coordinate(point.lon), lat = photo_coordinate(point.lat);
+            if (!lon || !lat) return false;
+            const auto [entry, inserted] = photo_indices.emplace(PhotoKey{point.time, *lon, *lat}, photos.size());
+            if (inserted) photos.push_back(point);
+            else photos[entry->second] = point;
+        } else {
+            footprint.push_back(point);
+        }
+        west = std::min(west, point.lon); east = std::max(east, point.lon);
+        south = std::min(south, point.lat); north = std::max(north, point.lat);
+        start = std::min(start, point.time); end = std::max(end, point.time);
+        return true;
+    }
+};
 
 std::string_view trim(std::string_view field) {
     const auto first = field.find_first_not_of(" \t");
@@ -66,6 +122,52 @@ bool read_row(std::istream& input, std::string& line, bool crlf) {
 void write_number(double value) {
     std::cout.write(reinterpret_cast<const char*>(&value), sizeof(value));
 }
+bool load_csv(const std::string& filename, bool force_photo, Dataset& dataset) {
+    std::ifstream input(std::filesystem::u8path(filename), std::ios::binary);
+    std::string line;
+    if (!std::getline(input, line)) return false;
+    const bool crlf = !line.empty() && line.back() == '\r';
+    if (crlf) line.pop_back();
+    if (line.compare(0, 3, "\xEF\xBB\xBF") == 0) line.erase(0, 3);
+    std::vector<std::string_view> fields;
+    if (!split(line, fields)) return false;
+    const auto column_count = fields.size();
+    const auto column = [&](std::string_view name) {
+        const auto found = std::find(fields.begin(), fields.end(), name);
+        return found == fields.end() ? absent : static_cast<std::size_t>(found - fields.begin());
+    };
+    auto sorted_headers = fields;
+    std::sort(sorted_headers.begin(), sorted_headers.end());
+    if (std::adjacent_find(sorted_headers.begin(), sorted_headers.end()) != sorted_headers.end()) return false;
+    const auto time = column("dataTime"), longitude = column("longitude"), latitude = column("latitude");
+    const auto accuracy = column("accuracy"), type = column("stepType");
+    auto altitude = absent;
+    for (const auto name : {"altitude", "elevation", "height", "alt"}) {
+        altitude = column(name);
+        if (altitude != absent) break;
+    }
+    if (time == absent || longitude == absent || latitude == absent) return false;
+
+    while (input.peek() != std::char_traits<char>::eof()) {
+        if (!read_row(input, line, crlf)) return false;
+        if (line.empty()) continue;
+        if (!split(line, fields) || fields.size() != column_count) return false;
+        double seconds, lon, lat, step = 0, error = 0, height = missing;
+        if (!decimal(fields[time], seconds) || !decimal(fields[longitude], lon) || !decimal(fields[latitude], lat) ||
+            (type != absent && !decimal(fields[type], step)) || (accuracy != absent && !decimal(fields[accuracy], error)) ||
+            (altitude != absent && !fields[altitude].empty() && !decimal(fields[altitude], height))) return false;
+        const double timestamp = seconds * 1000;
+        if (fields[time].empty() || !std::isfinite(timestamp) ||
+            !(lon >= -180 && lon <= 180 && lat >= -90 && lat <= 90) || (std::isfinite(error) && error > 100)) {
+            ++dataset.skipped;
+            continue;
+        }
+        if ((lon == 0 && std::signbit(lon)) || (lat == 0 && std::signbit(lat)) ||
+            (timestamp == 0 && std::signbit(timestamp)) ||
+            !dataset.add({timestamp, lon, lat, std::isfinite(height) ? height : missing}, force_photo || step == 1)) return false;
+    }
+    return !input.bad();
+}
 } // namespace
 
 int import_location_csv() {
@@ -75,64 +177,23 @@ int import_location_csv() {
 #ifdef _WIN32
     if (_setmode(_fileno(stdin), _O_BINARY) == -1 || _setmode(_fileno(stdout), _O_BINARY) == -1) return 1;
 #endif
-    std::string filename;
-    if (!std::getline(std::cin, filename) || filename.empty()) return 1;
-    std::ifstream input(std::filesystem::u8path(filename), std::ios::binary);
-    std::string line;
-    if (!std::getline(input, line)) return unsupported;
-    const bool crlf = !line.empty() && line.back() == '\r';
-    if (crlf) line.pop_back();
-    if (line.compare(0, 3, "\xEF\xBB\xBF") == 0) line.erase(0, 3);
-    std::vector<std::string_view> fields;
-    if (!split(line, fields)) return unsupported;
-    const auto column_count = fields.size();
-    const auto column = [&](std::string_view name) {
-        const auto found = std::find(fields.begin(), fields.end(), name);
-        return found == fields.end() ? absent : static_cast<std::size_t>(found - fields.begin());
-    };
-    auto sorted_headers = fields;
-    std::sort(sorted_headers.begin(), sorted_headers.end());
-    if (std::adjacent_find(sorted_headers.begin(), sorted_headers.end()) != sorted_headers.end()) return unsupported;
-    const auto time = column("dataTime"), longitude = column("longitude"), latitude = column("latitude");
-    const auto accuracy = column("accuracy"), type = column("stepType");
-    auto altitude = absent;
-    for (const auto name : {"altitude", "elevation", "height", "alt"}) {
-        altitude = column(name);
-        if (altitude != absent) break;
-    }
-    if (time == absent || longitude == absent || latitude == absent) return unsupported;
-
-    std::vector<Point> points;
-    std::size_t skipped = 0;
-    while (input.peek() != std::char_traits<char>::eof()) {
-        if (!read_row(input, line, crlf)) return unsupported;
-        if (line.empty()) continue;
-        if (!split(line, fields) || fields.size() != column_count) return unsupported;
-        double seconds, lon, lat, step = 0, error = 0, height = missing;
-        if (!decimal(fields[time], seconds) || !decimal(fields[longitude], lon) || !decimal(fields[latitude], lat) ||
-            (type != absent && !decimal(fields[type], step)) || (accuracy != absent && !decimal(fields[accuracy], error)) ||
-            (altitude != absent && !fields[altitude].empty() && !decimal(fields[altitude], height))) return unsupported;
-        const double timestamp = seconds * 1000;
-        if (fields[time].empty() || !std::isfinite(timestamp) ||
-            !(lon >= -180 && lon <= 180 && lat >= -90 && lat <= 90) || (std::isfinite(error) && error > 100)) {
-            ++skipped;
-            continue;
+    std::string footprint, photos;
+    if (!std::getline(std::cin, footprint) || footprint.empty()) return 1;
+    std::getline(std::cin, photos);
+    Dataset dataset;
+    if (!load_csv(footprint, false, dataset) || (!photos.empty() && !load_csv(photos, true, dataset)) ||
+        (dataset.footprint.empty() && dataset.photos.empty())) return unsupported;
+    const auto by_time = [](const auto& a, const auto& b) { return a.time < b.time; };
+    std::stable_sort(dataset.footprint.begin(), dataset.footprint.end(), by_time);
+    std::stable_sort(dataset.photos.begin(), dataset.photos.end(), by_time);
+    std::cout.write("RMRCSV02", 8);
+    for (double value : {static_cast<double>(dataset.footprint.size()), static_cast<double>(dataset.photos.size()),
+                         static_cast<double>(dataset.skipped), dataset.west, dataset.south, dataset.east,
+                         dataset.north, dataset.start, dataset.end}) write_number(value);
+    for (const auto* series : {&dataset.footprint, &dataset.photos}) {
+        for (const auto& point : *series) {
+            for (double value : {point.time, point.lon, point.lat, point.altitude}) write_number(value);
         }
-        if (step == 1 || points.size() == max_points ||
-            (lon == 0 && std::signbit(lon)) || (lat == 0 && std::signbit(lat)) ||
-            (timestamp == 0 && std::signbit(timestamp))) return unsupported;
-        points.push_back({timestamp, lon, lat, std::isfinite(height) ? height : missing});
-    }
-    if (input.bad() || points.empty()) return unsupported;
-    std::stable_sort(points.begin(), points.end(), [](const auto& a, const auto& b) { return a.time < b.time; });
-    const auto lon = std::minmax_element(points.begin(), points.end(), [](const auto& a, const auto& b) { return a.lon < b.lon; });
-    const auto lat = std::minmax_element(points.begin(), points.end(), [](const auto& a, const auto& b) { return a.lat < b.lat; });
-    std::cout.write("RMRCSV01", 8);
-    for (double value : {static_cast<double>(points.size()), static_cast<double>(skipped),
-                         lon.first->lon, lat.first->lat, lon.second->lon, lat.second->lat,
-                         points.front().time, points.back().time}) write_number(value);
-    for (const auto& point : points) {
-        for (double value : {point.time, point.lon, point.lat, point.altitude}) write_number(value);
     }
     std::cout.flush();
     return std::cout ? 0 : 1;

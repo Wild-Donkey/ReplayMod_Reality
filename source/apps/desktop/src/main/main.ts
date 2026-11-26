@@ -416,8 +416,11 @@ const readLocationCsvSnapshot = async (
   mainFilePath: string,
   photoFilePath: string | null = null,
 ): Promise<{dataset:PointDataset;key:string}> => {
-  const tryNative = !photoFilePath && process.env.REPLAYMOD_NATIVE_CSV === "1";
-  const parserVersion = tryNative ? "point-parser-native-v1" : "point-parser-v2-accuracy-100m";
+  const csvMode = process.env.REPLAYMOD_NATIVE_CSV;
+  const tryNative = csvMode === "1" || (csvMode !== "0" && platform === "darwin" && process.arch === "arm64");
+  // The default route reuses existing snapshots. Force mode has a separate
+  // key so a comparison run can actually exercise the native importer.
+  const parserVersion = csvMode === "1" ? "point-parser-native-v2" : "point-parser-v2-accuracy-100m";
   const signature = [parserVersion, ...await Promise.all([mainFilePath, photoFilePath].map(async file => {
     if (!file) return null;
     const info = await stat(file);
@@ -431,7 +434,7 @@ const readLocationCsvSnapshot = async (
     const saved = await resources.read<PointDataset>("snapshots", key);
     if (saved) return saved;
 
-    const nativeDataset = tryNative ? await readNativeLocationCsv(nativeCoreExecutable, mainFilePath).catch(error => {
+    const nativeDataset = tryNative ? await readNativeLocationCsv(nativeCoreExecutable, mainFilePath, photoFilePath).catch(error => {
       if (shutdown.isQuitting()) throw error;
       console.warn("Native CSV import failed", error);
       return null;

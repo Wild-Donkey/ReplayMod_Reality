@@ -70,7 +70,9 @@ async function check(mode) {
   const log = path.join(logRoot, 'ReplayMod Reality', 'desktop-start.log');
   if (mode === 'window') {
     const footprint = path.join(profile, 'fixture.csv');
+    const photo = path.join(profile, 'photo.csv');
     fs.writeFileSync(footprint, 'dataTime,longitude,latitude,stepType\n2,120,30,0\n1,121,31,0\n');
+    fs.writeFileSync(photo, 'dataTime,longitude,latitude\n1,122,32\n');
     const appData = path.dirname(log);
     fs.mkdirSync(appData, { recursive: true });
     fs.writeFileSync(path.join(appData, 'user-archive.json'), JSON.stringify({
@@ -79,14 +81,15 @@ async function check(mode) {
       settings: { maptilerApiKey: '' },
       workspace: {},
       services: {},
-      lastDatasetSource: { mainFilePath: footprint, photoFilePath: null },
+      lastDatasetSource: { mainFilePath: footprint, photoFilePath: photo },
     }));
   }
   const readLog = () => fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '';
   const npm = spawn('npm', ['start', '--', '--', '--inspect=127.0.0.1:0', '--use-mock-keychain'], {
     cwd: root, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
     env: {...process.env, HOME: profile, CFFIXED_USER_HOME: profile, XDG_CONFIG_HOME: config,
-      XDG_CACHE_HOME: path.join(profile, 'cache'), REPLAYMOD_NATIVE_CSV: mode === 'window' ? '1' : '0'},
+      XDG_CACHE_HOME: path.join(profile, 'cache'),
+      REPLAYMOD_NATIVE_CSV: mode !== 'window' ? '0' : process.platform === 'darwin' && process.arch === 'arm64' ? undefined : '1'},
   });
   let output = '';
   npm.stdout.on('data', chunk => { output += chunk; });
@@ -127,7 +130,7 @@ async function check(mode) {
           '(async () => { const data = await window.replaymod.loadDefaultLocationCsv(); ' +
           'return {name: data.sourceName, time: data.timelineTimestamps, points: data.timelineCoordinates}; })()')
       `);
-      assert.deepEqual(imported, { name: 'fixture.csv', time: [1000, 2000], points: [121, 31, 120, 30] });
+      assert.deepEqual(imported, { name: 'fixture.csv + photo.csv', time: [1000, 1000, 2000], points: [121, 31, 122, 32, 120, 30] });
       assert.doesNotMatch(readLog(), /Native CSV import failed/);
       const workerCheck = `(async () => {
         const { default: WorkerEntry } = await import('/features/timeline/speedCurveWorker.ts?worker');
