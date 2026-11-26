@@ -5,6 +5,7 @@ const {withProcessedTrajectory,motionInputPoints}=load('apps/desktop/src/rendere
 const {continuousSpeed,hasProcessedCoverage,smoothedSpeed}=load('apps/desktop/src/renderer/features/timeline/metrics.ts');
 const {alignedMediaStart,splitAlignmentOffset,validAlignmentOffset}=load('apps/desktop/src/shared/mediaAlignment.ts');
 const {fitMotionTrajectory}=load('packages/media/src/trajectory-fit.ts');
+const {packMotionGpsResult,unpackMotionGpsResult}=load('apps/desktop/src/shared/motionGpsWire.ts');
 const R=6371000,rad=Math.PI/180,base=1800000000,v=10,w=.2;
 const point=t=>({timeSeconds:base+t,longitude:116+v/w*(1-Math.cos(w*t))/(R*Math.cos(40*rad))/rad,latitude:40+v/w*Math.sin(w*t)/R/rad});
 const gps=Array.from({length:21},(_,i)=>point(i));
@@ -58,6 +59,17 @@ assert.equal(clipped.points[0].timeSeconds,base+50.123);
 assert.equal(clipped.points.at(-1).timeSeconds,base+53.456);
 assert(clipped.contextPoints.some(p=>p.timeSeconds<base+50.123)&&clipped.contextPoints.some(p=>p.timeSeconds>base+53.456));
 assert(clipped.points.length<40,'Do not resample the hours outside the clip');
+const wireReference = {
+  ...clipped,
+  points: clipped.points.map((p, i) => i % 3 === 0 ? {...p, altitude: i ? NaN : -0} : p),
+};
+const packed = packMotionGpsResult(wireReference);
+const transferred = structuredClone(packed, {transfer: [packed.pointData.buffer, packed.altitudePresent.buffer]});
+assert.equal(packed.pointData.byteLength, 0);
+assert.equal(packed.altitudePresent.byteLength, 0);
+assert.deepEqual(unpackMotionGpsResult(transferred), wireReference);
+const {serialize,deserialize} = require('node:v8');
+assert.deepEqual(unpackMotionGpsResult(deserialize(serialize(transferred))), wireReference);
 const shortWindow=processMotionGps([],gps,base+3,base+8);
 const wideWindow=processMotionGps([],gps,base,base+15);
 assert.deepEqual(shortWindow.points,wideWindow.points.filter(p=>p.timeSeconds>=base+3&&p.timeSeconds<=base+8));

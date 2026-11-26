@@ -1,4 +1,5 @@
 import {GPS_RESULT_CHANNEL,POST_GPS_CHANNEL,type MotionGpsRequest,type MotionGpsUpdate} from "../shared/mediaAlignment";
+import {unpackMotionGpsResult,type MotionGpsWireUpdate} from "../shared/motionGpsWire";
 import type {LocalSpeechStatus,LocalSpeechUpdate} from "../shared/localSpeech";
 import type { AudioDocument, AudioBlock } from "../../../../packages/media/src/audio-document";
 import type { CompositeExportRequest, OfflineExportOptions, OfflineExportSession, OfflineExportSegment } from "../shared/overlayExport";
@@ -168,7 +169,9 @@ const bridge: DesktopBridge = Object.freeze({
   saveFlightScreeningCache: (cache: FlightScreeningCache) => ipcRenderer.invoke("flights:save-screening-cache", cache) as Promise<void>,
   postMediaGps: (id: string, request: MotionGpsRequest | null) => ipcRenderer.send(POST_GPS_CHANNEL, id, request),
   onMediaGpsResult: (listener: (update: MotionGpsUpdate) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, update: MotionGpsUpdate) => listener(update);
+    const handler = (_event: Electron.IpcRendererEvent, update: MotionGpsWireUpdate) => {
+      listener("error" in update ? update : { id: update.id, result: unpackMotionGpsResult(update.result) });
+    };
     ipcRenderer.on(GPS_RESULT_CHANNEL, handler);
     return () => ipcRenderer.removeListener(GPS_RESULT_CHANNEL, handler);
   },

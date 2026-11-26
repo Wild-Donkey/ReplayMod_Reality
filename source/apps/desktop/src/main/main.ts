@@ -1,6 +1,7 @@
 import "./guardStdio";
 import { prepareWindows } from "./windowsSetup";
-import {GPS_RESULT_CHANNEL,POST_GPS_CHANNEL,type MotionGpsRequest,type MotionGpsResult,type MotionGpsUpdate} from "../shared/mediaAlignment";
+import {GPS_RESULT_CHANNEL,POST_GPS_CHANNEL,type MotionGpsRequest,type MotionGpsResult} from "../shared/mediaAlignment";
+import {packMotionGpsResult,type MotionGpsWireUpdate,type PackedMotionGpsResult} from "../shared/motionGpsWire";
 import { LatestJobQueue } from "./latestJobQueue";
 import type { TrajectoryWorkerInput, TrajectoryWorkerOutput } from "./trajectoryWorker";
 import { Worker } from "node:worker_threads";
@@ -734,7 +735,7 @@ async function closeTrajectoryWorker() {
   });
 }
 
-function runTrajectoryWorker(input: TrajectoryWorkerInput): Promise<MotionGpsResult> {
+function runTrajectoryWorker(input: TrajectoryWorkerInput): Promise<PackedMotionGpsResult> {
   if (!trajectoryWorker) {
     const worker = new Worker(path.join(__dirname, "trajectoryWorker.js"));
     worker.on("error", error => {
@@ -770,7 +771,7 @@ function runTrajectoryWorker(input: TrajectoryWorkerInput): Promise<MotionGpsRes
 const gpsJobs = new LatestJobQueue<{sender: Electron.WebContents; id: string; request: MotionGpsRequest}>(async (
   {sender, id, request}, isCurrent,
 ) => {
-  const publish = (update: MotionGpsUpdate) => {
+  const publish = (update: MotionGpsWireUpdate) => {
     if (isCurrent() && !sender.isDestroyed()) sender.send(GPS_RESULT_CHANNEL, update);
   };
   try {
@@ -782,11 +783,14 @@ const gpsJobs = new LatestJobQueue<{sender: Electron.WebContents; id: string; re
     if(source.creationTimeSeconds===undefined)throw new Error("请先对齐视频拍摄时间。");
     if(source.creationTimeSeconds!==request.creationTimeSeconds)throw new Error("视频拍摄时间已变化，请重新载入视频。");
     const start=alignedMediaStart(source.creationTimeSeconds,request.offsetSeconds);
-    const key=request.offsetSeconds===0
+    const legacyKey=request.offsetSeconds===0
       ? createHash("sha256").update(JSON.stringify(["motion-gps-v8",revision,start,request.points])).digest("hex") : null;
-    if (key) {
-      const cached=await resources.read<MotionGpsResult>("snapshots",key);
-      if(cached) { publish({id,result:cached}); return; }
+    const key = legacyKey && createHash("sha256").update("motion-gps-packed-v1:").update(legacyKey).digest("hex");
+    if (key && legacyKey) {
+      const cached = await resources.read<PackedMotionGpsResult>("snapshots", key);
+      if (cached) { publish({id,result:cached}); return; }
+      const legacy = await resources.read<MotionGpsResult>("snapshots", legacyKey);
+      if (legacy) { publish({id,result:packMotionGpsResult(legacy)}); return; }
     }
     const roots = [path.resolve(process.cwd(),".."),process.cwd(),app.getAppPath(),path.dirname(app.getPath("exe"))];
     const exiftoolName = platform === "win32" ? "exiftool.exe" : "exiftool";
@@ -797,7 +801,7 @@ const gpsJobs = new LatestJobQueue<{sender: Electron.WebContents; id: string; re
       : start+source.durationSeconds;
     const result = await runTrajectoryWorker({sourcePath: request.sourcePath, revision, exiftool: exiftool ?? exiftoolName, points: request.points, start, end});
     if (!isCurrent() || sender.isDestroyed()) return;
-    if(result.points.length<2)throw new Error("GPS 与视频时间不重叠，请先完成时间对齐。");
+    if(result.pointCount<2)throw new Error("GPS 与视频时间不重叠，请先完成时间对齐。");
     publish({id,result});
     if (key) void resources.write("snapshots",key,result).catch(console.warn);
   } catch (error) {
