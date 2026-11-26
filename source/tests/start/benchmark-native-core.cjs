@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 const ts = require('typescript');
 const { buildCore } = require('../../scripts/native/build-core.cjs');
 
@@ -15,7 +16,9 @@ const { readLocationCsv } = require('../../apps/desktop/src/main/locationCsv.ts'
 const { readNativeLocationCsv } = require('../../apps/desktop/src/main/nativeLocationCsv.ts');
 const { fitNativeTrajectory } = require('../../apps/desktop/src/main/nativeTrajectoryFit.ts');
 const { fitMotionTrajectory } = require('../../packages/media/src/trajectory-fit.ts');
-const { packMotionGpsResult } = require('../../apps/desktop/src/shared/motionGpsWire.ts');
+const { extractDjiOrientation } = require('../../packages/media/src/dji.ts');
+const { packMotionGpsResult, unpackMotionGpsResult } = require('../../apps/desktop/src/shared/motionGpsWire.ts');
+const { motionInputPoints } = require('../../apps/desktop/src/renderer/features/timeline/processedTrajectory.ts');
 const { metricCurve, pixelDensity, smoothSpeedCurve } = require('../../apps/desktop/src/renderer/features/timeline/metrics.ts');
 
 const repetitions = 6;
@@ -95,6 +98,50 @@ async function trajectoryBench(core) {
   }
 }
 
+async function djiBench(core, video, csv) {
+  assert(video && csv, 'Usage: npm run bench:native -- dji <video> <footprint CSV>');
+  const probe = JSON.parse(execFileSync(process.env.REPLAYMOD_FFPROBE || 'ffprobe', [
+    '-v', 'error', '-show_entries', 'format=duration:format_tags=creation_time', '-of', 'json', video,
+  ], { encoding: 'utf8', timeout: 30_000 }));
+  const start = Date.parse(probe.format.tags?.creation_time) / 1000;
+  const duration = Number(probe.format.duration);
+  assert(Number.isFinite(start) && Number.isFinite(duration) && duration > 0, 'Missing video capture time or duration');
+  const dataset = await readLocationCsv(csv, null);
+  const points = motionInputPoints(dataset, start, duration);
+  const fixesInClip = points.filter(point => point.timeSeconds >= start && point.timeSeconds <= start + duration).length;
+  assert(fixesInClip >= 2, 'Need at least two GPS fixes within the video capture time range');
+
+  const extractStart = performance.now();
+  const attitude = await extractDjiOrientation(video, process.env.REPLAYMOD_EXIFTOOL || 'exiftool');
+  const extractMs = Number((performance.now() - extractStart).toFixed(2));
+  assert(attitude.length, 'ExifTool found no valid DJI quaternions');
+  const end = start + duration;
+  const reference = fitMotionTrajectory(attitude, points, start, end);
+  const native = unpackMotionGpsResult(await fitNativeTrajectory(core, attitude, points, start, end, 10));
+  assert(reference.attitudeConstraints > 0, 'The clip must exercise attitude constraints');
+  assert.equal(native.attitudeConstraints, reference.attitudeConstraints);
+  assert.equal(native.fittedWindows, reference.fittedWindows);
+  let maxCoordinateDelta = 0;
+  for (const name of ['points', 'contextPoints']) {
+    assert.equal(native[name].length, reference[name].length);
+    for (const [index, point] of native[name].entries()) {
+      const other = reference[name][index];
+      assert.equal(point.timeSeconds, other.timeSeconds);
+      assert.equal(point.altitude, other.altitude);
+      maxCoordinateDelta = Math.max(maxCoordinateDelta, Math.abs(point.latitude - other.latitude),
+        Math.abs(((point.longitude - other.longitude + 540) % 360) - 180));
+    }
+  }
+  assert(maxCoordinateDelta < 1e-9, `C++ coordinate delta exceeded tolerance: ${maxCoordinateDelta}`);
+  const times = await compare(
+    () => packMotionGpsResult(fitMotionTrajectory(attitude, points, start, end)),
+    () => fitNativeTrajectory(core, attitude, points, start, end, 10),
+    value => value.pointCount,
+  );
+  console.log({ duration, fixesInClip, quaternionCount: attitude.length, constraints: native.attitudeConstraints,
+    extractMs, maxCoordinateDelta, ...times });
+}
+
 function timelineBench() {
   const start = 1800000000000, count = 500_000;
   const dataset = {
@@ -121,11 +168,12 @@ function timelineBench() {
 
 async function main() {
   const mode = process.argv[2] ?? 'all';
-  assert(['all', 'csv', 'trajectory', 'timeline'].includes(mode), 'Expected all, csv, trajectory or timeline');
+  assert(['all', 'csv', 'trajectory', 'timeline', 'dji'].includes(mode), 'Expected all, csv, trajectory, timeline or dji');
   const core = mode === 'timeline' ? undefined : buildCore();
   if (mode === 'all' || mode === 'csv') await csvBench(core);
   if (mode === 'all' || mode === 'trajectory') await trajectoryBench(core);
   if (mode === 'all' || mode === 'timeline') timelineBench();
+  if (mode === 'dji') await djiBench(core, process.argv[3], process.argv[4]);
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });
