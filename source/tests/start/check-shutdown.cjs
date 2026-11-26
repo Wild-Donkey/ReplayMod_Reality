@@ -68,6 +68,17 @@ async function check(mode) {
   const config = path.join(profile, '.config');
   const logRoot = process.platform === 'darwin' ? path.join(profile, 'Library', 'Application Support') : config;
   const log = path.join(logRoot, 'ReplayMod Reality', 'desktop-start.log');
+  const checkNativeTrajectory = mode === 'window' && process.env.REPLAYMOD_CHECK_NATIVE_TRAJECTORY === '1';
+  const video = path.join(profile, 'fixture.mp4');
+  if (checkNativeTrajectory) {
+    try {
+      execFileSync('ffmpeg', ['-v', 'error', '-nostdin', '-f', 'lavfi', '-i', 'color=size=32x32:rate=10',
+        '-t', '2', '-c:v', 'mpeg4', '-metadata', 'creation_time=2020-01-01T00:00:00Z', video], { stdio: 'inherit' });
+    } catch (error) {
+      fs.rmSync(profile, { recursive: true, force: true });
+      throw error;
+    }
+  }
   if (mode === 'window') {
     const footprint = path.join(profile, 'fixture.csv');
     const photo = path.join(profile, 'photo.csv');
@@ -82,6 +93,7 @@ async function check(mode) {
       workspace: {},
       services: {},
       lastDatasetSource: { mainFilePath: footprint, photoFilePath: photo },
+      ...(checkNativeTrajectory ? { lastMedia: { sourcePath: video } } : {}),
     }));
   }
   const readLog = () => fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '';
@@ -89,7 +101,8 @@ async function check(mode) {
     cwd: root, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
     env: {...process.env, HOME: profile, CFFIXED_USER_HOME: profile, XDG_CONFIG_HOME: config,
       XDG_CACHE_HOME: path.join(profile, 'cache'),
-      REPLAYMOD_NATIVE_CSV: mode !== 'window' ? '0' : process.platform === 'darwin' && process.arch === 'arm64' ? undefined : '1'},
+      REPLAYMOD_NATIVE_CSV: mode !== 'window' ? '0' : process.platform === 'darwin' && process.arch === 'arm64' ? undefined : '1',
+      REPLAYMOD_NATIVE_TRAJECTORY: checkNativeTrajectory ? '1' : '0'},
   });
   let output = '';
   npm.stdout.on('data', chunk => { output += chunk; });
@@ -151,6 +164,31 @@ async function check(mode) {
         ${electron}.BrowserWindow.getAllWindows()[0].webContents.executeJavaScript(${JSON.stringify(workerCheck)})
       `);
       assert.deepEqual(worker, { id: 1, moving: true });
+      if (checkNativeTrajectory) {
+        const trajectoryCheck = `(async () => {
+          const bridge = window.replaymod;
+          const media = await bridge.loadCachedMedia();
+          if (!Number.isFinite(media?.creationTimeSeconds)) throw new Error('Fixture has no creation time');
+          return await new Promise((resolve, reject) => {
+            const unsubscribe = bridge.onMediaGpsResult(update => {
+              if (update.id !== 'native-fit-fixture') return;
+              unsubscribe();
+              if (update.error) { reject(new Error(update.error)); return; }
+              resolve({ points: update.result.points.length, windows: update.result.fittedWindows,
+                start: update.result.points[0].timeSeconds, end: update.result.points.at(-1).timeSeconds });
+            });
+            bridge.postMediaGps('native-fit-fixture', { sourcePath: media.sourcePath,
+              creationTimeSeconds: media.creationTimeSeconds, offsetSeconds: 0, precision: 'export', sampleRateHz: 10,
+              points: [0, 1, 2].map(offset => ({ timeSeconds: media.creationTimeSeconds + offset,
+                latitude: 30, longitude: 120 + offset * .0001 })) });
+          });
+        })()`;
+        const result = await evaluate(url, `
+          ${electron}.BrowserWindow.getAllWindows()[0].webContents.executeJavaScript(${JSON.stringify(trajectoryCheck)})
+        `);
+        assert.deepEqual(result, { points: 21, windows: 1, start: 1577836800, end: 1577836802 });
+        assert.doesNotMatch(readLog(), /Native trajectory fit failed/);
+      }
       await evaluate(url, `{
         const window = ${electron}.BrowserWindow.getAllWindows()[0];
         window.on('closed', () => process.mainModule.require('node:fs').writeFileSync(${JSON.stringify(path.join(profile, 'closed'))}, ''));

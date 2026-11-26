@@ -45,16 +45,16 @@ export function MetricChart({ scene, dataset, viewRange: requestedRange, metrics
     observer.observe(element.current);
     return () => observer.disconnect();
   }, []);
+  const densityCurve = useMemo(() => {
+    if (!density || !dataset || start === undefined || end === undefined || end <= start) return null;
+    const values = metricCurve(dataset, "density", start, end, count, (metrics.densitySmoothingSeconds ?? 60) * 1000);
+    return { start, end, values };
+  }, [density, dataset, start, end, count, metrics.densitySmoothingSeconds]);
+  const curve = density ? densityCurve : speed?.dataset === dataset ? speed : null;
   const plot = useMemo(() => {
-    if (!dataset || start === undefined || end === undefined || end <= start) return null;
-    const speedResult = speed?.dataset === dataset ? speed : null;
-    if (!density && !speedResult) return null;
-    const plotStart = density ? start : speedResult?.start ?? start;
-    const plotEnd = density ? end : speedResult?.end ?? end;
-    const values = density
-      ? metricCurve(dataset, "density", plotStart, plotEnd, count, (metrics.densitySmoothingSeconds ?? 60) * 1000)
-      : speedResult?.values;
-    if (!values) return null;
+    if (!dataset || !curve || curve.end <= curve.start) return null;
+    const { start: plotStart, end: plotEnd, values } = curve;
+    const samples = values.length - 1;
     let minimum = Infinity;
     let maximum = -Infinity;
     values.forEach(value => {
@@ -67,12 +67,12 @@ export function MetricChart({ scene, dataset, viewRange: requestedRange, metrics
       id: "timeline-metric", space: "timeline", sourceTrajectory: TrajectoryBuffer.fromPointDataset(dataset),
       color: density ? [201, 154, 255, 255] : [115, 200, 255, 255], lineWidth: 1.5, areaOpacity: 0.1,
       x: Float64Array.from(values, (_, index) => density
-        ? plotStart + index / count * (plotEnd - plotStart)
-        : plotStart + index * ((plotEnd - plotStart) / (values.length - 1))),
+        ? plotStart + index / samples * (plotEnd - plotStart)
+        : plotStart + index * ((plotEnd - plotStart) / samples)),
       values, xDomain: [plotStart, plotEnd], yDomain,
     };
     return {series, axisRange: range ? yDomain : null};
-  }, [dataset, start, end, count, density, metrics.densitySmoothingSeconds, speed]);
+  }, [dataset, density, curve]);
   useEffect(() => {
     setHover(null);
     if (plot) return scene.registerMetricSeries("timeline", plot.series);
