@@ -13,7 +13,7 @@ require.extensions['.ts'] = (module, file) => {
   module._compile(outputText, file);
 };
 const { NativeCore } = require('../../apps/desktop/src/main/nativeCore.ts');
-const { readLocationCsv } = require('../../apps/desktop/src/main/locationCsv.ts');
+const { readLocationCsv, restorePointColumns } = require('../../apps/desktop/src/main/locationCsv.ts');
 const { readNativeLocationCsv } = require('../../apps/desktop/src/main/nativeLocationCsv.ts');
 const { fitNativeTrajectory } = require('../../apps/desktop/src/main/nativeTrajectoryFit.ts');
 const { unpackMotionGpsResult } = require('../../apps/desktop/src/shared/motionGpsWire.ts');
@@ -39,9 +39,9 @@ async function checkCsv(executable) {
     fs.writeFileSync(photos, [header, '1,10,20,,0,4', '2,13,20,,0,5'].join('\n'));
     const merged = await readLocationCsv(filename, photos);
     assert.deepEqual(await readNativeLocationCsv(executable, filename, photos), merged);
-    assert.deepEqual(merged.timelineTimestamps, [1000, 1000, 2000, 2000]);
-    assert.deepEqual(merged.timelineCoordinates, [11, 20, 10, 20, 12, 20, 13, 20]);
-    assert.deepEqual(merged.timelineAltitudes, [1, 4, 3, 5]);
+    assert.deepEqual(Array.from(merged.timelineTimestamps), [1000, 1000, 2000, 2000]);
+    assert.deepEqual(Array.from(merged.timelineCoordinates), [11, 20, 10, 20, 12, 20, 13, 20]);
+    assert.deepEqual(Array.from(merged.timelineAltitudes), [1, 4, 3, 5]);
     fs.writeFileSync(filename, header + '\n');
     const photoOnly = await readLocationCsv(filename, photos);
     assert.equal(photoOnly.footprintPointCount, 0);
@@ -52,6 +52,11 @@ async function checkCsv(executable) {
     assert.deepEqual(await readNativeLocationCsv(executable, filename), await readLocationCsv(filename, null));
     const footprintOnly = await readLocationCsv(sample, null);
     assert.strictEqual(footprintOnly.timelineTimestamps, footprintOnly.footprintTimestamps);
+    const oldTimes = Array.from(footprintOnly.footprintTimestamps);
+    const restored = restorePointColumns({ ...footprintOnly, footprintTimestamps: oldTimes, timelineTimestamps: oldTimes });
+    assert(restored.timelineTimestamps instanceof Float64Array);
+    assert.strictEqual(restored.timelineTimestamps, restored.footprintTimestamps);
+    assert.deepEqual(restored, footprintOnly);
   } finally {
     fs.rmSync(directory, {recursive: true, force: true});
   }

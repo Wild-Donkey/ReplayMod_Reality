@@ -208,9 +208,9 @@ export function clusterFlightTrips(
 }
 
 export function detectFlight(
-  coordinates: readonly number[],
-  timestamps: readonly number[],
-  altitudes: readonly number[],
+  coordinates: ArrayLike<number>,
+  timestamps: ArrayLike<number>,
+  altitudes: ArrayLike<number>,
   groundElevations: ArrayLike<number>,
   thresholdMeters: number = DEFAULT_FLIGHT_THRESHOLD_METERS,
   bridgeGapMs: number = DEFAULT_TRIP_BRIDGE_GAP_MS,

@@ -69,7 +69,7 @@ const crfPresets = [
 const crfForFormat = (preset: typeof crfPresets[number], format: NonNullable<ExportSettings["format"]>) =>
   format === "transparent" ? preset.value : preset[format];
 
-const lowerBound = (values: readonly number[], target: number) => {
+const lowerBound = (values: ArrayLike<number>, target: number) => {
   let low = 0;
   let high = values.length;
   while (low < high) {

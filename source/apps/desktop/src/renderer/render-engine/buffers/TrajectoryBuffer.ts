@@ -45,9 +45,9 @@ export class TrajectoryBuffer {
     };
   }
 
-  private constructor(length: number, timestamps: Float64Array = new Float64Array(length)) {
+  private constructor(length: number, timestamps: Float64Array = new Float64Array(length), positions: Float64Array = new Float64Array(length * 2)) {
     this.length = length;
-    this.positions = new Float64Array(length * 2);
+    this.positions = positions;
     this.timestamps = timestamps;
     this.altitudes = new Float32Array(length);
     this.distances = new Float64Array(length);
@@ -62,16 +62,20 @@ export class TrajectoryBuffer {
       dataset.timelineAltitudes.length,
       Math.floor(dataset.timelineCoordinates.length / 2),
     );
-    const buffer = new TrajectoryBuffer(length);
+    const positions = dataset.timelineCoordinates instanceof Float64Array ? dataset.timelineCoordinates.subarray(0, length * 2) : undefined;
+    const timestamps = dataset.timelineTimestamps instanceof Float64Array ? dataset.timelineTimestamps.subarray(0, length) : undefined;
+    const buffer = new TrajectoryBuffer(length, timestamps, positions);
     for (let index = 0; index < length; index += 1) {
       const coordinateIndex = index * 2;
       const current: [number, number] = [
         dataset.timelineCoordinates[coordinateIndex],
         dataset.timelineCoordinates[coordinateIndex + 1],
       ];
-      buffer.positions[coordinateIndex] = current[0];
-      buffer.positions[coordinateIndex + 1] = current[1];
-      buffer.timestamps[index] = dataset.timelineTimestamps[index];
+      if (!positions) {
+        buffer.positions[coordinateIndex] = current[0];
+        buffer.positions[coordinateIndex + 1] = current[1];
+      }
+      if (!timestamps) buffer.timestamps[index] = dataset.timelineTimestamps[index];
       buffer.altitudes[index] = dataset.timelineAltitudes[index];
       if (index === 0) continue;
       const previous: [number, number] = [

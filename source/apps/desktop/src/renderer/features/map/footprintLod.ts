@@ -75,8 +75,8 @@ function distanceMeters(
 // segment, when the time since the last anchor exceeds the gap, or when it has
 // moved beyond minMeters from the last anchor.
 function forEachAnchor(
-  coordinates: readonly number[],
-  timestamps: readonly number[],
+  coordinates: ArrayLike<number>,
+  timestamps: ArrayLike<number>,
   minMeters: number,
   maxTimeGapMs: number,
   callback: (index: number, previousIndex: number) => void,
@@ -113,8 +113,8 @@ function forEachAnchor(
 // Flat [lng, lat, ...] coordinates kept for the coarse LOD. Ownership of the
 // returned array stays with the caller; it only feeds a GPU buffer upload.
 export function decimateFootprintCoordinates(
-  coordinates: readonly number[],
-  timestamps: readonly number[],
+  coordinates: ArrayLike<number>,
+  timestamps: ArrayLike<number>,
   minMeters: number,
   maxTimeGapMs: number = FOOTPRINT_LOD_TIME_GAP_MS,
 ): number[] {
@@ -144,8 +144,8 @@ export interface FootprintViewBounds {
 // while long-gap revisits remain separate anchors. Null when no anchored pair
 // is fully visible (the caller keeps the current LOD).
 export function medianAnchoredScreenSpacing(
-  coordinates: readonly number[],
-  timestamps: readonly number[],
+  coordinates: ArrayLike<number>,
+  timestamps: ArrayLike<number>,
   zoom: number,
   centerLatitude: number,
   bounds: FootprintViewBounds,

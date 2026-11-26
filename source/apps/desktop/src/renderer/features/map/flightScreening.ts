@@ -115,11 +115,13 @@ export async function screenDatasetFlight(
     analysisStartIndex = dataset.timelineTimestamps.findIndex(timestamp => timestamp >= replaceFromTimestamp);
     if (analysisStartIndex < 0) analysisStartIndex = count;
   }
+  const tail = (column: readonly number[] | Float64Array, start: number) =>
+    column instanceof Float64Array ? column.subarray(start) : column.slice(start);
   const detection = detectFlight(
-    dataset.timelineCoordinates.slice(analysisStartIndex * 2),
-    dataset.timelineTimestamps.slice(analysisStartIndex),
-    dataset.timelineAltitudes.slice(analysisStartIndex),
-    groundElevations.slice(analysisStartIndex),
+    tail(dataset.timelineCoordinates, analysisStartIndex * 2),
+    tail(dataset.timelineTimestamps, analysisStartIndex),
+    tail(dataset.timelineAltitudes, analysisStartIndex),
+    groundElevations.subarray(analysisStartIndex),
     thresholdMeters,
   );
   const finalIndex = Math.max(0,count - 1);

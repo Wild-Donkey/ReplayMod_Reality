@@ -24,7 +24,7 @@ export async function readNativeLocationCsv(executable: string, filename: string
     throw new Error("Invalid native CSV length");
   }
   const readColumns = (length: number, start: number) => {
-    const timestamps = new Array<number>(length), coordinates = new Array<number>(2 * length);
+    const timestamps = new Float64Array(length), coordinates = new Float64Array(2 * length);
     for (let i = 0, offset = HEADER_BYTES + start * POINT_BYTES; i < length; i++, offset += POINT_BYTES) {
       timestamps[i] = result.readDoubleLE(offset);
       coordinates[2 * i] = result.readDoubleLE(offset + 8);
@@ -35,9 +35,9 @@ export async function readNativeLocationCsv(executable: string, filename: string
   const footprint = readColumns(footprintPointCount, 0);
   const photo = readColumns(photoPointCount, footprintPointCount);
   const mixed = footprintPointCount > 0 && photoPointCount > 0;
-  const timelineCoordinates = mixed ? new Array<number>(2 * count) : (footprintPointCount ? footprint : photo).coordinates;
-  const timelineTimestamps = mixed ? new Array<number>(count) : (footprintPointCount ? footprint : photo).timestamps;
-  const timelineAltitudes = new Array<number>(count);
+  const timelineCoordinates = mixed ? new Float64Array(2 * count) : (footprintPointCount ? footprint : photo).coordinates;
+  const timelineTimestamps = mixed ? new Float64Array(count) : (footprintPointCount ? footprint : photo).timestamps;
+  const timelineAltitudes = new Float64Array(count);
   let groundIndex = 0, photoIndex = 0;
   for (let i = 0; i < count; i++) {
     const takeGround = groundIndex < footprintPointCount &&

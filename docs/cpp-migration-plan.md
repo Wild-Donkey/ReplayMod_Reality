@@ -169,6 +169,14 @@ macOS arm64 已在临时目录完成 Forge 打包。直接运行包内 `Contents
 
 macOS 开发环境已通过 `npm --prefix source run check`、原生核心对照和打包检查。带 FFmpeg/FFprobe 的 macOS 或 Linux 图形环境可设置 `REPLAYMOD_CHECK_NATIVE_TRAJECTORY=1` 后，从 `source/` 执行 `node tests/start/check-shutdown.cjs window`，重跑合成 MP4 的完整轨迹链路。
 
+### 数据集缓存和 IPC 表示
+
+CSV 两条路径均输出 Float64 列。普通数组的旧快照第一次读取时转换并写入独立版本的新快照，旧文件保留。renderer 的轨迹和照片复用定宽坐标，筛选局部时可用视图，减少显示前的重建和复制。
+
+处理后轨迹会预分配定宽列，按时间边界只合并需要替换的区间。macOS 实机确认 preload IPC 到 renderer 后仍然是 Float64Array，脚本也验证了输出轨迹和浏览器 worker。全项目检查通过。
+
+对 50 万点合成单来源数据，用同一份逻辑数据在 Node 内单独测量序列化。六次中位数下，普通数组的结构化克隆、V8 写入编码和 V8 读取解码分别为 94.84、36.99、54.40 ms，定宽列为 2.25、0.49、1.13 ms。快照体积从 19.0 MB 降到 16.0 MB。这是数据表示的对照，未计入 Electron 进程调度、磁盘或 GPU。
+
 ### 时间轴指标基线
 
 用 50 万点的 1 Hz 合成轨迹模拟换视窗，每次更换范围，预热后取六次中位数。曲线采样 3,841 个位置，直方图宽 1,920 像素。测量范围只包含指标计算。

@@ -4,8 +4,8 @@ export type FootprintPath = [number, number][];
 // Backend-independent geometry contract: recording gaps split paths, and a
 // single symmetric smoothing pass never moves their endpoints.
 export function compileFootprintPaths(
-  coordinates: readonly number[],
-  timestamps: readonly number[],
+  coordinates: ArrayLike<number>,
+  timestamps: ArrayLike<number>,
 ): FootprintPath[] {
   const paths: FootprintPath[] = [];
   let path: FootprintPath = [];

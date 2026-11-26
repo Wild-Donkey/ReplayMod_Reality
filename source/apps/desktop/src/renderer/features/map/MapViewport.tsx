@@ -96,7 +96,7 @@ const isEditableTarget = (target: EventTarget | null) =>
   target instanceof HTMLSelectElement ||
   (target instanceof HTMLElement && target.isContentEditable);
 
-const toMultiPoint = (flatCoordinates: readonly number[]) => {
+const toMultiPoint = (flatCoordinates: ArrayLike<number>) => {
   const coordinates: [number, number][] = [];
 
   for (let index = 0; index < flatCoordinates.length; index += 2) {
@@ -119,8 +119,8 @@ const toMultiPoint = (flatCoordinates: readonly number[]) => {
 // Gap-split, 0.25/0.5/0.25 smoothed footprint paths, shared by the GPU
 // density layer and its no-float-target MapLibre fallback.
 const toFootprintRoutePaths = (
-  flatCoordinates: readonly number[],
-  timestamps: readonly number[],
+  flatCoordinates: ArrayLike<number>,
+  timestamps: ArrayLike<number>,
 ): [number, number][][] => {
   const count = Math.min(timestamps.length, Math.floor(flatCoordinates.length / 2));
   const rawSegments: [number, number][][] = [];
@@ -181,8 +181,8 @@ const findNearestPointTimestamp = (
   let nearestPriority = -1;
 
   const inspectPoints = (
-    coordinates: readonly number[],
-    timestamps: readonly number[],
+    coordinates: ArrayLike<number>,
+    timestamps: ArrayLike<number>,
     priority: number,
   ) => {
     const pointCount = Math.min(

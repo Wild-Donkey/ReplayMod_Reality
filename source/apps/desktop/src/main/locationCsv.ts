@@ -3,6 +3,7 @@ import path from "node:path";
 import { compose } from "node:stream";
 import { parse } from "csv-parse";
 import type { CoordinateBounds, PointDataset, TimeBounds } from "../../../../packages/data/src";
+import type { NumericColumn } from "../../../../packages/data/src/points";
 
 interface TimedCoordinate {
   readonly timestamp: number;
@@ -113,11 +114,11 @@ export async function readLocationCsv(mainFilePath: string, photoFilePath: strin
   const { coordinates: footprintCoordinates, timestamps: footprintTimestamps } = pointColumns(footprintPoints);
   const { coordinates: photoCoordinates, timestamps: photoTimestamps } = pointColumns(photoPoints);
   const hasBoth = footprintPoints.length > 0 && photoPoints.length > 0;
-  const timelineCoordinates = hasBoth ? new Array<number>(pointCount * 2)
+  const timelineCoordinates = hasBoth ? new Float64Array(pointCount * 2)
     : photoPoints.length ? photoCoordinates : footprintCoordinates;
-  const timelineTimestamps = hasBoth ? new Array<number>(pointCount)
+  const timelineTimestamps = hasBoth ? new Float64Array(pointCount)
     : photoPoints.length ? photoTimestamps : footprintTimestamps;
-  const timelineAltitudes = new Array<number>(pointCount);
+  const timelineAltitudes = new Float64Array(pointCount);
   // Merge the two sorted streams. A tie keeps footprint points first, as in
   // the previous stable sort of their concatenation.
   let footprint = 0;
@@ -156,8 +157,8 @@ export async function readLocationCsv(mainFilePath: string, photoFilePath: strin
 }
 
 function pointColumns(points: readonly TimedCoordinate[]) {
-  const coordinates = new Array<number>(points.length * 2);
-  const timestamps = new Array<number>(points.length);
+  const coordinates = new Float64Array(points.length * 2);
+  const timestamps = new Float64Array(points.length);
   for (let index = 0; index < points.length; index++) {
     const point = points[index];
     coordinates[index * 2] = point.longitude;
@@ -165,4 +166,26 @@ function pointColumns(points: readonly TimedCoordinate[]) {
     timestamps[index] = point.timestamp;
   }
   return { coordinates, timestamps };
+}
+
+export function restorePointColumns(dataset: PointDataset): PointDataset {
+  const converted = new Map<NumericColumn, Float64Array>();
+  const column = (source: NumericColumn) => {
+    if (source instanceof Float64Array) return source;
+    const previous = converted.get(source);
+    if (previous) return previous;
+    const values = Float64Array.from(source);
+    converted.set(source, values);
+    return values;
+  };
+  return {
+    ...dataset,
+    footprintCoordinates: column(dataset.footprintCoordinates),
+    footprintTimestamps: column(dataset.footprintTimestamps),
+    photoCoordinates: column(dataset.photoCoordinates),
+    photoTimestamps: column(dataset.photoTimestamps),
+    timelineCoordinates: column(dataset.timelineCoordinates),
+    timelineTimestamps: column(dataset.timelineTimestamps),
+    timelineAltitudes: column(dataset.timelineAltitudes),
+  };
 }

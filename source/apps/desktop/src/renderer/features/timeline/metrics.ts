@@ -215,10 +215,10 @@ export interface PixelDensity {
   counts: Uint32Array;
   peak: number;
 }
-const pixelDensityCache = new WeakMap<readonly number[], Map<string, PixelDensity>>();
+const pixelDensityCache = new WeakMap<ArrayLike<number>, Map<string, PixelDensity>>();
 /** Exact count per display pixel, using sorted timestamp bounds rather than
  * scanning all points. */
-export function pixelDensity(timestamps: readonly number[], start: number, end: number, width: number): PixelDensity {
+export function pixelDensity(timestamps: ArrayLike<number>, start: number, end: number, width: number): PixelDensity {
   width = Math.max(1, Math.ceil(width));
   let cache = pixelDensityCache.get(timestamps);
   if (!cache) { cache = new Map(); pixelDensityCache.set(timestamps, cache); }

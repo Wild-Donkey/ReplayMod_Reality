@@ -58,7 +58,7 @@ export type FootprintDensityMode = "points" | "line";
 export type FootprintPaths = readonly (readonly (readonly [number, number])[])[];
 
 export interface FootprintDensityData {
-  readonly coordinates: readonly number[];
+  readonly coordinates: ArrayLike<number>;
   readonly paths: FootprintPaths;
   readonly mode: FootprintDensityMode;
 }
@@ -131,7 +131,7 @@ export class FootprintDensityPass {
     this.requestRedraw();
   }
   constructor(
-    private coordinates: readonly number[],
+    private coordinates: ArrayLike<number>,
     private linePaths: FootprintPaths,
     private readonly project: (longitude: number, latitude: number) => {x: number; y: number},
     private readonly requestRedraw: () => void,
@@ -142,7 +142,7 @@ export class FootprintDensityPass {
     this.lastMeter = -Infinity;
     this.requestRedraw();
   }
-  setCoordinates(coordinates: readonly number[]) {
+  setCoordinates(coordinates: ArrayLike<number>) {
     if (this.coordinates === coordinates) return;
     this.coordinates = coordinates;
     this.lastMeter = -Infinity;

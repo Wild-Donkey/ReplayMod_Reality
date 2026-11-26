@@ -77,6 +77,10 @@ const shortTrack=withProcessedTrajectory(raw,shortWindow),wideTrack=withProcesse
 for(const time of [base+3,base+8])assert.equal(smoothedSpeed(shortTrack,time*1000),smoothedSpeed(wideTrack,time*1000),'Speed at the clip edge must use the same context');
 const sparse={footprintTimestamps:Array.from({length:21},(_,i)=>(base+i*10)*1000),footprintCoordinates:Array.from({length:42},()=>0)};
 const analysisPoints=motionInputPoints(sparse,base+80,40);
+assert.deepEqual(motionInputPoints({
+  footprintTimestamps: Float64Array.from(sparse.footprintTimestamps),
+  footprintCoordinates: Float64Array.from(sparse.footprintCoordinates),
+},base+80,40),analysisPoints);
 assert.equal(analysisPoints.filter(p=>p.timeSeconds<base+80).length,8);
 assert.equal(analysisPoints.filter(p=>p.timeSeconds>base+120).length,8);
 const unbracketed=withProcessedTrajectory(raw,processMotionGps([], [point(10),point(11)],base,base+20));

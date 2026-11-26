@@ -8,7 +8,7 @@ import { Worker } from "node:worker_threads";
 import { killChildren, stopChildren } from "../../../../packages/media/src/childProcesses";
 import { installShutdown } from "./shutdown";
 import { NativeCore } from "./nativeCore";
-import { readLocationCsv } from "./locationCsv";
+import { readLocationCsv, restorePointColumns } from "./locationCsv";
 import { readNativeLocationCsv } from "./nativeLocationCsv";
 import {restoreDataset,resolveDatasetSource} from "./restoreDataset";
 import {LocalSpeech} from "./localSpeech";
@@ -426,13 +426,20 @@ const readLocationCsvSnapshot = async (
     const info = await stat(file);
     return [file, info.size, info.mtimeMs];
   }))];
-  const key = createHash("sha256").update(JSON.stringify(signature)).digest("hex");
+  const legacyKey = createHash("sha256").update(JSON.stringify(signature)).digest("hex");
+  const key = createHash("sha256").update("point-columns-v1:").update(legacyKey).digest("hex");
   const pending = pendingDatasetSnapshots.get(key);
   if (pending) return {dataset: await pending, key};
 
   const load = (async () => {
     const saved = await resources.read<PointDataset>("snapshots", key);
     if (saved) return saved;
+    const legacy = await resources.read<PointDataset>("snapshots", legacyKey);
+    if (legacy) {
+      const dataset = restorePointColumns(legacy);
+      await resources.write("snapshots", key, dataset).catch(console.warn);
+      return dataset;
+    }
 
     const nativeDataset = tryNative ? await readNativeLocationCsv(nativeCoreExecutable, mainFilePath, photoFilePath).catch(error => {
       if (shutdown.isQuitting()) throw error;
@@ -519,7 +526,10 @@ ipcMain.handle(
   (): Promise<PointDataset | null> => {
     defaultDatasetPromise ??= restoreDataset(userArchive.lastDatasetSource,userArchive.lastDatasetCacheKey,{
       ...datasetLookup,
-      cached:key=>resources.read<PointDataset>("snapshots",key),
+      cached:async key=>{
+        const dataset = await resources.read<PointDataset>("snapshots",key);
+        return dataset ? restorePointColumns(dataset) : null;
+      },
       read:activateLocationCsv,
     }).finally(() => { defaultDatasetPromise = null; });
 

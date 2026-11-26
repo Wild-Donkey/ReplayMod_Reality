@@ -141,9 +141,11 @@ async function check(mode) {
       const imported = await evaluate(url, `
         ${electron}.BrowserWindow.getAllWindows()[0].webContents.executeJavaScript(
           '(async () => { const data = await window.replaymod.loadDefaultLocationCsv(); ' +
-          'return {name: data.sourceName, time: data.timelineTimestamps, points: data.timelineCoordinates}; })()')
+          'return {name: data.sourceName, time: Array.from(data.timelineTimestamps), points: Array.from(data.timelineCoordinates), ' +
+          'binary: data.timelineTimestamps instanceof Float64Array && data.timelineCoordinates instanceof Float64Array}; })()')
       `);
-      assert.deepEqual(imported, { name: 'fixture.csv + photo.csv', time: [1000, 1000, 2000], points: [121, 31, 122, 32, 120, 30] });
+      assert.deepEqual(imported, { name: 'fixture.csv + photo.csv', time: [1000, 1000, 2000],
+        points: [121, 31, 122, 32, 120, 30], binary: true });
       assert.doesNotMatch(readLog(), /Native CSV import failed/);
       const workerCheck = `(async () => {
         const { default: WorkerEntry } = await import('/features/timeline/speedCurveWorker.ts?worker');

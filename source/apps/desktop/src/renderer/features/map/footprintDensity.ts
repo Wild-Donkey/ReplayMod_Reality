@@ -9,7 +9,7 @@ export class FootprintDensity extends FootprintDensityPass implements CustomLaye
   readonly renderingMode = "2d" as const;
   private map?: maplibregl.Map;
 
-  constructor(coordinates: readonly number[], linePaths: readonly (readonly (readonly [number, number])[])[] = []) {
+  constructor(coordinates: ArrayLike<number>, linePaths: readonly (readonly (readonly [number, number])[])[] = []) {
     super(coordinates, linePaths,
       (longitude, latitude) => maplibregl.MercatorCoordinate.fromLngLat([longitude, latitude]),
       () => this.map?.triggerRepaint(),
