@@ -29,6 +29,9 @@ async function check() {
     assert.equal(run.status, 0, run.stderr);
     assert.match(run.stdout, /^ready 1\r?\npong\r?\n$/);
     console.log(`Packaged ${platform}/${arch} core passed handshake, ping and EOF shutdown.`);
+    if (process.argv.includes('--benchmark-csv')) {
+      await require('./benchmark-packaged-csv.cjs').benchmarkPackagedCsv(packagedPath);
+    }
   } finally {
     fs.rmSync(output, { recursive: true, force: true });
   }
