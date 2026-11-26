@@ -31,6 +31,19 @@ async function checkCsv(executable) {
       fs.writeFileSync(filename, [header, '1,0,0,,0,0', row].join('\n'));
       assert.equal(await readNativeLocationCsv(executable, filename), null, row);
     }
+    const photos = path.join(directory, 'photos.csv');
+    fs.writeFileSync(filename, [header, '2,12,20,,0,3', '1,11,20,,0,1', '1,10,20,,1,2'].join('\n'));
+    fs.writeFileSync(photos, [header, '1,10,20,,0,4', '2,13,20,,0,5'].join('\n'));
+    const merged = await readLocationCsv(filename, photos);
+    assert.deepEqual(merged.timelineTimestamps, [1000, 1000, 2000, 2000]);
+    assert.deepEqual(merged.timelineCoordinates, [11, 20, 10, 20, 12, 20, 13, 20]);
+    assert.deepEqual(merged.timelineAltitudes, [1, 4, 3, 5]);
+    fs.writeFileSync(filename, header + '\n');
+    const photoOnly = await readLocationCsv(filename, photos);
+    assert.equal(photoOnly.footprintPointCount, 0);
+    assert.strictEqual(photoOnly.timelineCoordinates, photoOnly.photoCoordinates);
+    const footprintOnly = await readLocationCsv(sample, null);
+    assert.strictEqual(footprintOnly.timelineTimestamps, footprintOnly.footprintTimestamps);
   } finally {
     fs.rmSync(directory, {recursive: true, force: true});
   }

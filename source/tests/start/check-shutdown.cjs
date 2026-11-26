@@ -99,6 +99,9 @@ async function check(mode) {
         && {pid: process.pid, data: app.getPath("userData")};
     })()`));
     assert.equal(fs.realpathSync(app.data), fs.realpathSync(path.join(logRoot, 'ReplayMod Reality')));
+    await until('the C++ core process', () => processes().some(row =>
+      row.parent === app.pid && row.command.endsWith('/native/build/replaymod-core')
+    ));
     owned = tree(processes(), npm.pid);
     assert(owned.some(process => process.pid === app.pid), 'Electron must belong to this test launch');
 

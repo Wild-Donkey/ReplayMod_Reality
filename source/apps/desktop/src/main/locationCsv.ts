@@ -99,8 +99,6 @@ export async function readLocationCsv(mainFilePath: string, photoFilePath: strin
   }
 
   const photoPoints = [...photoPointsByKey.values()];
-  const timelinePoints = [...footprintPoints, ...photoPoints];
-
   const pointCount = footprintPoints.length + photoPoints.length;
 
   if (pointCount === 0) {
@@ -111,24 +109,31 @@ export async function readLocationCsv(mainFilePath: string, photoFilePath: strin
   const timeBounds: TimeBounds = [startTime, endTime];
   footprintPoints.sort((left, right) => left.timestamp - right.timestamp);
   photoPoints.sort((left, right) => left.timestamp - right.timestamp);
-  timelinePoints.sort((left, right) => left.timestamp - right.timestamp);
 
-  const footprintCoordinates = footprintPoints.flatMap((point) => [
-    point.longitude,
-    point.latitude,
-  ]);
-  const photoCoordinates = photoPoints.flatMap((point) => [
-    point.longitude,
-    point.latitude,
-  ]);
-  const footprintTimestamps = footprintPoints.map((point) => point.timestamp);
-  const photoTimestamps = photoPoints.map((point) => point.timestamp);
-  const timelineCoordinates = timelinePoints.flatMap((point) => [
-    point.longitude,
-    point.latitude,
-  ]);
-  const timelineTimestamps = timelinePoints.map((point) => point.timestamp);
-  const timelineAltitudes = timelinePoints.map((point) => point.altitude);
+  const { coordinates: footprintCoordinates, timestamps: footprintTimestamps } = pointColumns(footprintPoints);
+  const { coordinates: photoCoordinates, timestamps: photoTimestamps } = pointColumns(photoPoints);
+  const hasBoth = footprintPoints.length > 0 && photoPoints.length > 0;
+  const timelineCoordinates = hasBoth ? new Array<number>(pointCount * 2)
+    : photoPoints.length ? photoCoordinates : footprintCoordinates;
+  const timelineTimestamps = hasBoth ? new Array<number>(pointCount)
+    : photoPoints.length ? photoTimestamps : footprintTimestamps;
+  const timelineAltitudes = new Array<number>(pointCount);
+  // Merge the two sorted streams. A tie keeps footprint points first, as in
+  // the previous stable sort of their concatenation.
+  let footprint = 0;
+  let photo = 0;
+  for (let index = 0; index < pointCount; index++) {
+    const nextFootprint = footprintPoints[footprint];
+    const nextPhoto = photoPoints[photo];
+    const point = nextFootprint && (!nextPhoto || nextFootprint.timestamp <= nextPhoto.timestamp)
+      ? footprintPoints[footprint++] : photoPoints[photo++];
+    if (hasBoth) {
+      timelineCoordinates[index * 2] = point.longitude;
+      timelineCoordinates[index * 2 + 1] = point.latitude;
+      timelineTimestamps[index] = point.timestamp;
+    }
+    timelineAltitudes[index] = point.altitude;
+  }
 
   return {
     sourceName: photoFilePath
@@ -148,4 +153,16 @@ export async function readLocationCsv(mainFilePath: string, photoFilePath: strin
     bounds,
     timeBounds,
   };
+}
+
+function pointColumns(points: readonly TimedCoordinate[]) {
+  const coordinates = new Array<number>(points.length * 2);
+  const timestamps = new Array<number>(points.length);
+  for (let index = 0; index < points.length; index++) {
+    const point = points[index];
+    coordinates[index * 2] = point.longitude;
+    coordinates[index * 2 + 1] = point.latitude;
+    timestamps[index] = point.timestamp;
+  }
+  return { coordinates, timestamps };
 }
