@@ -1,7 +1,6 @@
-import { spawn } from "node:child_process";
 import path from "node:path";
-import { assertCanStartChild, trackChild } from "../../../../packages/media/src/childProcesses";
 import type { PointDataset } from "../../../../packages/data/src";
+import { runNativeBinaryJob } from "./nativeBinaryJob";
 
 const HEADER_BYTES = 72;
 const POINT_BYTES = 32;
@@ -9,35 +8,8 @@ const MAX_OUTPUT_BYTES = HEADER_BYTES + 2_000_000 * POINT_BYTES;
 
 export async function readNativeLocationCsv(executable: string, filename: string): Promise<PointDataset | null> {
   if (filename.includes("\n")) return null;
-  assertCanStartChild();
-  const child = trackChild(spawn(executable, ["--import-location-csv"], {
-    stdio: ["pipe", "pipe", "ignore"],
-    windowsHide: true,
-    timeout: 60_000,
-    killSignal: "SIGKILL",
-  }));
-  const result = await new Promise<Buffer | null>((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    let bytes = 0;
-    let oversized = false;
-    child.on("error", reject);
-    child.stdout.on("error", reject);
-    child.stdin.on("error", reject);
-    child.stdout.on("data", (chunk: Buffer) => {
-      bytes += chunk.length;
-      if (bytes <= MAX_OUTPUT_BYTES) chunks.push(chunk);
-      else if (!oversized) {
-        oversized = true;
-        child.kill("SIGKILL");
-      }
-    });
-    child.once("close", (code, signal) => {
-      if (oversized) reject(new Error("Native CSV output exceeded the protocol limit"));
-      else if (code === 3 && bytes === 0) resolve(null);
-      else if (code === 0) resolve(Buffer.concat(chunks, bytes));
-      else reject(new Error(`Native CSV import exited (${signal ?? code})`));
-    });
-    child.stdin.end(filename + "\n", "utf8");
+  const result = await runNativeBinaryJob(executable, "--import-location-csv", filename + "\n", {
+    maxBytes: MAX_OUTPUT_BYTES, unsupportedCode: 3,
   });
   if (!result) return null;
   if (result.length < HEADER_BYTES || result.toString("ascii", 0, 8) !== "RMRCSV01") {

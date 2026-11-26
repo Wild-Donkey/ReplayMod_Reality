@@ -1,8 +1,7 @@
-import { spawn } from "node:child_process";
-import { assertCanStartChild, trackChild } from "../../../../packages/media/src/childProcesses";
 import { processMotionGps, type MotionPoint } from "../../../../packages/media/src/gps-motion";
 import type { OrientationSample } from "../../../../packages/media/src/types";
 import { packMotionGpsResult, type PackedMotionGpsResult } from "../shared/motionGpsWire";
+import { runNativeBinaryJob } from "./nativeBinaryJob";
 
 const RADIANS = Math.PI / 180;
 const METRES = 6_371_000 * RADIANS;
@@ -10,7 +9,8 @@ const CONTEXT_SECONDS = 4;
 const ROW_BYTES = 5 * 8;
 
 export async function fitNativeTrajectory(executable: string, samples: readonly OrientationSample[],
-    points: readonly MotionPoint[], start: number, end: number, sampleRateHz: number): Promise<PackedMotionGpsResult> {
+    points: readonly MotionPoint[], start: number, end: number, sampleRateHz: number, signal?: AbortSignal): Promise<PackedMotionGpsResult> {
+  signal?.throwIfAborted();
   const baseline = processMotionGps([], points, start, end);
   const fixes = points.filter(point => Number.isFinite(point.timeSeconds) && Number.isFinite(point.latitude) &&
     Number.isFinite(point.longitude) && Math.abs(point.latitude) <= 90 && Math.abs(point.longitude) <= 180)
@@ -50,8 +50,11 @@ export async function fitNativeTrajectory(executable: string, samples: readonly 
   const pointCount = Math.ceil(duration * rate) + 1;
   const beforeCount = CONTEXT_SECONDS * rate;
   const count = pointCount + 2 * beforeCount;
-  const output = await runFit(executable, input, ROW_BYTES * (count + 1));
-  if (output.readDoubleLE(0) !== 1 || output.readDoubleLE(8) !== pointCount ||
+  const outputBytes = ROW_BYTES * (count + 1);
+  const output = await runNativeBinaryJob(executable, "--fit-trajectory", input, {
+    exactBytes: outputBytes, maxBytes: outputBytes, signal,
+  });
+  if (!output || output.readDoubleLE(0) !== 1 || output.readDoubleLE(8) !== pointCount ||
       output.readDoubleLE(16) !== count - pointCount) throw new Error("Invalid native trajectory header");
   const fittedWindows = output.readDoubleLE(24), attitudeConstraints = output.readDoubleLE(32);
   if (!Number.isSafeInteger(fittedWindows) || fittedWindows < 1 ||
@@ -67,32 +70,4 @@ export async function fitNativeTrajectory(executable: string, samples: readonly 
   const { points: _points, contextPoints: _context, ...summary } = baseline;
   return { ...summary, pointCount, pointData, altitudePresent, fittedWindows, attitudeConstraints,
     reason: attitudeConstraints ? "使用 DJI 姿态约束轨迹方向。" : "使用 GPS 和运动平滑约束拟合轨迹。" };
-}
-
-async function runFit(executable: string, input: Buffer, outputBytes: number): Promise<Buffer> {
-  assertCanStartChild();
-  const child = trackChild(spawn(executable, ["--fit-trajectory"], {
-    stdio: ["pipe", "pipe", "ignore"], windowsHide: true, timeout: 60_000, killSignal: "SIGKILL",
-  }));
-  return new Promise((resolve, reject) => {
-    const output = Buffer.allocUnsafe(outputBytes);
-    let received = 0;
-    child.on("error", reject);
-    child.stdin.on("error", reject);
-    child.stdout.on("error", reject);
-    child.stdout.on("data", (chunk: Buffer) => {
-      if (received + chunk.length > output.length) {
-        child.kill("SIGKILL");
-        reject(new Error("Native trajectory output exceeded the protocol limit"));
-      } else {
-        chunk.copy(output, received);
-        received += chunk.length;
-      }
-    });
-    child.once("close", (code, signal) => {
-      if (code === 0 && received === outputBytes) resolve(output);
-      else reject(new Error(`Native trajectory fit exited (${signal ?? code}, ${received}/${outputBytes} bytes)`));
-    });
-    child.stdin.end(input);
-  });
 }

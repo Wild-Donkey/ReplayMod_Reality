@@ -123,6 +123,10 @@ async function checkTrajectory(executable) {
       }
     }
   }
+  const controller = new AbortController();
+  const active = fitNativeTrajectory(executable, [], fixtures[1].points, start, start + 800, 60, controller.signal);
+  controller.abort();
+  await assert.rejects(active, { name: 'AbortError' });
   console.log('Native trajectory fit matches the reference for attitude, overlapping windows, dateline and missing altitude.');
 }
 

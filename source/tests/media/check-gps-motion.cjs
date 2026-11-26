@@ -119,9 +119,10 @@ console.log('Continuous fit RMSE across withheld 38 s (m):', [interpolation,gpsF
 
 async function checkLatestJobQueue() {
   const {LatestJobQueue}=load('apps/desktop/src/main/latestJobQueue.ts');
-  const started=[],published=[],failures=[],release=new Map();
-  const queue=new LatestJobQueue(async (job,isCurrent)=>{
+  const started=[],published=[],failures=[],release=new Map(),signals=new Map();
+  const queue=new LatestJobQueue(async (job,isCurrent,signal)=>{
     started.push(job);
+    signals.set(job,signal);
     await new Promise(resolve=>release.set(job,resolve));
     if(job==='failed')throw new Error(job);
     if(isCurrent())published.push(job);
@@ -131,6 +132,7 @@ async function checkLatestJobQueue() {
   queue.post('obsolete');
   queue.post('latest');
   assert.deepEqual(started,['first']);
+  assert.equal(signals.get('first').aborted,true);
   release.get('first')();
   await settled();
   assert.deepEqual(started,['first','latest']);
@@ -141,15 +143,21 @@ async function checkLatestJobQueue() {
   queue.post('running');
   queue.post('cancelled');
   queue.cancel(job=>job==='cancelled');
+  assert.equal(signals.get('cancelled'),undefined);
   release.get('running')();
   await settled();
   assert.deepEqual(started,['first','latest','running']);
   assert.deepEqual(published,['latest']);
+  queue.post('manual');
+  queue.cancel(job=>job==='manual');
+  assert.equal(signals.get('manual').aborted,true);
+  release.get('manual')();
+  await settled();
   queue.post('failed');
-  queue.post('recovery');
   release.get('failed')();
   await settled();
   assert.deepEqual(failures,['failed']);
+  queue.post('recovery');
   release.get('recovery')();
   await settled();
   assert.deepEqual(published,['latest','recovery']);
