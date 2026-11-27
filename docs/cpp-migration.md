@@ -105,7 +105,7 @@ C++ local core
 - 数据面使用连续内存或版本化二进制文件，不使用大规模 JSON 数组。
 - 坐标、时间戳和高程使用明确的固定宽度类型。
 - 每个派生数据集带有 schema version、source fingerprint、algorithm version 和生成时间。
-- 结果必须可通过旧 TypeScript 实现复核，迁移期间两套实现允许并行校验。
+- 迁移期间用旧 TypeScript 实现复核结果。完成对照后移除重复实现，用固定输入验证接口和算法行为，历史版本仍可从 Git 取回。
 
 ## 7. 关键决策门
 

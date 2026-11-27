@@ -6,12 +6,11 @@ const HEADER_BYTES = 80;
 const POINT_BYTES = 32;
 const MAX_OUTPUT_BYTES = HEADER_BYTES + 2_000_000 * POINT_BYTES;
 
-export async function readNativeLocationCsv(executable: string, filename: string, photoFilename: string | null = null): Promise<PointDataset | null> {
-  if (filename.includes("\n") || photoFilename?.includes("\n")) return null;
+export async function readNativeLocationCsv(executable: string, filename: string, photoFilename: string | null = null): Promise<PointDataset> {
+  if (filename.includes("\n") || photoFilename?.includes("\n")) throw new Error("CSV 文件路径不能包含换行。");
   const result = await runNativeBinaryJob(executable, "--import-location-csv", filename + "\n" + (photoFilename ?? "") + "\n", {
-    maxBytes: MAX_OUTPUT_BYTES, unsupportedCode: 3,
+    maxBytes: MAX_OUTPUT_BYTES,
   });
-  if (!result) return null;
   if (result.length < HEADER_BYTES || result.toString("ascii", 0, 8) !== "RMRCSV02") {
     throw new Error("Invalid native CSV header");
   }

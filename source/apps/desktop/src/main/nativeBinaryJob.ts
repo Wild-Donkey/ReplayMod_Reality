@@ -9,10 +9,9 @@ export interface NativeJobProgress {
 export function runNativeBinaryJob(executable: string, command: string, input: Buffer | string, options: {
   maxBytes: number;
   exactBytes?: number;
-  unsupportedCode?: number;
   signal?: AbortSignal;
   onProgress?: (progress: NativeJobProgress) => void;
-}): Promise<Buffer | null> {
+}): Promise<Buffer> {
   assertCanStartChild();
   options.signal?.throwIfAborted();
   const output = options.exactBytes === undefined ? undefined : Buffer.allocUnsafe(options.exactBytes);
@@ -56,8 +55,7 @@ export function runNativeBinaryJob(executable: string, command: string, input: B
         }
       });
     } else child.stderr.resume();
-    // A process can report an unsupported request and exit before reading the
-    // rest of stdin. The exit status below still determines that outcome.
+    // A process may exit before reading all input. Its exit status is authoritative.
     child.stdin.on("error", (error: NodeJS.ErrnoException) => {
       if (error.code !== "EPIPE" && error.code !== "ERR_STREAM_DESTROYED") fail(error);
     });
@@ -73,7 +71,6 @@ export function runNativeBinaryJob(executable: string, command: string, input: B
     });
     child.once("close", (code, signal) => {
       if (failure) reject(failure);
-      else if (code === options.unsupportedCode && received === 0) resolve(null);
       else if (code === 0 && (output === undefined || received === output.length)) resolve(output ?? Buffer.concat(chunks, received));
       else reject(new Error(`Native job ${command} exited (${signal ?? code}, ${received} bytes)`));
     });

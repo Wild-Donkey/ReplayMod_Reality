@@ -79,6 +79,47 @@ async function run(command, args, {stopFile, ...options} = {}) {
   }
 }
 
+function runForeground(command, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: root, env: process.env, stdio: 'inherit', windowsHide: true,
+    });
+    child.once('error', reject);
+    child.once('exit', (code, signal) => {
+      if (code === 0) resolve();
+      else reject(new Error(`${path.basename(command)} stopped (${signal || code}).`));
+    });
+  });
+}
+
+async function ensureElectronRuntime(electronBinary) {
+  const electronRoot = path.join(root, 'node_modules/electron');
+  const electronExecutable = path.join(electronRoot, 'dist', electronBinary);
+  if (fs.existsSync(electronExecutable)) return;
+
+  const {downloadArtifact} = require('@electron/get');
+  const electronPackage = require(path.join(electronRoot, 'package.json'));
+  const checksums = require(path.join(electronRoot, 'checksums.json'));
+  console.log('Electron runtime is missing; downloading it for this computer (network required)...');
+  const archive = await downloadArtifact({
+    version: electronPackage.version,
+    artifactName: 'electron',
+    platform: process.platform,
+    arch: process.arch,
+    checksums,
+  });
+
+  const dist = path.join(electronRoot, 'dist');
+  fs.rmSync(dist, {recursive: true, force: true});
+  fs.mkdirSync(dist, {recursive: true});
+  if (windows) await runForeground('tar.exe', ['-xf', archive, '-C', dist]);
+  else await runForeground('unzip', ['-q', archive, '-d', dist]);
+  fs.writeFileSync(path.join(electronRoot, 'path.txt'), electronBinary);
+  if (!fs.existsSync(electronExecutable)) {
+    throw new Error('Electron runtime download finished without producing an executable.');
+  }
+}
+
 function logDirectory() {
   const home = os.homedir();
   const appData = {
@@ -105,7 +146,7 @@ async function main() {
   console.log(`Project: ${root}`);
   if (process.argv.includes('--check')) {
     if (installed && electronInstalled) console.log('Startup prerequisites found.');
-    else if (installed) console.log('npm dependencies found. Electron will be installed on first launch.');
+    else if (installed) console.log('npm dependencies found, but the Electron runtime still needs to be downloaded.');
     else console.log('Dependencies will be installed on first launch (network required).');
     if (missing.length) console.log(`Missing packages: ${missing.join(', ')}`);
     return;
@@ -116,6 +157,7 @@ async function main() {
     await run(windows ? 'npm.cmd' : 'npm', ['ci'], {shell: windows});
   }
   if (stopping) return;
+  await ensureElectronRuntime(electronBinary);
   if (windows) {
     try { require('../native/build-hdr.cjs')(); }
     catch (error) { console.warn(`Windows HDR helper: ${error.message} ReplayMod Reality can still start in SDR.`); }

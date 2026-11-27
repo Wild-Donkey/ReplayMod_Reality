@@ -8,13 +8,13 @@ import { VitePlugin } from "@electron-forge/plugin-vite";
 
 const requireFromSource = createRequire(path.resolve("package.json"));
 const { buildCore, resource: coreResource } = requireFromSource("./scripts/native/build-core.cjs") as {
-  buildCore(options?: { optional?: boolean }): string | null;
+  buildCore(): string;
   resource: string;
 };
 
 const config: ForgeConfig = {
   hooks: {
-    preStart: async () => { buildCore({ optional: true }); },
+    preStart: async () => { buildCore(); },
     postStart: async (_config, child) => {
       if (process.platform !== "win32" || !process.env.REPLAYMOD_STOP_FILE) return;
       child.once("exit", code => {

@@ -63,11 +63,16 @@ function signalGroup(pid, signal) {
   catch (error) { if (error.code !== 'ESRCH') throw error; }
 }
 
-async function checkTypedCsvExport(url, electron, profile, readLog) {
+async function checkTypedCsvExport(url, electron, profile, readLog, withTrajectory) {
   const destination = path.join(profile, 'fixture.webm');
-  await evaluate(url, `${electron}.dialog.showSaveDialog = async () => ({
-    canceled: false, filePath: ${JSON.stringify(destination)},
-  }); true`);
+  await evaluate(url, `{
+    ${electron}.dialog.showSaveDialog = async () => ({ canceled: false, filePath: ${JSON.stringify(destination)} });
+    globalThis.testExportRates = [];
+    ${electron}.ipcMain.on('media:post-gps', (_event, _id, request) => {
+      if (request?.precision === 'export') globalThis.testExportRates.push(request.sampleRateHz);
+    });
+    true;
+  }`);
   const renderer = `(async () => {
     const button = (root, label) => [...root.querySelectorAll('button')].find(item => item.textContent.trim() === label);
     const deadline = performance.now() + 5000;
@@ -107,6 +112,7 @@ async function checkTypedCsvExport(url, electron, profile, readLog) {
   const timing = await until('finished transparent export', () =>
     readLog().match(/\[offline-export\] complete frames=(\d+) elapsed_ms=(\d+) render_ms=(\d+) readback_ms=(\d+) write_ms=(\d+) finalize_ms=(\d+)/),
   60_000);
+  if (withTrajectory) assert.deepEqual(await evaluate(url, 'globalThis.testExportRates'), [24]);
   const { streams: [stream] } = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-count_frames',
     '-show_entries', 'stream=width,height,avg_frame_rate,nb_read_frames:stream_tags=alpha_mode', '-of', 'json', destination],
   { encoding: 'utf8', timeout: 15_000 }));
@@ -141,6 +147,7 @@ async function check(mode) {
   const logRoot = process.platform === 'darwin' ? path.join(profile, 'Library', 'Application Support') : config;
   const log = path.join(logRoot, 'ReplayMod Reality', 'desktop-start.log');
   const checkNativeTrajectory = mode === 'window' && (Boolean(djiVideo) || process.env.REPLAYMOD_CHECK_NATIVE_TRAJECTORY === '1');
+  const csvStart = checkExport && checkNativeTrajectory ? 1577836800 : 0;
   const video = djiVideo ? path.resolve(root, djiVideo) : path.join(profile, 'fixture.mp4');
   if (checkNativeTrajectory && !djiVideo) {
     try {
@@ -154,8 +161,8 @@ async function check(mode) {
   if (mode === 'window') {
     const footprint = path.join(profile, 'fixture.csv');
     const photo = path.join(profile, 'photo.csv');
-    fs.writeFileSync(footprint, 'dataTime,longitude,latitude,stepType\n2,120,30,0\n1,121,31,0\n');
-    fs.writeFileSync(photo, 'dataTime,longitude,latitude\n1,122,32\n');
+    fs.writeFileSync(footprint, `dataTime,longitude,latitude,stepType\n${csvStart + 2},120,30,0\n${csvStart + 1},121,31,0\n`);
+    fs.writeFileSync(photo, `dataTime,longitude,latitude\n${csvStart + 1},122,32\n`);
     const appData = path.dirname(log);
     fs.mkdirSync(appData, { recursive: true });
     fs.writeFileSync(path.join(appData, 'user-archive.json'), JSON.stringify({
@@ -173,9 +180,7 @@ async function check(mode) {
   const npm = spawn('npm', ['start', '--', '--', '--inspect=127.0.0.1:0', '--use-mock-keychain'], {
     cwd: root, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
     env: {...process.env, HOME: profile, CFFIXED_USER_HOME: profile, XDG_CONFIG_HOME: config,
-      XDG_CACHE_HOME: path.join(profile, 'cache'),
-      REPLAYMOD_NATIVE_CSV: mode !== 'window' ? '0' : process.platform === 'darwin' && process.arch === 'arm64' ? undefined : '1',
-      REPLAYMOD_NATIVE_TRAJECTORY: checkNativeTrajectory ? '1' : '0'},
+      XDG_CACHE_HOME: path.join(profile, 'cache')},
   });
   let output = '';
   npm.stdout.on('data', chunk => { output += chunk; });
@@ -221,10 +226,9 @@ async function check(mode) {
         assert.equal(imported.name, path.basename(djiFootprint));
         assert.equal(imported.binary, true);
       } else {
-        assert.deepEqual(imported, { name: 'fixture.csv + photo.csv', time: [1000, 1000, 2000],
+        assert.deepEqual(imported, { name: 'fixture.csv + photo.csv', time: [1, 1, 2].map(offset => (csvStart + offset) * 1000),
           points: [121, 31, 122, 32, 120, 30], binary: true });
       }
-      assert.doesNotMatch(readLog(), /Native CSV import failed/);
       const workerCheck = `(async () => {
         const { default: WorkerEntry } = await import('/features/timeline/speedCurveWorker.ts?worker');
         const worker = new WorkerEntry();
@@ -266,7 +270,7 @@ async function check(mode) {
               if (update.error) { reject(new Error(update.error)); return; }
               resolve({ points: update.result.points.length, windows: update.result.fittedWindows,
                 start: update.result.points[0].timeSeconds, end: update.result.points.at(-1).timeSeconds,
-                constraints: update.result.attitudeConstraints, expected: Math.ceil((creationTimeSeconds + durationSeconds - creationTimeSeconds) * (precision === 'preview' ? 2 : Math.min(60, sampleRateHz))) + 1,
+                constraints: update.result.attitudeConstraints, expected: Math.ceil((creationTimeSeconds + durationSeconds - creationTimeSeconds) * (precision === 'preview' ? 5 : Math.min(60, sampleRateHz))) + 1,
                 progress, ms: performance.now() - started });
             });
             bridge.postMediaGps('native-fit-fixture', { sourcePath: media.sourcePath,
@@ -276,7 +280,7 @@ async function check(mode) {
           if (${Boolean(djiVideo)}) return result;
           const preview = await fit('preview');
           const highRate = await fit('export', 120);
-          return { ...result, previewPoints: preview.points, highRatePoints: highRate.points };
+          return { ...result, previewPoints: preview.points, highRatePoints: highRate.points, previewProgress: preview.progress };
         })()`;
         const result = await evaluate(url, `
           ${electron}.BrowserWindow.getAllWindows()[0].webContents.executeJavaScript(${JSON.stringify(trajectoryCheck)})
@@ -291,11 +295,11 @@ async function check(mode) {
         } else {
           const { points, windows, start, end, previewPoints, highRatePoints } = result;
           assert.deepEqual({ points, windows, start, end, previewPoints, highRatePoints },
-            { points: 21, windows: 1, start: 1577836800, end: 1577836802, previewPoints: 5, highRatePoints: 121 });
+            { points: 21, windows: 1, start: 1577836800, end: 1577836802, previewPoints: 11, highRatePoints: 121 });
+          assert.deepEqual(result.previewProgress, [{completed: 1, total: 1}]);
         }
-        assert.doesNotMatch(readLog(), /Native trajectory fit failed/);
       }
-      if (checkExport) await checkTypedCsvExport(url, electron, profile, readLog);
+      if (checkExport) await checkTypedCsvExport(url, electron, profile, readLog, checkNativeTrajectory);
       await evaluate(url, `{
         const window = ${electron}.BrowserWindow.getAllWindows()[0];
         window.on('closed', () => process.mainModule.require('node:fs').writeFileSync(${JSON.stringify(path.join(profile, 'closed'))}, ''));

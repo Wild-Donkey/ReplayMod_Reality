@@ -1,16 +1,15 @@
 import "./guardStdio";
 import { prepareWindows } from "./windowsSetup";
-import {GPS_PROGRESS_CHANNEL,GPS_RESULT_CHANNEL,POST_GPS_CHANNEL,type MotionGpsProgress,type MotionGpsRequest,type MotionGpsResult} from "../shared/mediaAlignment";
-import { normalizeTrajectorySampleRate } from "../../../../packages/media/src/trajectory-fit";
-import {packMotionGpsResult,type MotionGpsWireUpdate,type PackedMotionGpsResult} from "../shared/motionGpsWire";
+import {GPS_PROGRESS_CHANNEL,GPS_RESULT_CHANNEL,POST_GPS_CHANNEL,type MotionGpsProgress,type MotionGpsRequest} from "../shared/mediaAlignment";
+import { normalizeTrajectorySampleRate } from "./nativeTrajectoryFit";
+import type {MotionGpsWireUpdate,PackedMotionGpsResult} from "../shared/motionGpsWire";
 import { LatestJobQueue } from "./latestJobQueue";
 import type { TrajectoryWorkerInput, TrajectoryWorkerOutput } from "./trajectoryWorker";
 import { Worker } from "node:worker_threads";
-import { shouldFitNatively, trajectoryBackendMode, trajectoryCacheNamespace, type TrajectoryBackendConfig } from "./trajectoryBackend";
 import { killChildren, stopChildren } from "../../../../packages/media/src/childProcesses";
 import { installShutdown } from "./shutdown";
 import { NativeCore } from "./nativeCore";
-import { readLocationCsv, restorePointColumns } from "./locationCsv";
+import { restorePointColumns } from "./restorePointColumns";
 import { readNativeLocationCsv } from "./nativeLocationCsv";
 import {restoreDataset,resolveDatasetSource} from "./restoreDataset";
 import {LocalSpeech} from "./localSpeech";
@@ -418,12 +417,7 @@ const readLocationCsvSnapshot = async (
   mainFilePath: string,
   photoFilePath: string | null = null,
 ): Promise<{dataset:PointDataset;key:string}> => {
-  const csvMode = process.env.REPLAYMOD_NATIVE_CSV;
-  const tryNative = csvMode === "1" || (csvMode !== "0" && platform === "darwin" && process.arch === "arm64");
-  // The default route reuses existing snapshots. Force mode has a separate
-  // key so a comparison run can actually exercise the native importer.
-  const parserVersion = csvMode === "1" ? "point-parser-native-v2" : "point-parser-v2-accuracy-100m";
-  const signature = [parserVersion, ...await Promise.all([mainFilePath, photoFilePath].map(async file => {
+  const signature = ["point-parser-v2-accuracy-100m", ...await Promise.all([mainFilePath, photoFilePath].map(async file => {
     if (!file) return null;
     const info = await stat(file);
     return [file, info.size, info.mtimeMs];
@@ -443,12 +437,7 @@ const readLocationCsvSnapshot = async (
       return dataset;
     }
 
-    const nativeDataset = tryNative ? await readNativeLocationCsv(nativeCoreExecutable, mainFilePath, photoFilePath).catch(error => {
-      if (shutdown.isQuitting()) throw error;
-      console.warn("Native CSV import failed", error);
-      return null;
-    }) : null;
-    const dataset = nativeDataset ?? await readLocationCsv(mainFilePath, photoFilePath);
+    const dataset = await readNativeLocationCsv(nativeCoreExecutable, mainFilePath, photoFilePath);
     await resources.write("snapshots", key, dataset).catch(console.warn);
     return dataset;
   })();
@@ -738,13 +727,12 @@ ipcMain.handle(OPEN_MEDIA_CHANNEL, async (): Promise<MediaSource | null> => {
 });
 
 let trajectoryWorker: Worker | undefined;
-const trajectoryMode = trajectoryBackendMode(process.env.REPLAYMOD_NATIVE_TRAJECTORY, process.platform, process.arch);
 
 async function closeTrajectoryWorker() {
   const worker = trajectoryWorker;
   if (!worker) return;
   await new Promise<void>(resolve => {
-    // The worker first stops ExifTool. Termination covers synchronous computation.
+    // Let the worker reap its child processes before terminating it.
     const deadline = setTimeout(() => { void worker.terminate().catch(console.error); }, 2500);
     worker.once("exit", () => { clearTimeout(deadline); resolve(); });
     worker.postMessage({shutdown: true});
@@ -756,7 +744,7 @@ function runTrajectoryWorker(input: TrajectoryWorkerInput, signal: AbortSignal,
   signal.throwIfAborted();
   if (!trajectoryWorker) {
     const worker = new Worker(path.join(__dirname, "trajectoryWorker.js"), {
-      workerData: { mode: trajectoryMode, executable: nativeCoreExecutable } satisfies TrajectoryBackendConfig,
+      workerData: nativeCoreExecutable,
     });
     worker.on("error", error => {
       if (trajectoryWorker === worker) trajectoryWorker = undefined;
@@ -816,23 +804,17 @@ const gpsJobs = new LatestJobQueue<GpsJob>(async (
     if(source.creationTimeSeconds===undefined)throw new Error("请先对齐视频拍摄时间。");
     if(source.creationTimeSeconds!==request.creationTimeSeconds)throw new Error("视频拍摄时间已变化，请重新载入视频。");
     const start=alignedMediaStart(source.creationTimeSeconds,request.offsetSeconds);
-    const rate = request.precision === "preview" ? 2
+    const rate = request.precision === "preview" ? 5
       : normalizeTrajectorySampleRate(request.precision === "export" ? request.sampleRateHz : undefined);
     const end=source.durationSeconds===null
       ? request.points.reduce((latest,point)=>Number.isFinite(point.timeSeconds)?Math.max(latest,point.timeSeconds):latest,start)
       : start+source.durationSeconds;
-    const cacheBackend = trajectoryMode === "automatic" && !shouldFitNatively("automatic", end - start, rate, 0)
-      ? "typescript" : trajectoryMode;
-    const legacyKey=request.offsetSeconds===0
-      ? createHash("sha256").update(JSON.stringify(rate === 10
-        ? ["motion-gps-v8", revision, start, request.points]
-        : ["motion-gps-v10", rate, revision, start, request.points])).digest("hex") : null;
-    const key = legacyKey && createHash("sha256").update(trajectoryCacheNamespace[cacheBackend]).update(legacyKey).digest("hex");
-    if (key && legacyKey) {
+    const key = request.offsetSeconds === 0
+      ? createHash("sha256").update(JSON.stringify(["motion-gps-native-v3", rate, revision, start, end, request.points])).digest("hex")
+      : null;
+    if (key) {
       const cached = await resources.read<PackedMotionGpsResult>("snapshots", key);
       if (cached) { publish({id,result:cached}); return; }
-      const legacy = rate === 10 && cacheBackend === "typescript" && await resources.read<MotionGpsResult>("snapshots", legacyKey);
-      if (legacy) { publish({id,result:packMotionGpsResult(legacy)}); return; }
     }
     const roots = [path.resolve(process.cwd(),".."),process.cwd(),app.getAppPath(),path.dirname(app.getPath("exe"))];
     const exiftoolName = platform === "win32" ? "exiftool.exe" : "exiftool";

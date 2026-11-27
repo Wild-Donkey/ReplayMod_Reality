@@ -18,14 +18,12 @@ function installLoader(fs, ts) {
 }
 installLoader(fs, ts);
 const { NativeCore } = require('../../apps/desktop/src/main/nativeCore.ts');
-const { readLocationCsv, restorePointColumns } = require('../../apps/desktop/src/main/locationCsv.ts');
+const { restorePointColumns } = require('../../apps/desktop/src/main/restorePointColumns.ts');
 const { readNativeLocationCsv } = require('../../apps/desktop/src/main/nativeLocationCsv.ts');
 const { fitNativeTrajectory } = require('../../apps/desktop/src/main/nativeTrajectoryFit.ts');
 const { unpackMotionGpsResult } = require('../../apps/desktop/src/shared/motionGpsWire.ts');
-const { fitMotionTrajectory } = require('../../packages/media/src/trajectory-fit.ts');
-const { shouldFitNatively, trajectoryBackendMode, trajectoryCacheNamespace } = require('../../apps/desktop/src/main/trajectoryBackend.ts');
 
-function checkCompilerFallback() {
+function checkMissingCompiler() {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'replay-native-toolchain-'));
   try {
     const source = path.resolve(__dirname, '../..');
@@ -36,8 +34,7 @@ function checkCompilerFallback() {
     const check = `
       const assert = require('node:assert/strict');
       const { buildCore } = require(${JSON.stringify(script)});
-      assert.equal(buildCore({ optional: true }), null);
-      assert.throws(() => buildCore(), { code: 'ENOENT' });
+      assert.throws(() => buildCore(), /compiler not found/);
     `;
     const result = spawnSync(process.execPath, ['-e', check], {
       env: { ...process.env, CXX: path.join(directory, 'unavailable-compiler') },
@@ -45,77 +42,35 @@ function checkCompilerFallback() {
     });
     assert.ifError(result.error);
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stderr, /development can continue with TypeScript fallbacks/);
     assert.deepEqual(fs.readdirSync(path.join(directory, 'native/build')), []);
   } finally { fs.rmSync(directory, { recursive: true, force: true }); }
 }
 
 async function checkCsv(executable) {
   const sample = path.resolve(__dirname, '../../../RawData/footprint/Example_footprint.csv');
-  assert.deepEqual(await readNativeLocationCsv(executable, sample), await readLocationCsv(sample, null));
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'replay-native-csv-'));
-  try {
-    const filename = path.join(directory, '测试轨迹.csv');
-    await assert.rejects(readLocationCsv(filename, null), { code: 'ENOENT' });
-    const header = '\uFEFFdataTime,longitude,latitude,accuracy,stepType,elevation';
-    fs.writeFileSync(filename, [header, '3,10,20,120,0,8', '2,11,20,,0,', '1,12,20,0,0,-2',
-      '2,13,20,100,0,4', '4,180.01,20,,0,', '', '5,15,20,,-1,'].join('\r\n'));
-    assert.deepEqual(await readNativeLocationCsv(executable, filename), await readLocationCsv(filename, null));
-    for (const row of ['2,11.0000005,20,,1,0', '2,0x10,20,,0,0', '2,11,20,,0', '"2"x,11,20,,0,0']) {
-      fs.writeFileSync(filename, [header, '1,0,0,,0,0', row].join('\n'));
-      assert.equal(await readNativeLocationCsv(executable, filename), null, row);
-    }
-    const quotedHeader = '\uFEFF"dataTime","longitude","latitude",accuracy,stepType,"elevation",note';
-    fs.writeFileSync(filename, [quotedHeader, '"2","11",20," 100 ",0," \t ","commas, and ""quotes"""',
-      '"1"," 12 ",20,"",1,"-2",""', '" ",0,0,,0,,', '"3",0,0,"101",0,,'].join('\r\n'));
-    assert.deepEqual(await readNativeLocationCsv(executable, filename), await readLocationCsv(filename, null));
-    fs.writeFileSync(filename, [quotedHeader, '2,11,20,,0,0,"a\r\nb"'].join('\r\n'));
-    assert.equal((await readLocationCsv(filename, null)).pointCount, 1);
-    assert.equal(await readNativeLocationCsv(executable, filename), null);
-    const photos = path.join(directory, 'photos.csv');
-    fs.writeFileSync(filename, [header, '2,12,20,,0,3', '1,11,20,,0,1', '1,10,20,,1,2'].join('\n'));
-    fs.writeFileSync(photos, [header, '1,10,20,,0,4', '2,13,20,,0,5'].join('\n'));
-    const merged = await readLocationCsv(filename, photos);
-    assert.deepEqual(await readNativeLocationCsv(executable, filename, photos), merged);
-    assert.deepEqual(Array.from(merged.timelineTimestamps), [1000, 1000, 2000, 2000]);
-    assert.deepEqual(Array.from(merged.timelineCoordinates), [11, 20, 10, 20, 12, 20, 13, 20]);
-    assert.deepEqual(Array.from(merged.timelineAltitudes), [1, 4, 3, 5]);
-    fs.writeFileSync(filename, header + '\n');
-    const photoOnly = await readLocationCsv(filename, photos);
-    assert.equal(photoOnly.footprintPointCount, 0);
-    assert.strictEqual(photoOnly.timelineCoordinates, photoOnly.photoCoordinates);
-    assert.deepEqual(await readNativeLocationCsv(executable, filename, photos), photoOnly);
-    fs.writeFileSync(filename, [header, '1,0.0000001,20,,1,1', '1,-0.0000001,20,,1,2',
-      '1,0.0000002,20,,1,3', '2,120,21,,0,'].join('\n'));
-    assert.deepEqual(await readNativeLocationCsv(executable, filename), await readLocationCsv(filename, null));
-    const footprintOnly = await readLocationCsv(sample, null);
-    assert.strictEqual(footprintOnly.timelineTimestamps, footprintOnly.footprintTimestamps);
-    const oldTimes = Array.from(footprintOnly.footprintTimestamps);
-    const restored = restorePointColumns({ ...footprintOnly, footprintTimestamps: oldTimes, timelineTimestamps: oldTimes });
-    assert(restored.timelineTimestamps instanceof Float64Array);
-    assert.strictEqual(restored.timelineTimestamps, restored.footprintTimestamps);
-    assert.deepEqual(restored, footprintOnly);
-  } finally {
-    fs.rmSync(directory, {recursive: true, force: true});
-  }
+  const footprint = await readNativeLocationCsv(executable, sample);
+  assert.equal(footprint.pointCount, 20_819);
+  assert.equal(footprint.skippedRowCount, 677);
+  assert.equal(footprint.photoPointCount, 0);
+  assert.strictEqual(footprint.timelineTimestamps, footprint.footprintTimestamps);
+  assert.strictEqual(footprint.timelineCoordinates, footprint.footprintCoordinates);
+
+  const mixed = await readNativeLocationCsv(executable, sample, sample);
+  assert.equal(mixed.footprintPointCount, footprint.footprintPointCount);
+  assert(mixed.photoPointCount > 0);
+  assert.equal(mixed.pointCount, mixed.footprintPointCount + mixed.photoPointCount);
+  assert.deepEqual(mixed.footprintCoordinates, footprint.footprintCoordinates);
+  assert(mixed.timelineTimestamps.every((time, i, times) => i === 0 || time >= times[i - 1]));
+
+  const oldTimes = Array.from(footprint.footprintTimestamps);
+  const restored = restorePointColumns({ ...footprint, footprintTimestamps: oldTimes, timelineTimestamps: oldTimes });
+  assert(restored.timelineTimestamps instanceof Float64Array);
+  assert.strictEqual(restored.timelineTimestamps, restored.footprintTimestamps);
+  assert.deepEqual(restored, footprint);
 }
 
 async function check() {
-  checkCompilerFallback();
-  assert.equal(trajectoryBackendMode(undefined, 'darwin', 'arm64'), 'automatic');
-  assert.equal(trajectoryBackendMode(undefined, 'win32', 'x64'), 'typescript');
-  assert.equal(trajectoryBackendMode('0', 'darwin', 'arm64'), 'typescript');
-  assert.equal(trajectoryBackendMode('1', 'linux', 'x64'), 'native');
-  assert.equal(new Set(Object.values(trajectoryCacheNamespace)).size, 3);
-  assert.equal(shouldFitNatively('automatic', 69, 10, 1723), false);
-  assert.equal(shouldFitNatively('automatic', 1800, 10, 0), true);
-  assert.equal(shouldFitNatively('automatic', 3600, 10, 144000), false);
-  assert.equal(shouldFitNatively('automatic', 300, 60, 12000), true);
-  assert.equal(shouldFitNatively('automatic', 1200, 30, 48000), true);
-  assert.equal(shouldFitNatively('automatic', 1200, 30, 70000), false);
-  assert.equal(shouldFitNatively('automatic', 18000, 2, 0), false);
-  assert.equal(shouldFitNatively('typescript', 1800, 10, 0), false);
-  assert.equal(shouldFitNatively('native', 69, 10, 1723), true);
+  checkMissingCompiler();
   const executable = buildCore();
   const { status, stdout, error } = spawnSync(executable, [], {
     input: 'hello 2\nping\nhello 1\nping\n',
@@ -139,27 +94,27 @@ async function check() {
   await missing.close();
   await checkCsv(executable);
   await checkTrajectory(executable);
-  await checkTrajectoryWorkerRouting(executable);
+  await checkTrajectoryWorker(executable);
   console.log('Native core handshake, ping, EOF shutdown and missing executable checks passed.');
-  console.log('Native CSV matches the reference dataset and declines unsupported records.');
+  console.log('Native CSV imports the tracked footprint, combines a photo source and restores cached columns.');
 }
 
-async function checkTrajectoryWorkerRouting(executable) {
+async function checkTrajectoryWorker(executable) {
   const entry = require.resolve('../../apps/desktop/src/main/trajectoryWorker.ts');
   const worker = new Worker(`
     (${installLoader})(require('node:fs'), require(${JSON.stringify(require.resolve('typescript'))}));
     require(${JSON.stringify(entry)});
-  `, { eval: true, workerData: { mode: 'automatic', executable } });
+  `, { eval: true, workerData: executable });
   try {
     const start = 1_800_000_000;
-    for (const duration of [60, 1800]) {
+    for (const [duration, sampleRateHz] of [[60, 5], [1800, 10]]) {
       const messages = on(worker, 'message', { signal: AbortSignal.timeout(15_000) });
       const points = Array.from({length: duration + 1}, (_, index) => ({
         timeSeconds: start + index, longitude: 120 + index * 0.0001, latitude: 30,
       }));
       worker.postMessage({
         exiftool: executable + '.missing', sourcePath: 'fixture.mp4', revision: 'test',
-        start, end: start + duration, points, sampleRateHz: 10,
+        start, end: start + duration, points, sampleRateHz,
       });
       const progress = [];
       for await (const [message] of messages) {
@@ -168,9 +123,8 @@ async function checkTrajectoryWorkerRouting(executable) {
           continue;
         }
         assert(!message.error, message.error);
-        assert.equal(message.result.pointCount, duration * 10 + 1);
-        if (duration < 1800) assert.deepEqual(progress, []);
-        else assert.equal(progress.at(-1)?.completed, message.result.fittedWindows);
+        assert.equal(message.result.pointCount, duration * sampleRateHz + 1);
+        assert.equal(progress.at(-1)?.completed, message.result.fittedWindows);
         break;
       }
     }
@@ -182,14 +136,15 @@ async function checkTrajectory(executable) {
   const fixtures = [];
   const samples = [];
   const curved = [];
+  const withheld = [];
   let east = 0, north = 0;
   const scale = 6371000 * Math.PI / 180;
   for (let i = 0; i <= 2400; i++) {
     const time = i / 40, heading = .7 * Math.sin(time / 10) + .3 * Math.sin(time / 3);
     samples.push({ timeSeconds: time, quaternion: [Math.cos(heading / 2), 0, 0, -Math.sin(heading / 2)] });
-    if (i % 80 === 0 && (time <= 12 || time >= 50)) {
-      curved.push({ timeSeconds: start + time, longitude: east / scale, latitude: north / scale, altitude: 10 + time });
-    }
+    if (i % 80 === 0) (time <= 12 || time >= 50 ? curved : withheld).push({
+      timeSeconds: start + time, longitude: east / scale, latitude: north / scale, altitude: 10 + time,
+    });
     east += Math.sin(heading) * .25;
     north += Math.cos(heading) * .25;
   }
@@ -199,8 +154,7 @@ async function checkTrajectory(executable) {
     longitude: ((179.99 + i * .01 + 540) % 360) - 180,
     latitude: 40 + i * .0001,
     altitude: i % 3 === 0 ? undefined : i * 2,
-  })), seconds: 800, rate: 10 });
-  fixtures.push({ samples: [], points: [], seconds: 20, rate: 10 });
+  })), seconds: 800, rate: 10, windows: 4 });
   fixtures.push({ samples: [], points: [
     { timeSeconds: start - 30, longitude: 100, latitude: 30 },
     { timeSeconds: start - 1, longitude: 100, latitude: 30, altitude: 48 },
@@ -210,33 +164,49 @@ async function checkTrajectory(executable) {
     { timeSeconds: start + 20, longitude: 100.001, latitude: 30, altitude: 80 },
     { timeSeconds: start + 40, longitude: 100.01, latitude: 30, altitude: 60 },
   ], seconds: 27.03, rate: 10, corrected: 1 });
-  for (const rate of [2, 24, 120]) fixtures.push({ ...fixtures[0], samples: [], seconds: 60, rate, attitude: false });
+  for (const rate of [5, 24, 120]) fixtures.push({ ...fixtures[0], samples: [], seconds: 60, rate, attitude: false });
 
-  for (const { samples, points, seconds, rate, attitude, corrected } of fixtures) {
-    const legacy = fitMotionTrajectory(samples, points, start, start + seconds, rate);
+  for (const { samples, points, seconds, rate, attitude, corrected, windows = 1 } of fixtures) {
     const progress = [];
-    const native = unpackMotionGpsResult(await fitNativeTrajectory(executable, samples, points, start, start + seconds, rate,
+    const end = start + seconds;
+    const native = unpackMotionGpsResult(await fitNativeTrajectory(executable, samples, points, start, end, rate,
       undefined, update => progress.push(update)));
-    assert.deepEqual(progress, Array.from({length: native.fittedWindows ?? 0}, (_, index) => ({
-      completed: index + 1, total: native.fittedWindows,
-    })));
-    const { points: expected, contextPoints: context, ...summary } = legacy;
-    const { points: actual, contextPoints: nativeContext, ...nativeSummary } = native;
-    assert.deepEqual(nativeSummary, summary);
-    if (points.length) assert.equal(actual.length, Math.ceil((start + seconds - start) * Math.min(rate, 60)) + 1);
-    if (attitude) assert(legacy.attitudeConstraints > 0);
-    if (corrected) assert.equal(legacy.correctedPoints, corrected);
-    for (const [expectedRows, actualRows] of [[expected, actual], [context, nativeContext]]) {
-      assert.equal(actualRows.length, expectedRows.length);
-      for (let i = 0; i < expectedRows.length; i++) {
-        const a = expectedRows[i], b = actualRows[i];
-        assert.equal(b.timeSeconds, a.timeSeconds);
-        assert.equal(b.altitude, a.altitude);
-        const lonError = ((b.longitude - a.longitude + 540) % 360) - 180;
-        assert(Math.abs(lonError) < 1e-9 && Math.abs(b.latitude - a.latitude) < 1e-9, `point ${i}`);
+    assert.equal(native.fittedWindows, windows);
+    assert.deepEqual(progress, Array.from({length: windows}, (_, index) => ({completed: index + 1, total: windows})));
+    const sampleRate = Math.min(rate, 60);
+    assert.equal(native.points.length, Math.ceil((end - start) * sampleRate) + 1);
+    assert.equal(native.points[0].timeSeconds, start);
+    assert.equal(native.points.at(-1).timeSeconds, end);
+    assert.equal(native.contextPoints.length, 8 * sampleRate);
+    assert.equal(native.contextPoints[0].timeSeconds, start - 4);
+    assert.equal(native.contextPoints.at(-1).timeSeconds, end + 4);
+    for (const point of [...native.points, ...native.contextPoints]) {
+      assert(Math.abs(point.latitude) <= 90 && Math.abs(point.longitude) <= 180);
+    }
+    if (corrected) assert.equal(native.correctedPoints, corrected);
+    if (windows > 1) {
+      assert(native.bridgedIntervals === 0 && native.points.some(point => point.longitude < -179));
+      assert(native.points.some(point => point.altitude === undefined));
+      for (const time of [236, 296, 476, 536, 716, 776]) {
+        const i = time * sampleRate;
+        const [a, b, c] = native.points.slice(i - 1, i + 2);
+        assert(Math.abs(c.latitude - 2*b.latitude + a.latitude) * scale * sampleRate < .01);
       }
     }
+    if (attitude) {
+      assert(native.attitudeConstraints > 0);
+      const gpsOnly = unpackMotionGpsResult(await fitNativeTrajectory(executable, [], points, start, end, rate));
+      const rmse = fit => Math.sqrt(withheld.reduce((sum, point) => {
+        const estimate = fit.points[Math.round((point.timeSeconds - start) * rate)];
+        return sum + (scale * Math.hypot(estimate.longitude - point.longitude, estimate.latitude - point.latitude)) ** 2;
+      }, 0) / withheld.length);
+      assert(rmse(native) < rmse(gpsOnly) * .75, 'Attitude must improve the withheld 38 s gap');
+    }
   }
+  const parked = unpackMotionGpsResult(await fitNativeTrajectory(executable, [], [curved[0]], start, start + 15, 5));
+  assert(parked.points.every(point => Math.abs(point.latitude) < 1e-10 && Math.abs(point.longitude) < 1e-10));
+  await assert.rejects(fitNativeTrajectory(executable, [], [], start, start + 60, 5), /GPS/);
+  await assert.rejects(fitNativeTrajectory(executable + '.missing', [], curved, start, start + 60, 5), {code: 'ENOENT'});
   const controller = new AbortController();
   const cancelledProgress = [];
   const active = fitNativeTrajectory(executable, [], fixtures[1].points, start, start + 800, 60, controller.signal,
@@ -244,7 +214,7 @@ async function checkTrajectory(executable) {
   controller.abort();
   await assert.rejects(active, { name: 'AbortError' });
   assert.deepEqual(cancelledProgress, []);
-  console.log('Native trajectory fit matches the reference for attitude, overlapping windows, dateline and missing altitude.');
+  console.log('Native trajectory fit passed sampling, attitude, overlapping windows, dateline and missing altitude checks.');
 }
 
 check().catch(error => { console.error(error); process.exitCode = 1; });

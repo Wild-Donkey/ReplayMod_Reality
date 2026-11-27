@@ -135,9 +135,7 @@ export function MediaAlignmentPanel({source, dataset, active, onPreviewOffsetCha
     <button type="button" disabled={!canEdit || !dataset || !valid || processing} onClick={() => { optimizationOffset.current = value; setRefresh(version => version + 1); }}>{processing ? "正在优化 GPS 与插值…" : "优化 GPS 与插值"}</button>
     {processing && gpsProgress && <progress aria-label="轨迹拟合窗口进度" value={gpsProgress.completed} max={gpsProgress.total} />}
     {!processing && !gpsError && gpsResult && gpsResult.videoStartSeconds === previewStart && <p role="status">
-      {gpsResult.fittedWindows
-        ? `轨迹拟合 ${gpsResult.fittedWindows} 窗 · 姿态约束 ${gpsResult.attitudeConstraints ?? 0} 个`
-        : `GPS 平滑 ${gpsResult.smoothedIntervals ?? 0} 段 · 姿态辅助 ${gpsResult.curvedIntervals} 段`}
+      {`轨迹拟合 ${gpsResult.fittedWindows} 窗 · 姿态约束 ${gpsResult.attitudeConstraints} 个`}
       {` · 长间隔 ${gpsResult.bridgedIntervals ?? 0} 段。`}{gpsResult.reason}
     </p>}
     {gpsError && <p className="alignment-hint" role="status">{gpsError}</p>}

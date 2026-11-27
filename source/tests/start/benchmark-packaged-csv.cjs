@@ -54,7 +54,7 @@ async function evaluate(socketUrl, expression) {
   } finally { socket.close(); }
 }
 
-async function measure(executable, footprint, native) {
+async function measure(executable, footprint) {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'replay-csv-profile-'));
   let child, sampling, exit;
   try {
@@ -67,7 +67,7 @@ async function measure(executable, footprint, native) {
     const launch = performance.now();
     child = spawn(executable, ['--inspect=127.0.0.1:0', '--use-mock-keychain'], {
       cwd: profile, detached: true, stdio: ['ignore', 'ignore', 'pipe'],
-      env: { ...process.env, CFFIXED_USER_HOME: profile, REPLAYMOD_NATIVE_CSV: native ? '1' : '0' },
+      env: { ...process.env, CFFIXED_USER_HOME: profile },
     });
     exit = once(child, 'close');
     void exit.catch(() => {});
@@ -105,7 +105,6 @@ async function measure(executable, footprint, native) {
     assert.equal(fs.realpathSync(result.userData), fs.realpathSync(dataDir));
     assert.equal(result.count, rowCount);
     assert.equal(result.binary, true);
-    assert.doesNotMatch(log, /Native CSV import failed/);
     peakRss = Math.max(peakRss, processTreeRss(child.pid));
     clearInterval(sampling);
     await evaluate(socketUrl, `setTimeout(() => process.mainModule.require('electron').app.quit(), 50); true`);
@@ -129,20 +128,14 @@ async function benchmarkPackagedCsv(packagedPath) {
   try {
     const footprint = path.join(fixture, 'footprint.csv');
     createFootprint(footprint);
-    const results = [[], []];
+    const results = [];
     for (let run = 0; run < 3; run++) {
-      for (const native of run % 2 ? [true, false] : [false, true]) {
-        const result = await measure(executable, footprint, native);
-        results[Number(native)].push(result);
-        console.log(native ? 'C++' : 'TypeScript', result);
-      }
+      const result = await measure(executable, footprint);
+      results.push(result);
+      console.log(result);
     }
-    const median = (runs, key) => runs.map(run => run[key]).sort((a, b) => a - b)[1];
-    for (const [index, runs] of results.entries()) {
-      console.log(index ? 'C++ median' : 'TypeScript median', {
-        dataReadyMs: median(runs, 'dataReadyMs'), peakRssMiB: median(runs, 'peakRssMiB'),
-      });
-    }
+    const median = key => results.map(run => run[key]).sort((a, b) => a - b)[1];
+    console.log('Median', { dataReadyMs: median('dataReadyMs'), peakRssMiB: median('peakRssMiB') });
   } finally { fs.rmSync(fixture, { recursive: true, force: true }); }
 }
 

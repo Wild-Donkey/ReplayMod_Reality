@@ -12,12 +12,10 @@ require.extensions['.ts'] = (module, file) => {
   });
   module._compile(outputText, file);
 };
-const { readLocationCsv } = require('../../apps/desktop/src/main/locationCsv.ts');
 const { readNativeLocationCsv } = require('../../apps/desktop/src/main/nativeLocationCsv.ts');
 const { fitNativeTrajectory } = require('../../apps/desktop/src/main/nativeTrajectoryFit.ts');
-const { fitMotionTrajectory } = require('../../packages/media/src/trajectory-fit.ts');
 const { extractDjiOrientation } = require('../../packages/media/src/dji.ts');
-const { packMotionGpsResult, unpackMotionGpsResult } = require('../../apps/desktop/src/shared/motionGpsWire.ts');
+const { unpackMotionGpsResult } = require('../../apps/desktop/src/shared/motionGpsWire.ts');
 const { motionInputPoints } = require('../../apps/desktop/src/renderer/features/timeline/processedTrajectory.ts');
 const { metricCurve, pixelDensity, smoothSpeedCurve } = require('../../apps/desktop/src/renderer/features/timeline/metrics.ts');
 
@@ -26,23 +24,6 @@ function median(samples) {
   const sorted = [...samples].sort((a, b) => a - b);
   const middle = sorted.length / 2;
   return Number(((sorted[middle - 1] + sorted[middle]) / 2).toFixed(2));
-}
-
-async function compare(reference, native, countOf) {
-  const samples = [[], []];
-  let count;
-  for (let iteration = 0; iteration <= repetitions; iteration++) {
-    for (const mode of iteration % 2 ? [1, 0] : [0, 1]) {
-      const start = performance.now();
-      const result = await (mode ? native() : reference());
-      const elapsed = performance.now() - start;
-      const actual = countOf(result);
-      assert.equal(actual, count ?? actual);
-      count = actual;
-      if (iteration) samples[mode].push(elapsed);
-    }
-  }
-  return { points: count, tsMs: median(samples[0]), cppMs: median(samples[1]) };
 }
 
 function fixture(directory, name, count) {
@@ -69,14 +50,21 @@ async function csvBench(core) {
     for (const [label, footprint, photo] of [
       ['example', small, null], ['100k', medium, null], ['500k', large, null], ['500k + 100k photos', large, photos],
     ]) {
-      const result = await compare(
-        () => readLocationCsv(footprint, photo),
-        () => readNativeLocationCsv(core, footprint, photo),
-        value => value.pointCount,
-      );
+      const result = await measureNative(() => readNativeLocationCsv(core, footprint, photo));
       console.log(label, result);
     }
   } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+}
+
+async function measureNative(fit) {
+  const samples = [];
+  let result;
+  for (let iteration = 0; iteration <= repetitions; iteration++) {
+    const start = performance.now();
+    result = await fit();
+    if (iteration) samples.push(performance.now() - start);
+  }
+  return { points: result.pointCount, cppMs: median(samples) };
 }
 
 async function trajectoryBench(core) {
@@ -89,11 +77,7 @@ async function trajectoryBench(core) {
       const yaw = Math.sin(i / 1200);
       return { timeSeconds: i / 40, quaternion: [Math.cos(yaw / 2), 0, 0, Math.sin(yaw / 2)] };
     });
-    const result = await compare(
-      () => packMotionGpsResult(fitMotionTrajectory(imu, gps, base, base + seconds)),
-      () => fitNativeTrajectory(core, imu, gps, base, base + seconds, 10),
-      value => value.pointCount,
-    );
+    const result = await measureNative(() => fitNativeTrajectory(core, imu, gps, base, base + seconds, 10));
     console.log(`${seconds} s / 10 Hz`, result);
   }
 }
@@ -106,7 +90,7 @@ async function djiBench(core, video, csv) {
   const start = Date.parse(probe.format.tags?.creation_time) / 1000;
   const duration = Number(probe.format.duration);
   assert(Number.isFinite(start) && Number.isFinite(duration) && duration > 0, 'Missing video capture time or duration');
-  const dataset = await readLocationCsv(csv, null);
+  const dataset = await readNativeLocationCsv(core, csv);
   const points = motionInputPoints(dataset, start, duration);
   const fixesInClip = points.filter(point => point.timeSeconds >= start && point.timeSeconds <= start + duration).length;
   assert(fixesInClip >= 2, 'Need at least two GPS fixes within the video capture time range');
@@ -116,30 +100,13 @@ async function djiBench(core, video, csv) {
   const extractMs = Number((performance.now() - extractStart).toFixed(2));
   assert(attitude.length, 'ExifTool found no valid DJI quaternions');
   const end = start + duration;
-  const reference = fitMotionTrajectory(attitude, points, start, end);
-  const native = unpackMotionGpsResult(await fitNativeTrajectory(core, attitude, points, start, end, 10));
-  assert(reference.attitudeConstraints > 0, 'The clip must exercise attitude constraints');
-  assert.equal(native.attitudeConstraints, reference.attitudeConstraints);
-  assert.equal(native.fittedWindows, reference.fittedWindows);
-  let maxCoordinateDelta = 0;
-  for (const name of ['points', 'contextPoints']) {
-    assert.equal(native[name].length, reference[name].length);
-    for (const [index, point] of native[name].entries()) {
-      const other = reference[name][index];
-      assert.equal(point.timeSeconds, other.timeSeconds);
-      assert.equal(point.altitude, other.altitude);
-      maxCoordinateDelta = Math.max(maxCoordinateDelta, Math.abs(point.latitude - other.latitude),
-        Math.abs(((point.longitude - other.longitude + 540) % 360) - 180));
-    }
-  }
-  assert(maxCoordinateDelta < 1e-9, `C++ coordinate delta exceeded tolerance: ${maxCoordinateDelta}`);
-  const times = await compare(
-    () => packMotionGpsResult(fitMotionTrajectory(attitude, points, start, end)),
-    () => fitNativeTrajectory(core, attitude, points, start, end, 10),
-    value => value.pointCount,
-  );
+  const fit = () => fitNativeTrajectory(core, attitude, points, start, end, 10);
+  const native = unpackMotionGpsResult(await fit());
+  assert(native.attitudeConstraints > 0, 'The clip must exercise attitude constraints');
+  assert.equal(native.points[0].timeSeconds, start);
+  assert.equal(native.points.at(-1).timeSeconds, end);
   console.log({ duration, fixesInClip, quaternionCount: attitude.length, constraints: native.attitudeConstraints,
-    extractMs, maxCoordinateDelta, ...times });
+    extractMs, ...await measureNative(fit) });
 }
 
 function timelineBench() {

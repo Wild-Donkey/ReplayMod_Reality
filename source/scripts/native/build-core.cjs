@@ -5,7 +5,7 @@ const path = require('node:path');
 const windows = process.platform === 'win32';
 const resource = `native/build/replaymod-core${windows ? '.exe' : ''}`;
 
-function buildCore({ optional = false } = {}) {
+function buildCore() {
   const root = path.resolve(__dirname, '../..');
   const core = path.join(root, 'native/core');
   const sources = ['main.cpp', 'location_csv.cpp', 'trajectory_fit.cpp', 'trajectory_seed.cpp', 'trajectory_solver.cpp'].map(file => path.join(core, file));
@@ -24,10 +24,8 @@ function buildCore({ optional = false } = {}) {
     execFileSync(compiler, ['-std=c++17', '-O2', '-ffp-contract=off', ...flags, ...sources, '-o', binary], { stdio: 'inherit', windowsHide: true });
     renameSync(binary, output);
   } catch (error) {
-    if (optional && error.code === 'ENOENT' && error.path === compiler) {
-      console.warn(`Native core compiler not found (${compiler}); development can continue with TypeScript fallbacks.`);
-      return null;
-    }
+    if (error.code === 'ENOENT' && error.path === compiler)
+      throw new Error(`C++17 compiler not found (${compiler}). Install a compiler or set CXX to its executable.`, { cause: error });
     throw error;
   } finally {
     rmSync(staging, { recursive: true, force: true });

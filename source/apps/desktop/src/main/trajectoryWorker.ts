@@ -1,12 +1,10 @@
 import { parentPort, workerData } from "node:worker_threads";
 import { extractDjiOrientation } from "../../../../packages/media/src/dji";
 import { stopChildren } from "../../../../packages/media/src/childProcesses";
-import { fitMotionTrajectory, normalizeTrajectorySampleRate } from "../../../../packages/media/src/trajectory-fit";
 import type { MotionGpsRequest } from "../shared/mediaAlignment";
-import { packMotionGpsResult, type PackedMotionGpsResult } from "../shared/motionGpsWire";
+import type { PackedMotionGpsResult } from "../shared/motionGpsWire";
 import { fitNativeTrajectory } from "./nativeTrajectoryFit";
 import type { NativeJobProgress } from "./nativeBinaryJob";
-import { shouldFitNatively, type TrajectoryBackendConfig } from "./trajectoryBackend";
 
 export interface TrajectoryWorkerInput {
   sourcePath: string;
@@ -20,7 +18,7 @@ export interface TrajectoryWorkerInput {
 export type TrajectoryWorkerOutput = {result: PackedMotionGpsResult} | {error: string} | {progress: NativeJobProgress};
 
 const port = parentPort;
-const backend = workerData as TrajectoryBackendConfig | undefined;
+const executable = workerData as string;
 let orientation: {revision: string; samples: Awaited<ReturnType<typeof extractDjiOrientation>>} | undefined;
 let shuttingDown = false;
 let active: AbortController | undefined;
@@ -47,15 +45,8 @@ port?.on("message", async (input: TrajectoryWorkerInput | {shutdown: true} | {ca
       if (samples) orientation = {revision: input.revision, samples};
     }
     controller.signal.throwIfAborted();
-    const rate = normalizeTrajectorySampleRate(input.sampleRateHz);
-    const packed = backend && shouldFitNatively(backend.mode, input.end - input.start, rate, samples?.length ?? 0)
-      ? await fitNativeTrajectory(backend.executable, samples ?? [], input.points, input.start, input.end, rate, controller.signal,
-        progress => port.postMessage({progress} satisfies TrajectoryWorkerOutput)).catch(error => {
-        if (controller.signal.aborted) throw error;
-        console.warn("Native trajectory fit failed", error);
-        return packMotionGpsResult(fitMotionTrajectory(samples ?? [], input.points, input.start, input.end, rate));
-      })
-      : packMotionGpsResult(fitMotionTrajectory(samples ?? [], input.points, input.start, input.end, rate));
+    const packed = await fitNativeTrajectory(executable, samples ?? [], input.points, input.start, input.end,
+      input.sampleRateHz, controller.signal, progress => port.postMessage({progress} satisfies TrajectoryWorkerOutput));
     if (shuttingDown) return;
     controller.signal.throwIfAborted();
     port.postMessage({result: packed} satisfies TrajectoryWorkerOutput, [packed.pointData.buffer, packed.altitudePresent.buffer]);
