@@ -180,8 +180,7 @@ async function check(mode) {
   const npm = spawn('npm', ['start', '--', '--', '--inspect=127.0.0.1:0', '--use-mock-keychain'], {
     cwd: root, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
     env: {...process.env, HOME: profile, CFFIXED_USER_HOME: profile, XDG_CONFIG_HOME: config,
-      XDG_CACHE_HOME: path.join(profile, 'cache'),
-      REPLAYMOD_NATIVE_CSV: mode !== 'window' ? '0' : process.platform === 'darwin' && process.arch === 'arm64' ? undefined : '1'},
+      XDG_CACHE_HOME: path.join(profile, 'cache')},
   });
   let output = '';
   npm.stdout.on('data', chunk => { output += chunk; });
@@ -230,7 +229,6 @@ async function check(mode) {
         assert.deepEqual(imported, { name: 'fixture.csv + photo.csv', time: [1, 1, 2].map(offset => (csvStart + offset) * 1000),
           points: [121, 31, 122, 32, 120, 30], binary: true });
       }
-      assert.doesNotMatch(readLog(), /Native CSV import failed/);
       const workerCheck = `(async () => {
         const { default: WorkerEntry } = await import('/features/timeline/speedCurveWorker.ts?worker');
         const worker = new WorkerEntry();

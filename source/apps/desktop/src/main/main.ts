@@ -9,7 +9,7 @@ import { Worker } from "node:worker_threads";
 import { killChildren, stopChildren } from "../../../../packages/media/src/childProcesses";
 import { installShutdown } from "./shutdown";
 import { NativeCore } from "./nativeCore";
-import { readLocationCsv, restorePointColumns } from "./locationCsv";
+import { restorePointColumns } from "./restorePointColumns";
 import { readNativeLocationCsv } from "./nativeLocationCsv";
 import {restoreDataset,resolveDatasetSource} from "./restoreDataset";
 import {LocalSpeech} from "./localSpeech";
@@ -417,12 +417,7 @@ const readLocationCsvSnapshot = async (
   mainFilePath: string,
   photoFilePath: string | null = null,
 ): Promise<{dataset:PointDataset;key:string}> => {
-  const csvMode = process.env.REPLAYMOD_NATIVE_CSV;
-  const tryNative = csvMode === "1" || (csvMode !== "0" && platform === "darwin" && process.arch === "arm64");
-  // The default route reuses existing snapshots. Force mode has a separate
-  // key so a comparison run can actually exercise the native importer.
-  const parserVersion = csvMode === "1" ? "point-parser-native-v2" : "point-parser-v2-accuracy-100m";
-  const signature = [parserVersion, ...await Promise.all([mainFilePath, photoFilePath].map(async file => {
+  const signature = ["point-parser-v2-accuracy-100m", ...await Promise.all([mainFilePath, photoFilePath].map(async file => {
     if (!file) return null;
     const info = await stat(file);
     return [file, info.size, info.mtimeMs];
@@ -442,12 +437,7 @@ const readLocationCsvSnapshot = async (
       return dataset;
     }
 
-    const nativeDataset = tryNative ? await readNativeLocationCsv(nativeCoreExecutable, mainFilePath, photoFilePath).catch(error => {
-      if (shutdown.isQuitting()) throw error;
-      console.warn("Native CSV import failed", error);
-      return null;
-    }) : null;
-    const dataset = nativeDataset ?? await readLocationCsv(mainFilePath, photoFilePath);
+    const dataset = await readNativeLocationCsv(nativeCoreExecutable, mainFilePath, photoFilePath);
     await resources.write("snapshots", key, dataset).catch(console.warn);
     return dataset;
   })();

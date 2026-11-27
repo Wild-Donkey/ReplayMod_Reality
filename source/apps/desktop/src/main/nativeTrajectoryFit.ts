@@ -54,7 +54,7 @@ export async function fitNativeTrajectory(executable: string, samples: readonly 
   const output = await runNativeBinaryJob(executable, "--fit-trajectory", input, {
     exactBytes: outputBytes, maxBytes: outputBytes, signal, onProgress,
   });
-  if (!output || output.readDoubleLE(0) !== 2 || output.readDoubleLE(8) !== pointCount ||
+  if (output.readDoubleLE(0) !== 2 || output.readDoubleLE(8) !== pointCount ||
       output.readDoubleLE(16) !== count - pointCount) throw new Error("Invalid native trajectory header");
   const fittedWindows = output.readDoubleLE(24), attitudeConstraints = output.readDoubleLE(32);
   const correctedPoints = output.readDoubleLE(40), smoothedIntervals = output.readDoubleLE(48), bridgedIntervals = output.readDoubleLE(56);

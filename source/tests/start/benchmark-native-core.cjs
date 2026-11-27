@@ -12,7 +12,6 @@ require.extensions['.ts'] = (module, file) => {
   });
   module._compile(outputText, file);
 };
-const { readLocationCsv } = require('../../apps/desktop/src/main/locationCsv.ts');
 const { readNativeLocationCsv } = require('../../apps/desktop/src/main/nativeLocationCsv.ts');
 const { fitNativeTrajectory } = require('../../apps/desktop/src/main/nativeTrajectoryFit.ts');
 const { extractDjiOrientation } = require('../../packages/media/src/dji.ts');
@@ -25,23 +24,6 @@ function median(samples) {
   const sorted = [...samples].sort((a, b) => a - b);
   const middle = sorted.length / 2;
   return Number(((sorted[middle - 1] + sorted[middle]) / 2).toFixed(2));
-}
-
-async function compare(reference, native, countOf) {
-  const samples = [[], []];
-  let count;
-  for (let iteration = 0; iteration <= repetitions; iteration++) {
-    for (const mode of iteration % 2 ? [1, 0] : [0, 1]) {
-      const start = performance.now();
-      const result = await (mode ? native() : reference());
-      const elapsed = performance.now() - start;
-      const actual = countOf(result);
-      assert.equal(actual, count ?? actual);
-      count = actual;
-      if (iteration) samples[mode].push(elapsed);
-    }
-  }
-  return { points: count, tsMs: median(samples[0]), cppMs: median(samples[1]) };
 }
 
 function fixture(directory, name, count) {
@@ -68,17 +50,13 @@ async function csvBench(core) {
     for (const [label, footprint, photo] of [
       ['example', small, null], ['100k', medium, null], ['500k', large, null], ['500k + 100k photos', large, photos],
     ]) {
-      const result = await compare(
-        () => readLocationCsv(footprint, photo),
-        () => readNativeLocationCsv(core, footprint, photo),
-        value => value.pointCount,
-      );
+      const result = await measureNative(() => readNativeLocationCsv(core, footprint, photo));
       console.log(label, result);
     }
   } finally { fs.rmSync(directory, { recursive: true, force: true }); }
 }
 
-async function measureTrajectory(fit) {
+async function measureNative(fit) {
   const samples = [];
   let result;
   for (let iteration = 0; iteration <= repetitions; iteration++) {
@@ -99,7 +77,7 @@ async function trajectoryBench(core) {
       const yaw = Math.sin(i / 1200);
       return { timeSeconds: i / 40, quaternion: [Math.cos(yaw / 2), 0, 0, Math.sin(yaw / 2)] };
     });
-    const result = await measureTrajectory(() => fitNativeTrajectory(core, imu, gps, base, base + seconds, 10));
+    const result = await measureNative(() => fitNativeTrajectory(core, imu, gps, base, base + seconds, 10));
     console.log(`${seconds} s / 10 Hz`, result);
   }
 }
@@ -112,7 +90,7 @@ async function djiBench(core, video, csv) {
   const start = Date.parse(probe.format.tags?.creation_time) / 1000;
   const duration = Number(probe.format.duration);
   assert(Number.isFinite(start) && Number.isFinite(duration) && duration > 0, 'Missing video capture time or duration');
-  const dataset = await readLocationCsv(csv, null);
+  const dataset = await readNativeLocationCsv(core, csv);
   const points = motionInputPoints(dataset, start, duration);
   const fixesInClip = points.filter(point => point.timeSeconds >= start && point.timeSeconds <= start + duration).length;
   assert(fixesInClip >= 2, 'Need at least two GPS fixes within the video capture time range');
@@ -128,7 +106,7 @@ async function djiBench(core, video, csv) {
   assert.equal(native.points[0].timeSeconds, start);
   assert.equal(native.points.at(-1).timeSeconds, end);
   console.log({ duration, fixesInClip, quaternionCount: attitude.length, constraints: native.attitudeConstraints,
-    extractMs, ...await measureTrajectory(fit) });
+    extractMs, ...await measureNative(fit) });
 }
 
 function timelineBench() {

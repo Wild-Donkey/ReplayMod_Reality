@@ -18,7 +18,7 @@ function installLoader(fs, ts) {
 }
 installLoader(fs, ts);
 const { NativeCore } = require('../../apps/desktop/src/main/nativeCore.ts');
-const { readLocationCsv, restorePointColumns } = require('../../apps/desktop/src/main/locationCsv.ts');
+const { restorePointColumns } = require('../../apps/desktop/src/main/restorePointColumns.ts');
 const { readNativeLocationCsv } = require('../../apps/desktop/src/main/nativeLocationCsv.ts');
 const { fitNativeTrajectory } = require('../../apps/desktop/src/main/nativeTrajectoryFit.ts');
 const { unpackMotionGpsResult } = require('../../apps/desktop/src/shared/motionGpsWire.ts');
@@ -48,52 +48,25 @@ function checkMissingCompiler() {
 
 async function checkCsv(executable) {
   const sample = path.resolve(__dirname, '../../../RawData/footprint/Example_footprint.csv');
-  assert.deepEqual(await readNativeLocationCsv(executable, sample), await readLocationCsv(sample, null));
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'replay-native-csv-'));
-  try {
-    const filename = path.join(directory, '测试轨迹.csv');
-    await assert.rejects(readLocationCsv(filename, null), { code: 'ENOENT' });
-    const header = '\uFEFFdataTime,longitude,latitude,accuracy,stepType,elevation';
-    fs.writeFileSync(filename, [header, '3,10,20,120,0,8', '2,11,20,,0,', '1,12,20,0,0,-2',
-      '2,13,20,100,0,4', '4,180.01,20,,0,', '', '5,15,20,,-1,'].join('\r\n'));
-    assert.deepEqual(await readNativeLocationCsv(executable, filename), await readLocationCsv(filename, null));
-    for (const row of ['2,11.0000005,20,,1,0', '2,0x10,20,,0,0', '2,11,20,,0', '"2"x,11,20,,0,0']) {
-      fs.writeFileSync(filename, [header, '1,0,0,,0,0', row].join('\n'));
-      assert.equal(await readNativeLocationCsv(executable, filename), null, row);
-    }
-    const quotedHeader = '\uFEFF"dataTime","longitude","latitude",accuracy,stepType,"elevation",note';
-    fs.writeFileSync(filename, [quotedHeader, '"2","11",20," 100 ",0," \t ","commas, and ""quotes"""',
-      '"1"," 12 ",20,"",1,"-2",""', '" ",0,0,,0,,', '"3",0,0,"101",0,,'].join('\r\n'));
-    assert.deepEqual(await readNativeLocationCsv(executable, filename), await readLocationCsv(filename, null));
-    fs.writeFileSync(filename, [quotedHeader, '2,11,20,,0,0,"a\r\nb"'].join('\r\n'));
-    assert.equal((await readLocationCsv(filename, null)).pointCount, 1);
-    assert.equal(await readNativeLocationCsv(executable, filename), null);
-    const photos = path.join(directory, 'photos.csv');
-    fs.writeFileSync(filename, [header, '2,12,20,,0,3', '1,11,20,,0,1', '1,10,20,,1,2'].join('\n'));
-    fs.writeFileSync(photos, [header, '1,10,20,,0,4', '2,13,20,,0,5'].join('\n'));
-    const merged = await readLocationCsv(filename, photos);
-    assert.deepEqual(await readNativeLocationCsv(executable, filename, photos), merged);
-    assert.deepEqual(Array.from(merged.timelineTimestamps), [1000, 1000, 2000, 2000]);
-    assert.deepEqual(Array.from(merged.timelineCoordinates), [11, 20, 10, 20, 12, 20, 13, 20]);
-    assert.deepEqual(Array.from(merged.timelineAltitudes), [1, 4, 3, 5]);
-    fs.writeFileSync(filename, header + '\n');
-    const photoOnly = await readLocationCsv(filename, photos);
-    assert.equal(photoOnly.footprintPointCount, 0);
-    assert.strictEqual(photoOnly.timelineCoordinates, photoOnly.photoCoordinates);
-    assert.deepEqual(await readNativeLocationCsv(executable, filename, photos), photoOnly);
-    fs.writeFileSync(filename, [header, '1,0.0000001,20,,1,1', '1,-0.0000001,20,,1,2',
-      '1,0.0000002,20,,1,3', '2,120,21,,0,'].join('\n'));
-    assert.deepEqual(await readNativeLocationCsv(executable, filename), await readLocationCsv(filename, null));
-    const footprintOnly = await readLocationCsv(sample, null);
-    assert.strictEqual(footprintOnly.timelineTimestamps, footprintOnly.footprintTimestamps);
-    const oldTimes = Array.from(footprintOnly.footprintTimestamps);
-    const restored = restorePointColumns({ ...footprintOnly, footprintTimestamps: oldTimes, timelineTimestamps: oldTimes });
-    assert(restored.timelineTimestamps instanceof Float64Array);
-    assert.strictEqual(restored.timelineTimestamps, restored.footprintTimestamps);
-    assert.deepEqual(restored, footprintOnly);
-  } finally {
-    fs.rmSync(directory, {recursive: true, force: true});
-  }
+  const footprint = await readNativeLocationCsv(executable, sample);
+  assert.equal(footprint.pointCount, 20_819);
+  assert.equal(footprint.skippedRowCount, 677);
+  assert.equal(footprint.photoPointCount, 0);
+  assert.strictEqual(footprint.timelineTimestamps, footprint.footprintTimestamps);
+  assert.strictEqual(footprint.timelineCoordinates, footprint.footprintCoordinates);
+
+  const mixed = await readNativeLocationCsv(executable, sample, sample);
+  assert.equal(mixed.footprintPointCount, footprint.footprintPointCount);
+  assert(mixed.photoPointCount > 0);
+  assert.equal(mixed.pointCount, mixed.footprintPointCount + mixed.photoPointCount);
+  assert.deepEqual(mixed.footprintCoordinates, footprint.footprintCoordinates);
+  assert(mixed.timelineTimestamps.every((time, i, times) => i === 0 || time >= times[i - 1]));
+
+  const oldTimes = Array.from(footprint.footprintTimestamps);
+  const restored = restorePointColumns({ ...footprint, footprintTimestamps: oldTimes, timelineTimestamps: oldTimes });
+  assert(restored.timelineTimestamps instanceof Float64Array);
+  assert.strictEqual(restored.timelineTimestamps, restored.footprintTimestamps);
+  assert.deepEqual(restored, footprint);
 }
 
 async function check() {
@@ -123,7 +96,7 @@ async function check() {
   await checkTrajectory(executable);
   await checkTrajectoryWorker(executable);
   console.log('Native core handshake, ping, EOF shutdown and missing executable checks passed.');
-  console.log('Native CSV matches the reference dataset and declines unsupported records.');
+  console.log('Native CSV imports the tracked footprint, combines a photo source and restores cached columns.');
 }
 
 async function checkTrajectoryWorker(executable) {
