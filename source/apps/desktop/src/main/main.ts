@@ -1,12 +1,11 @@
 import "./guardStdio";
 import { prepareWindows } from "./windowsSetup";
-import {GPS_PROGRESS_CHANNEL,GPS_RESULT_CHANNEL,POST_GPS_CHANNEL,type MotionGpsProgress,type MotionGpsRequest,type MotionGpsResult} from "../shared/mediaAlignment";
-import { normalizeTrajectorySampleRate } from "../../../../packages/media/src/trajectory-fit";
-import {packMotionGpsResult,type MotionGpsWireUpdate,type PackedMotionGpsResult} from "../shared/motionGpsWire";
+import {GPS_PROGRESS_CHANNEL,GPS_RESULT_CHANNEL,POST_GPS_CHANNEL,type MotionGpsProgress,type MotionGpsRequest} from "../shared/mediaAlignment";
+import { normalizeTrajectorySampleRate } from "./nativeTrajectoryFit";
+import type {MotionGpsWireUpdate,PackedMotionGpsResult} from "../shared/motionGpsWire";
 import { LatestJobQueue } from "./latestJobQueue";
 import type { TrajectoryWorkerInput, TrajectoryWorkerOutput } from "./trajectoryWorker";
 import { Worker } from "node:worker_threads";
-import { shouldFitNatively, trajectoryBackendMode, trajectoryCacheNamespace, type TrajectoryBackendConfig } from "./trajectoryBackend";
 import { killChildren, stopChildren } from "../../../../packages/media/src/childProcesses";
 import { installShutdown } from "./shutdown";
 import { NativeCore } from "./nativeCore";
@@ -738,13 +737,12 @@ ipcMain.handle(OPEN_MEDIA_CHANNEL, async (): Promise<MediaSource | null> => {
 });
 
 let trajectoryWorker: Worker | undefined;
-const trajectoryMode = trajectoryBackendMode(process.env.REPLAYMOD_NATIVE_TRAJECTORY, process.platform, process.arch);
 
 async function closeTrajectoryWorker() {
   const worker = trajectoryWorker;
   if (!worker) return;
   await new Promise<void>(resolve => {
-    // The worker first stops ExifTool. Termination covers synchronous computation.
+    // Let the worker reap its child processes before terminating it.
     const deadline = setTimeout(() => { void worker.terminate().catch(console.error); }, 2500);
     worker.once("exit", () => { clearTimeout(deadline); resolve(); });
     worker.postMessage({shutdown: true});
@@ -756,7 +754,7 @@ function runTrajectoryWorker(input: TrajectoryWorkerInput, signal: AbortSignal,
   signal.throwIfAborted();
   if (!trajectoryWorker) {
     const worker = new Worker(path.join(__dirname, "trajectoryWorker.js"), {
-      workerData: { mode: trajectoryMode, executable: nativeCoreExecutable } satisfies TrajectoryBackendConfig,
+      workerData: nativeCoreExecutable,
     });
     worker.on("error", error => {
       if (trajectoryWorker === worker) trajectoryWorker = undefined;
@@ -821,18 +819,12 @@ const gpsJobs = new LatestJobQueue<GpsJob>(async (
     const end=source.durationSeconds===null
       ? request.points.reduce((latest,point)=>Number.isFinite(point.timeSeconds)?Math.max(latest,point.timeSeconds):latest,start)
       : start+source.durationSeconds;
-    const cacheBackend = trajectoryMode === "automatic" && !shouldFitNatively("automatic", end - start, rate, 0)
-      ? "typescript" : trajectoryMode;
-    const legacyKey=request.offsetSeconds===0
-      ? createHash("sha256").update(JSON.stringify(rate === 10
-        ? ["motion-gps-v8", revision, start, request.points]
-        : ["motion-gps-v10", rate, revision, start, request.points])).digest("hex") : null;
-    const key = legacyKey && createHash("sha256").update(trajectoryCacheNamespace[cacheBackend]).update(legacyKey).digest("hex");
-    if (key && legacyKey) {
+    const key = request.offsetSeconds === 0
+      ? createHash("sha256").update(JSON.stringify(["motion-gps-native-v3", rate, revision, start, end, request.points])).digest("hex")
+      : null;
+    if (key) {
       const cached = await resources.read<PackedMotionGpsResult>("snapshots", key);
       if (cached) { publish({id,result:cached}); return; }
-      const legacy = rate === 10 && cacheBackend === "typescript" && await resources.read<MotionGpsResult>("snapshots", legacyKey);
-      if (legacy) { publish({id,result:packMotionGpsResult(legacy)}); return; }
     }
     const roots = [path.resolve(process.cwd(),".."),process.cwd(),app.getAppPath(),path.dirname(app.getPath("exe"))];
     const exiftoolName = platform === "win32" ? "exiftool.exe" : "exiftool";

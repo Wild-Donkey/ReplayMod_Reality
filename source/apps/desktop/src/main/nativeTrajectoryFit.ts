@@ -1,15 +1,18 @@
-import { processMotionGps, type MotionPoint } from "../../../../packages/media/src/gps-motion";
-import { normalizeTrajectorySampleRate } from "../../../../packages/media/src/trajectory-fit";
+import type { MotionPoint } from "../../../../packages/media/src/gps-motion";
 import type { OrientationSample } from "../../../../packages/media/src/types";
-import { packMotionGpsResult, type PackedMotionGpsResult } from "../shared/motionGpsWire";
+import type { PackedMotionGpsResult } from "../shared/motionGpsWire";
 import { runNativeBinaryJob, type NativeJobProgress } from "./nativeBinaryJob";
 
 const CONTEXT_SECONDS = 4;
 const HEADER_BYTES = 8 * 8;
 const ROW_BYTES = 5 * 8;
 
+export function normalizeTrajectorySampleRate(rate = 10) {
+  return Number.isFinite(rate) ? Math.max(1, Math.min(60, Math.round(rate))) : 10;
+}
+
 export async function fitNativeTrajectory(executable: string, samples: readonly OrientationSample[],
-    points: readonly MotionPoint[], start: number, end: number, sampleRateHz: number, signal?: AbortSignal,
+    points: readonly MotionPoint[], start: number, end: number, sampleRateHz: number | undefined, signal?: AbortSignal,
     onProgress?: (progress: NativeJobProgress) => void): Promise<PackedMotionGpsResult> {
   signal?.throwIfAborted();
   const fixes = points.filter(point => Number.isFinite(point.timeSeconds) && Number.isFinite(point.latitude) &&
@@ -17,7 +20,7 @@ export async function fitNativeTrajectory(executable: string, samples: readonly 
     .sort((a, b) => a.timeSeconds - b.timeSeconds)
     .filter((point, index, sorted) => index === 0 || point.timeSeconds > sorted[index - 1].timeSeconds);
   if (!fixes.length || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
-    return packMotionGpsResult(processMotionGps([], points, start, end));
+    throw new Error("GPS 与视频时间不重叠，请先完成时间对齐。");
   }
   const duration = end - start;
   if ((duration + 2 * CONTEXT_SECONDS) * 10 > 500_000) throw new Error("轨迹处理范围过大，请缩短视频片段。");
