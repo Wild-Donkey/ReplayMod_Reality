@@ -9,7 +9,7 @@ npm --prefix source ci
 npm --prefix source start
 ```
 
-需要 Node.js 20.19+ 或 22.12+ 与 npm。Windows PowerShell 执行策略阻止 npm 时使用 `npm.cmd`。根目录三个 `Start-*` 入口共用 `source/scripts/start/launch.cjs`，自动切换目录并在缺少启动依赖时安装；Linux 文件管理器的双击行为取决于本机设置。
+需要 Node.js 20.19+ 或 22.12+ 与 npm。Windows PowerShell 执行策略阻止 npm 时使用 `npm.cmd`。根目录三个 `Start-*` 入口共用 `source/scripts/start/launch.cjs`，自动切换目录、安装缺少的启动依赖，并验证 Electron 的实际运行文件；若 npm 安装了 Electron 包但跳过了其安装脚本，启动器会下载 Electron 压缩包并用系统解压工具展开运行时。macOS/Linux 需要 `unzip`，Windows 使用系统自带的 `tar.exe`。Linux 文件管理器的双击行为取决于本机设置。
 
 macOS 原生背景模块在 Vite 主进程构建时编译，需要 Xcode Command Line Tools 与 Node.js C headers。可用 `REPLAYMOD_NODE_HEADERS` 指定 headers 目录。
 
@@ -74,7 +74,7 @@ macOS 双击 `Install-MacOS.command` 会打包并安装至 `~/Applications/Repla
 | 现象 | 处理方式 |
 | --- | --- |
 | 启动脚本提示找不到 Node.js | 安装符合要求的 Node.js / npm，或准备本平台的 `.tools` 工具链 |
-| 更新后依赖损坏或启动失败 | 在根目录重新运行 `npm --prefix source ci`，保留终端错误信息 |
+| 更新后依赖损坏或启动失败 | 重新运行根目录的 `Start-*` 入口；它会检查并补齐 Electron 运行时。若仍失败，再在根目录运行 `npm --prefix source ci` 并保留终端错误信息 |
 | 地图未加载 | 在应用中输入或更新 MapTiler API Key，检查网络和服务访问情况 |
 | 视频探测或字幕失败 | 检查 FFmpeg / FFprobe、本地语音环境及已选择的 ASR／对齐模型，见 [媒体处理](media.md) |
 | 修改主进程或原生模块后效果未变 | 完全退出并重新启动应用，网页热更新不会替换原生对象 |

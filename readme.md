@@ -38,7 +38,7 @@ npm --prefix source start
 
 Windows 如果 PowerShell 阻止执行 npm 脚本，可将 `npm` 换成 `npm.cmd`。
 
-也可以使用根目录启动脚本，它们会在首次启动或缺少依赖时自动执行 `npm ci`，需要联网：
+也可以使用根目录启动脚本。它们会在首次启动或缺少依赖时自动执行 `npm ci`，并检查 Electron 的实际运行文件；如果 npm 因安装脚本许可机制只装入了 Electron 包、没有下载运行文件，启动脚本会自动下载并解压对应平台的 Electron 运行时。整个首次准备过程需要联网：
 
 | 系统 | 入口 |
 | --- | --- |
@@ -48,7 +48,9 @@ Windows 如果 PowerShell 阻止执行 npm 脚本，可将 `npm` 换成 `npm.cmd
 
 启动后保持终端窗口打开。启动日志写入 `desktop-start.log`，终端会显示文件路径。首次进入应用时输入 MapTiler API Key，配置会保存到本机，所有启动方式共用。macOS 当前原生窗口背景模块还需要 Xcode Command Line Tools 与 Node.js C headers。
 
-macOS 可双击 `Install-MacOS.command`，打包并安装到 `~/Applications/ReplayMod Reality.app`；更新前退出旧版。其他打包方式、本地工具链与启动排错见 [安装与开发](docs/development.md)。视频与字幕工具按需准备，见 [媒体处理](docs/media.md)。
+如果首次准备依赖时仍然看到 `electron/path.txt` 或 Electron 可执行文件缺失，重新运行对应的 `Start-*` 入口即可；启动器会自动重新下载并解压 Electron 运行时，不需要手动执行 `npm install-scripts approve`。macOS/Linux 需要系统提供 `unzip`，Windows 使用系统自带的 `tar.exe`。只有依赖本身下载失败时，才需要检查 npm、网络或代理设置。
+
+macOS 可双击 `Install-MacOS.command`，打包并安装到 `~/Applications/ReplayMod Reality.app`；更新前退出旧版。其他打包方式、本地工具链与启动排错见 [安装与开发](docs/development.md)。Windows 验证步骤见 [Windows 启动修复交接](docs/windows-startup-handoff.md)。视频与字幕工具按需准备，见 [媒体处理](docs/media.md)。
 
 ## 近期更新（截至 2026-11-16）
 
